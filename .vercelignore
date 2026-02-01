@@ -1,0 +1,5 @@
+# Ignore node_modules para forçar instalação limpa
+node_modules/
+.git
+.env.local
+.env.*.local
