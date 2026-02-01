@@ -1,5 +1,23 @@
-# Ignore node_modules para forçar instalação limpa
+# Backend - não é necessário no Vercel (vai para Render)
+backend/
+
+# Database scripts
+database/
+
+# Docs
+docs/
+
+# Node modules (instalação limpa)
 node_modules/
-.git
+**/node_modules/
+
+# Git
+.git/
+
+# Env files
+.env
 .env.local
 .env.*.local
+
+# Logs
+*.log

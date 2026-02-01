@@ -1,308 +1,321 @@
 import { create } from 'zustand';
-import { devtools, subscribeWithSelector } from 'zustand/middleware';
-import { api } from '@/lib/api';
-import type { MindMap, CreateMapInput, UpdateMapInput } from '@/types';
+import { subscribeWithSelector } from 'zustand/middleware';
+import {
+  Node,
+  Edge,
+  NodeChange,
+  EdgeChange,
+  Connection,
+  applyNodeChanges,
+  applyEdgeChanges,
+  addEdge,
+} from '@xyflow/react';
 
-interface MapFilters {
-  search: string;
-  filter: 'all' | 'owned' | 'shared' | 'favorites' | 'archived';
-  sortBy: 'updated_at' | 'created_at' | 'title';
-  sortOrder: 'asc' | 'desc';
+export interface MapNode extends Node {
+  data: {
+    label: string;
+    content?: string;
+    type: 'idea' | 'task' | 'note' | 'reference' | 'image' | 'group';
+    collapsed?: boolean;
+    creator?: {
+      id: string;
+      display_name: string;
+      avatar_url?: string;
+      color: string;
+    };
+    tasks?: Array<{
+      id: string;
+      title: string;
+      status: string;
+    }>;
+    commentsCount?: number;
+  };
+}
+
+export interface MapEdge extends Edge {
+  data?: {
+    label?: string;
+  };
+}
+
+interface MapMeta {
+  id: string;
+  title: string;
+  description?: string;
+  workspace_id: string;
+  created_by: string;
+  updated_at: string;
 }
 
 interface MapState {
-  // Data
-  maps: MindMap[];
-  currentMap: MindMap | null;
-  selectedMapIds: string[];
+  // Map data
+  map: MapMeta | null;
+  nodes: MapNode[];
+  edges: MapEdge[];
+  
+  // Selection
+  selectedNodes: string[];
+  selectedEdges: string[];
   
   // UI State
   isLoading: boolean;
   isSaving: boolean;
-  error: string | null;
-  viewMode: 'grid' | 'list';
-  filters: MapFilters;
+  hasUnsavedChanges: boolean;
+  viewMode: 'map' | 'list' | 'kanban';
   
-  // Actions - Data
-  setMaps: (maps: MindMap[]) => void;
-  addMap: (map: MindMap) => void;
-  updateMapLocal: (id: string, updates: Partial<MindMap>) => void;
-  removeMap: (id: string) => void;
-  setCurrentMap: (map: MindMap | null) => void;
+  // Collaboration
+  activeUsers: Array<{
+    id: string;
+    name: string;
+    color: string;
+    cursor?: { x: number; y: number };
+  }>;
   
-  // Actions - Selection
-  selectMap: (id: string) => void;
-  deselectMap: (id: string) => void;
-  toggleMapSelection: (id: string) => void;
-  selectAllMaps: () => void;
-  clearSelection: () => void;
-  
-  // Actions - UI
+  // History for undo/redo
+  history: Array<{ nodes: MapNode[]; edges: MapEdge[] }>;
+  historyIndex: number;
+
+  // Actions
+  setMap: (map: MapMeta | null) => void;
+  setNodes: (nodes: MapNode[]) => void;
+  setEdges: (edges: MapEdge[]) => void;
   setLoading: (loading: boolean) => void;
   setSaving: (saving: boolean) => void;
-  setError: (error: string | null) => void;
-  setViewMode: (mode: 'grid' | 'list') => void;
-  setFilters: (filters: Partial<MapFilters>) => void;
-  resetFilters: () => void;
+  setViewMode: (mode: 'map' | 'list' | 'kanban') => void;
   
-  // API Actions
-  fetchMaps: () => Promise<void>;
-  fetchMapById: (id: string) => Promise<MindMap | null>;
-  createMap: (data: CreateMapInput) => Promise<MindMap>;
-  updateMap: (id: string, data: UpdateMapInput) => Promise<MindMap>;
-  deleteMap: (id: string) => Promise<void>;
-  duplicateMap: (id: string) => Promise<MindMap>;
-  toggleFavorite: (id: string) => Promise<void>;
-  archiveMap: (id: string, archived?: boolean) => Promise<void>;
+  // Node operations
+  onNodesChange: (changes: NodeChange[]) => void;
+  addNode: (node: MapNode) => void;
+  updateNode: (nodeId: string, data: Partial<MapNode['data']>) => void;
+  deleteNodes: (nodeIds: string[]) => void;
+  toggleNodeCollapse: (nodeId: string) => void;
   
-  // Computed
-  getFilteredMaps: () => MindMap[];
-  getMapById: (id: string) => MindMap | undefined;
+  // Edge operations
+  onEdgesChange: (changes: EdgeChange[]) => void;
+  onConnect: (connection: Connection) => void;
+  deleteEdges: (edgeIds: string[]) => void;
+  
+  // Selection
+  setSelectedNodes: (nodeIds: string[]) => void;
+  setSelectedEdges: (edgeIds: string[]) => void;
+  clearSelection: () => void;
+  selectAll: () => void;
+  
+  // History
+  undo: () => void;
+  redo: () => void;
+  saveToHistory: () => void;
+  
+  // Collaboration
+  setActiveUsers: (users: MapState['activeUsers']) => void;
+  updateUserCursor: (userId: string, cursor: { x: number; y: number }) => void;
+  
+  // Reset
+  reset: () => void;
 }
 
-const defaultFilters: MapFilters = {
-  search: '',
-  filter: 'all',
-  sortBy: 'updated_at',
-  sortOrder: 'desc',
+const initialState = {
+  map: null,
+  nodes: [],
+  edges: [],
+  selectedNodes: [],
+  selectedEdges: [],
+  isLoading: false,
+  isSaving: false,
+  hasUnsavedChanges: false,
+  viewMode: 'map' as const,
+  activeUsers: [],
+  history: [],
+  historyIndex: -1,
 };
 
 export const useMapStore = create<MapState>()(
-  devtools(
-    subscribeWithSelector((set, get) => ({
-      // Initial State
-      maps: [],
-      currentMap: null,
-      selectedMapIds: [],
-      isLoading: false,
-      isSaving: false,
-      error: null,
-      viewMode: 'grid',
-      filters: defaultFilters,
+  subscribeWithSelector((set, get) => ({
+    ...initialState,
 
-      // Data Actions
-      setMaps: (maps) => set({ maps }),
-      
-      addMap: (map) => set((state) => ({ 
-        maps: [map, ...state.maps] 
-      })),
-      
-      updateMapLocal: (id, updates) => set((state) => ({
-        maps: state.maps.map((m) => 
-          m.id === id ? { ...m, ...updates } : m
+    setMap: (map) => set({ map }),
+    setNodes: (nodes) => set({ nodes, hasUnsavedChanges: false }),
+    setEdges: (edges) => set({ edges, hasUnsavedChanges: false }),
+    setLoading: (isLoading) => set({ isLoading }),
+    setSaving: (isSaving) => set({ isSaving }),
+    setViewMode: (viewMode) => set({ viewMode }),
+
+    // Node operations
+    onNodesChange: (changes) => {
+      set({
+        nodes: applyNodeChanges(changes, get().nodes) as MapNode[],
+        hasUnsavedChanges: true,
+      });
+    },
+
+    addNode: (node) => {
+      get().saveToHistory();
+      set({
+        nodes: [...get().nodes, node],
+        hasUnsavedChanges: true,
+      });
+    },
+
+    updateNode: (nodeId, data) => {
+      set({
+        nodes: get().nodes.map((node) =>
+          node.id === nodeId
+            ? { ...node, data: { ...node.data, ...data } }
+            : node
         ),
-        currentMap: state.currentMap?.id === id 
-          ? { ...state.currentMap, ...updates }
-          : state.currentMap,
-      })),
+        hasUnsavedChanges: true,
+      });
+    },
+
+    deleteNodes: (nodeIds) => {
+      get().saveToHistory();
+      const nodesToDelete = new Set(nodeIds);
       
-      removeMap: (id) => set((state) => ({
-        maps: state.maps.filter((m) => m.id !== id),
-        selectedMapIds: state.selectedMapIds.filter((i) => i !== id),
-        currentMap: state.currentMap?.id === id ? null : state.currentMap,
-      })),
+      // Also delete child nodes
+      const findDescendants = (parentId: string): string[] => {
+        const children = get().nodes.filter(
+          (n) => get().edges.some((e) => e.source === parentId && e.target === n.id)
+        );
+        return children.flatMap((c) => [c.id, ...findDescendants(c.id)]);
+      };
+
+      nodeIds.forEach((id) => {
+        findDescendants(id).forEach((descendantId) => nodesToDelete.add(descendantId));
+      });
+
+      set({
+        nodes: get().nodes.filter((n) => !nodesToDelete.has(n.id)),
+        edges: get().edges.filter(
+          (e) => !nodesToDelete.has(e.source) && !nodesToDelete.has(e.target)
+        ),
+        selectedNodes: [],
+        hasUnsavedChanges: true,
+      });
+    },
+
+    toggleNodeCollapse: (nodeId) => {
+      set({
+        nodes: get().nodes.map((node) =>
+          node.id === nodeId
+            ? { ...node, data: { ...node.data, collapsed: !node.data.collapsed } }
+            : node
+        ),
+      });
+    },
+
+    // Edge operations
+    onEdgesChange: (changes) => {
+      set({
+        edges: applyEdgeChanges(changes, get().edges) as MapEdge[],
+        hasUnsavedChanges: true,
+      });
+    },
+
+    onConnect: (connection) => {
+      get().saveToHistory();
+      set({
+        edges: addEdge(
+          {
+            ...connection,
+            type: 'smoothstep',
+            animated: false,
+          },
+          get().edges
+        ) as MapEdge[],
+        hasUnsavedChanges: true,
+      });
+    },
+
+    deleteEdges: (edgeIds) => {
+      get().saveToHistory();
+      set({
+        edges: get().edges.filter((e) => !edgeIds.includes(e.id)),
+        selectedEdges: [],
+        hasUnsavedChanges: true,
+      });
+    },
+
+    // Selection
+    setSelectedNodes: (selectedNodes) => set({ selectedNodes }),
+    setSelectedEdges: (selectedEdges) => set({ selectedEdges }),
+    clearSelection: () => set({ selectedNodes: [], selectedEdges: [] }),
+    selectAll: () =>
+      set({
+        selectedNodes: get().nodes.map((n) => n.id),
+        selectedEdges: get().edges.map((e) => e.id),
+      }),
+
+    // History
+    saveToHistory: () => {
+      const { nodes, edges, history, historyIndex } = get();
+      const newHistory = history.slice(0, historyIndex + 1);
+      newHistory.push({ nodes: [...nodes], edges: [...edges] });
       
-      setCurrentMap: (currentMap) => set({ currentMap }),
+      // Limit history to 50 entries
+      if (newHistory.length > 50) {
+        newHistory.shift();
+      }
 
-      // Selection Actions
-      selectMap: (id) => set((state) => ({
-        selectedMapIds: state.selectedMapIds.includes(id)
-          ? state.selectedMapIds
-          : [...state.selectedMapIds, id],
-      })),
-      
-      deselectMap: (id) => set((state) => ({
-        selectedMapIds: state.selectedMapIds.filter((i) => i !== id),
-      })),
-      
-      toggleMapSelection: (id) => set((state) => ({
-        selectedMapIds: state.selectedMapIds.includes(id)
-          ? state.selectedMapIds.filter((i) => i !== id)
-          : [...state.selectedMapIds, id],
-      })),
-      
-      selectAllMaps: () => set((state) => ({
-        selectedMapIds: state.maps.map((m) => m.id),
-      })),
-      
-      clearSelection: () => set({ selectedMapIds: [] }),
+      set({
+        history: newHistory,
+        historyIndex: newHistory.length - 1,
+      });
+    },
 
-      // UI Actions
-      setLoading: (isLoading) => set({ isLoading }),
-      setSaving: (isSaving) => set({ isSaving }),
-      setError: (error) => set({ error }),
-      setViewMode: (viewMode) => set({ viewMode }),
-      
-      setFilters: (newFilters) => set((state) => ({
-        filters: { ...state.filters, ...newFilters },
-      })),
-      
-      resetFilters: () => set({ filters: defaultFilters }),
-
-      // API Actions
-      fetchMaps: async () => {
-        try {
-          set({ isLoading: true, error: null });
-          const maps = await api.get<MindMap[]>('/maps');
-          set({ maps, isLoading: false });
-        } catch (error: any) {
-          set({ error: error.message || 'Failed to fetch maps', isLoading: false });
-        }
-      },
-
-      fetchMapById: async (id: string) => {
-        try {
-          set({ isLoading: true, error: null });
-          const map = await api.get<MindMap>(`/maps/${id}`);
-          set({ currentMap: map, isLoading: false });
-          return map;
-        } catch (error: any) {
-          set({ error: error.message || 'Failed to fetch map', isLoading: false });
-          return null;
-        }
-      },
-
-      createMap: async (data: CreateMapInput) => {
-        try {
-          set({ isSaving: true, error: null });
-          const newMap = await api.post<MindMap>('/maps', data);
-          get().addMap(newMap);
-          set({ isSaving: false });
-          return newMap;
-        } catch (error: any) {
-          set({ error: error.message || 'Failed to create map', isSaving: false });
-          throw error;
-        }
-      },
-
-      updateMap: async (id: string, data: UpdateMapInput) => {
-        try {
-          set({ isSaving: true, error: null });
-          const updatedMap = await api.patch<MindMap>(`/maps/${id}`, data);
-          get().updateMapLocal(id, updatedMap);
-          set({ isSaving: false });
-          return updatedMap;
-        } catch (error: any) {
-          set({ error: error.message || 'Failed to update map', isSaving: false });
-          throw error;
-        }
-      },
-
-      deleteMap: async (id: string) => {
-        try {
-          set({ isSaving: true, error: null });
-          await api.delete(`/maps/${id}`);
-          get().removeMap(id);
-          set({ isSaving: false });
-        } catch (error: any) {
-          set({ error: error.message || 'Failed to delete map', isSaving: false });
-          throw error;
-        }
-      },
-
-      duplicateMap: async (id: string) => {
-        try {
-          set({ isSaving: true, error: null });
-          const duplicatedMap = await api.post<MindMap>(`/maps/${id}/duplicate`);
-          get().addMap(duplicatedMap);
-          set({ isSaving: false });
-          return duplicatedMap;
-        } catch (error: any) {
-          set({ error: error.message || 'Failed to duplicate map', isSaving: false });
-          throw error;
-        }
-      },
-
-      toggleFavorite: async (id: string) => {
-        try {
-          const map = get().maps.find(m => m.id === id);
-          if (!map) return;
-          
-          const newFavorite = !map.is_favorite;
-          get().updateMapLocal(id, { is_favorite: newFavorite });
-          
-          await api.patch(`/maps/${id}`, { is_favorite: newFavorite });
-        } catch (error: any) {
-          // Revert optimistic update on failure
-          const map = get().maps.find(m => m.id === id);
-          if (map) {
-            get().updateMapLocal(id, { is_favorite: !map.is_favorite });
-          }
-          set({ error: error.message || 'Failed to toggle favorite' });
-        }
-      },
-
-      archiveMap: async (id: string, archived = true) => {
-        try {
-          get().updateMapLocal(id, { is_archived: archived });
-          await api.patch(`/maps/${id}`, { is_archived: archived });
-        } catch (error: any) {
-          // Revert optimistic update on failure
-          get().updateMapLocal(id, { is_archived: !archived });
-          set({ error: error.message || 'Failed to archive map' });
-        }
-      },
-
-      // Computed
-      getFilteredMaps: () => {
-        const { maps, filters } = get();
-        let filtered = [...maps];
-
-        // Search filter
-        if (filters.search) {
-          const searchLower = filters.search.toLowerCase();
-          filtered = filtered.filter(
-            (m) =>
-              m.name.toLowerCase().includes(searchLower) ||
-              m.description?.toLowerCase().includes(searchLower)
-          );
-        }
-
-        // Category filter
-        switch (filters.filter) {
-          case 'owned':
-            // Implement based on user context
-            break;
-          case 'shared':
-            filtered = filtered.filter((m) => m.is_public);
-            break;
-          case 'favorites':
-            filtered = filtered.filter((m) => m.is_favorite);
-            break;
-          case 'archived':
-            filtered = filtered.filter((m) => m.is_archived);
-            break;
-          case 'all':
-          default:
-            filtered = filtered.filter((m) => !m.is_archived);
-            break;
-        }
-
-        // Sort
-        filtered.sort((a, b) => {
-          let comparison = 0;
-          
-          switch (filters.sortBy) {
-            case 'title':
-              comparison = a.name.localeCompare(b.name);
-              break;
-            case 'created_at':
-              comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-              break;
-            case 'updated_at':
-            default:
-              comparison = new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
-              break;
-          }
-
-          return filters.sortOrder === 'desc' ? -comparison : comparison;
+    undo: () => {
+      const { history, historyIndex } = get();
+      if (historyIndex > 0) {
+        const prevState = history[historyIndex - 1];
+        set({
+          nodes: prevState.nodes,
+          edges: prevState.edges,
+          historyIndex: historyIndex - 1,
+          hasUnsavedChanges: true,
         });
+      }
+    },
 
-        return filtered;
-      },
+    redo: () => {
+      const { history, historyIndex } = get();
+      if (historyIndex < history.length - 1) {
+        const nextState = history[historyIndex + 1];
+        set({
+          nodes: nextState.nodes,
+          edges: nextState.edges,
+          historyIndex: historyIndex + 1,
+          hasUnsavedChanges: true,
+        });
+      }
+    },
 
-      getMapById: (id) => get().maps.find((m) => m.id === id),
-    })),
-    { name: 'MapStore' }
-  )
+    // Collaboration
+    setActiveUsers: (activeUsers) => set({ activeUsers }),
+    
+    updateUserCursor: (userId, cursor) => {
+      set({
+        activeUsers: get().activeUsers.map((user) =>
+          user.id === userId ? { ...user, cursor } : user
+        ),
+      });
+    },
+
+    // Reset
+    reset: () => set(initialState),
+  }))
 );
+
+// Selectors
+export const selectNodeById = (id: string) => (state: MapState) =>
+  state.nodes.find((n) => n.id === id);
+
+export const selectSelectedNodes = (state: MapState) =>
+  state.nodes.filter((n) => state.selectedNodes.includes(n.id));
+
+export const selectChildNodes = (parentId: string) => (state: MapState) =>
+  state.nodes.filter((n) =>
+    state.edges.some((e) => e.source === parentId && e.target === n.id)
+  );
+
+export const selectCanUndo = (state: MapState) => state.historyIndex > 0;
+export const selectCanRedo = (state: MapState) =>
+  state.historyIndex < state.history.length - 1;

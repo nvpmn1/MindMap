@@ -16,7 +16,7 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      'flex h-10 w-full items-center justify-between rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1',
+      'flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1',
       className
     )}
     {...props}
@@ -102,7 +102,7 @@ const SelectLabel = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <SelectPrimitive.Label
     ref={ref}
-    className={cn('px-2 py-1.5 text-sm font-semibold', className)}
+    className={cn('py-1.5 pl-8 pr-2 text-sm font-semibold', className)}
     {...props}
   />
 ));
@@ -115,16 +115,17 @@ const SelectItem = React.forwardRef<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-2 pr-8 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
+      'relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       className
     )}
     {...props}
   >
-    <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
+    <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
       <SelectPrimitive.ItemIndicator>
         <Check className="h-4 w-4" />
       </SelectPrimitive.ItemIndicator>
     </span>
+
     <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
   </SelectPrimitive.Item>
 ));
@@ -142,6 +143,107 @@ const SelectSeparator = React.forwardRef<
 ));
 SelectSeparator.displayName = SelectPrimitive.Separator.displayName;
 
+// Typed Select - helper para selects com opções tipadas
+interface TypedSelectOption<T extends string> {
+  value: T;
+  label: string;
+  icon?: React.ReactNode;
+  disabled?: boolean;
+}
+
+interface TypedSelectProps<T extends string> {
+  value: T;
+  onValueChange: (value: T) => void;
+  options: TypedSelectOption<T>[];
+  placeholder?: string;
+  disabled?: boolean;
+  className?: string;
+}
+
+function TypedSelect<T extends string>({
+  value,
+  onValueChange,
+  options,
+  placeholder = 'Selecione...',
+  disabled = false,
+  className,
+}: TypedSelectProps<T>) {
+  return (
+    <Select value={value} onValueChange={onValueChange as (value: string) => void} disabled={disabled}>
+      <SelectTrigger className={className}>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem key={option.value} value={option.value} disabled={option.disabled}>
+            <span className="flex items-center gap-2">
+              {option.icon}
+              {option.label}
+            </span>
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+// Priority Select
+const priorityOptions: TypedSelectOption<'low' | 'medium' | 'high' | 'urgent'>[] = [
+  { value: 'low', label: 'Baixa', icon: <span className="w-2 h-2 rounded-full bg-slate-400" /> },
+  { value: 'medium', label: 'Média', icon: <span className="w-2 h-2 rounded-full bg-blue-500" /> },
+  { value: 'high', label: 'Alta', icon: <span className="w-2 h-2 rounded-full bg-orange-500" /> },
+  { value: 'urgent', label: 'Urgente', icon: <span className="w-2 h-2 rounded-full bg-red-500" /> },
+];
+
+interface PrioritySelectProps {
+  value: 'low' | 'medium' | 'high' | 'urgent';
+  onValueChange: (value: 'low' | 'medium' | 'high' | 'urgent') => void;
+  disabled?: boolean;
+  className?: string;
+}
+
+function PrioritySelect({ value, onValueChange, disabled, className }: PrioritySelectProps) {
+  return (
+    <TypedSelect
+      value={value}
+      onValueChange={onValueChange}
+      options={priorityOptions}
+      placeholder="Prioridade"
+      disabled={disabled}
+      className={className}
+    />
+  );
+}
+
+// Status Select
+const statusOptions: TypedSelectOption<'backlog' | 'todo' | 'in_progress' | 'review' | 'done'>[] = [
+  { value: 'backlog', label: 'Backlog', icon: <span className="w-2 h-2 rounded-full bg-slate-400" /> },
+  { value: 'todo', label: 'A Fazer', icon: <span className="w-2 h-2 rounded-full bg-slate-500" /> },
+  { value: 'in_progress', label: 'Em Progresso', icon: <span className="w-2 h-2 rounded-full bg-blue-500" /> },
+  { value: 'review', label: 'Revisão', icon: <span className="w-2 h-2 rounded-full bg-purple-500" /> },
+  { value: 'done', label: 'Concluído', icon: <span className="w-2 h-2 rounded-full bg-green-500" /> },
+];
+
+interface StatusSelectProps {
+  value: 'backlog' | 'todo' | 'in_progress' | 'review' | 'done';
+  onValueChange: (value: 'backlog' | 'todo' | 'in_progress' | 'review' | 'done') => void;
+  disabled?: boolean;
+  className?: string;
+}
+
+function StatusSelect({ value, onValueChange, disabled, className }: StatusSelectProps) {
+  return (
+    <TypedSelect
+      value={value}
+      onValueChange={onValueChange}
+      options={statusOptions}
+      placeholder="Status"
+      disabled={disabled}
+      className={className}
+    />
+  );
+}
+
 export {
   Select,
   SelectGroup,
@@ -153,4 +255,7 @@ export {
   SelectSeparator,
   SelectScrollUpButton,
   SelectScrollDownButton,
+  TypedSelect,
+  PrioritySelect,
+  StatusSelect,
 };

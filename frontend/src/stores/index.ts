@@ -1,6 +1,3 @@
-// Stores Export
 export { useAuthStore } from './authStore';
-export { useMapStore } from './mapStore';
-export { useNodeStore, createNode } from './nodeStore';
-export { useCollaborationStore } from './collaborationStore';
+export { useMapStore, type MapNode, type MapEdge } from './mapStore';
 export { useUIStore } from './uiStore';

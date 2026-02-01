@@ -1,4 +1,3 @@
-// Views Components Export
-export { KanbanView } from './KanbanView';
-export { ListView } from './ListView';
-export { AIPanel } from './AIPanel';
+// Views - Export all
+export * from './KanbanBoard';
+export * from './ListView';

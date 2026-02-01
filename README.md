@@ -1,47 +1,82 @@
-# 🧠 MindMap - Aplicação de Mapa Mental com IA
+# 🧠 MindMap Hub - Plataforma Colaborativa de Mapas Mentais
 
 Uma aplicação web moderna para visualizar, organizar e colaborar em mapas mentais com integração de IA.
 
-> **Status:** ✅ Pronto para usar | 🚀 Pronto para deploy | 📚 Documentado
+## 📁 Estrutura do Projeto
 
-## 🚀 Comece Agora (30 segundos)
-
-```bash
-# 1. Abra o navegador
-http://localhost:5173
-
-# 2. Clique em "Inicializar Banco de Dados"
-# Aguarde ~30 segundos
-
-# 3. Selecione um usuário
-# (Guilherme, Helen ou Pablo)
-
-# 4. Aproveite! 🎉
+```
+MindMap/
+├── frontend/          # React + Vite + TypeScript (Vercel)
+├── backend/           # Node.js + Express + TypeScript (Render)
+├── database/          # Scripts SQL para Supabase
+├── docs/              # Documentação completa
+├── vercel.json        # Configuração Vercel
+└── README.md
 ```
 
-## 📖 Documentação Rápida
+## 🚀 Quick Start
 
-**👉 Leia primeiro:** [INSTRUCOES_AGORA.md](INSTRUCOES_AGORA.md)
+### 1. Frontend (Local)
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+### 2. Backend (Local)
+```bash
+cd backend
+npm install
+npm run dev
+```
+
+## 🌐 Deploy
+
+| Serviço | Uso |
+|---------|-----|
+| **Vercel** | Frontend (React) |
+| **Render** | Backend (Node.js) |
+| **Supabase** | Database + Auth + Realtime |
+| **Anthropic** | Claude AI API |
+
+### Variáveis de Ambiente (Vercel)
+```
+VITE_SUPABASE_URL=https://xxx.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJ...
+VITE_API_URL=https://seu-backend.onrender.com
+```
+
+### Variáveis de Ambiente (Render)
+```
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+CLAUDE_API_KEY=sk-ant-...
+```
+
+## 📚 Documentação
+
+Veja a pasta `/docs` para documentação completa:
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md) - Arquitetura técnica
+- [DEPLOYMENT.md](docs/DEPLOYMENT.md) - Guia de deploy
+- [DATABASE.md](docs/DATABASE.md) - Schema do banco
+- [PRODUCT_SPEC.md](docs/PRODUCT_SPEC.md) - Especificação do produto
 
 ## 🌟 Recursos Principais
 
 ### 📊 Visualizações
-- **Mapa Mental**: Visualização interativa com ReactFlow
+- **Mapa Mental**: Visualização interativa com @xyflow/react
 - **Kanban**: Quadro de tarefas com drag-and-drop
 - **Lista**: Visão hierárquica expandível
 
 ### 🤖 Inteligência Artificial (Claude)
-- Geração automática de mapas mentais a partir de descrições
+- Geração automática de mapas mentais
 - Expansão de ideias com sugestões inteligentes
 - Assistente de chat para brainstorming
-- Sugestão de tarefas baseada no contexto
-- Resumo automático do conteúdo
 
 ### 👥 Colaboração em Tempo Real
 - Sincronização instantânea via Supabase Realtime
 - Indicador de usuários online
 - Histórico de atividades
-- Comentários em nós
 
 ### ✅ Gestão de Tarefas
 - Converter ideias em tarefas

@@ -1,193 +1,157 @@
 import { create } from 'zustand';
-import { devtools, persist } from 'zustand/middleware';
-
-type Theme = 'light' | 'dark' | 'system';
-type Language = 'pt-BR' | 'en-US' | 'es';
 
 interface UIState {
-  // Theme
-  theme: Theme;
-  resolvedTheme: 'light' | 'dark';
-  
-  // Language
-  language: Language;
-  
   // Sidebar
   sidebarOpen: boolean;
-  sidebarWidth: number;
+  sidebarTab: 'nodes' | 'tasks' | 'ai' | 'settings';
   
-  // Right Panel (Editor)
+  // Panels
   rightPanelOpen: boolean;
-  rightPanelTab: 'details' | 'ai' | 'settings';
-  rightPanelWidth: number;
+  rightPanelContent: 'node-details' | 'task-details' | 'ai-chat' | 'comments' | null;
+  rightPanelData: Record<string, unknown> | null;
   
   // Modals
-  modals: {
-    createMap: boolean;
-    editMap: boolean;
-    deleteMap: boolean;
-    settings: boolean;
-    shortcuts: boolean;
-    share: boolean;
+  modalOpen: string | null; // modal ID or null
+  modalData: Record<string, unknown> | null;
+  
+  // Context menu
+  contextMenu: {
+    open: boolean;
+    x: number;
+    y: number;
+    type: 'node' | 'edge' | 'canvas' | null;
+    targetId: string | null;
   };
   
-  // Notifications
-  notifications: boolean;
+  // Theme
+  theme: 'light' | 'dark' | 'system';
   
-  // Canvas Settings
-  canvasSettings: {
-    snapToGrid: boolean;
-    gridSize: number;
-    showMinimap: boolean;
-    showControls: boolean;
-    animateEdges: boolean;
-  };
+  // Search
+  searchOpen: boolean;
+  searchQuery: string;
   
-  // Actions - Theme
-  setTheme: (theme: Theme) => void;
-  setResolvedTheme: (theme: 'light' | 'dark') => void;
+  // Keyboard shortcuts help
+  shortcutsModalOpen: boolean;
   
-  // Actions - Language
-  setLanguage: (language: Language) => void;
-  
-  // Actions - Sidebar
+  // Tour/onboarding
+  tourActive: boolean;
+  tourStep: number;
+
+  // Actions
   toggleSidebar: () => void;
-  setSidebarOpen: (open: boolean) => void;
-  setSidebarWidth: (width: number) => void;
+  setSidebarTab: (tab: UIState['sidebarTab']) => void;
   
-  // Actions - Right Panel
-  toggleRightPanel: () => void;
-  setRightPanelOpen: (open: boolean) => void;
-  setRightPanelTab: (tab: 'details' | 'ai' | 'settings') => void;
-  setRightPanelWidth: (width: number) => void;
+  openRightPanel: (content: UIState['rightPanelContent'], data?: Record<string, unknown>) => void;
+  closeRightPanel: () => void;
   
-  // Actions - Modals
-  openModal: (modal: keyof UIState['modals']) => void;
-  closeModal: (modal: keyof UIState['modals']) => void;
-  closeAllModals: () => void;
+  openModal: (modalId: string, data?: Record<string, unknown>) => void;
+  closeModal: () => void;
   
-  // Actions - Canvas Settings
-  updateCanvasSettings: (settings: Partial<UIState['canvasSettings']>) => void;
-  resetCanvasSettings: () => void;
+  openContextMenu: (x: number, y: number, type: 'node' | 'edge' | 'canvas', targetId?: string) => void;
+  closeContextMenu: () => void;
+  
+  setTheme: (theme: UIState['theme']) => void;
+  
+  setSearchOpen: (open: boolean) => void;
+  setSearchQuery: (query: string) => void;
+  
+  setShortcutsModalOpen: (open: boolean) => void;
+  
+  startTour: () => void;
+  nextTourStep: () => void;
+  endTour: () => void;
 }
 
-const defaultCanvasSettings = {
-  snapToGrid: true,
-  gridSize: 20,
-  showMinimap: true,
-  showControls: true,
-  animateEdges: false,
-};
+export const useUIStore = create<UIState>((set) => ({
+  // Initial state
+  sidebarOpen: true,
+  sidebarTab: 'nodes',
+  rightPanelOpen: false,
+  rightPanelContent: null,
+  rightPanelData: null,
+  modalOpen: null,
+  modalData: null,
+  contextMenu: {
+    open: false,
+    x: 0,
+    y: 0,
+    type: null,
+    targetId: null,
+  },
+  theme: 'system',
+  searchOpen: false,
+  searchQuery: '',
+  shortcutsModalOpen: false,
+  tourActive: false,
+  tourStep: 0,
 
-const defaultModals = {
-  createMap: false,
-  editMap: false,
-  deleteMap: false,
-  settings: false,
-  shortcuts: false,
-  share: false,
-};
-
-export const useUIStore = create<UIState>()(
-  devtools(
-    persist(
-      (set, _get) => ({
-        // Initial State
-        theme: 'system',
-        resolvedTheme: 'light',
-        language: 'pt-BR',
-        sidebarOpen: true,
-        sidebarWidth: 280,
-        rightPanelOpen: false,
-        rightPanelTab: 'details',
-        rightPanelWidth: 360,
-        modals: defaultModals,
-        notifications: true,
-        canvasSettings: defaultCanvasSettings,
-
-        // Theme Actions
-        setTheme: (theme) => {
-          set({ theme });
-          
-          // Calculate resolved theme
-          let resolved: 'light' | 'dark';
-          if (theme === 'system') {
-            resolved = window.matchMedia('(prefers-color-scheme: dark)').matches
-              ? 'dark'
-              : 'light';
-          } else {
-            resolved = theme;
-          }
-          
-          set({ resolvedTheme: resolved });
-          
-          // Apply to document
-          document.documentElement.classList.remove('light', 'dark');
-          document.documentElement.classList.add(resolved);
-        },
-        
-        setResolvedTheme: (resolvedTheme) => set({ resolvedTheme }),
-
-        // Language Actions
-        setLanguage: (language) => set({ language }),
-
-        // Sidebar Actions
-        toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
-        setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
-        setSidebarWidth: (sidebarWidth) => set({ sidebarWidth }),
-
-        // Right Panel Actions
-        toggleRightPanel: () => set((state) => ({ rightPanelOpen: !state.rightPanelOpen })),
-        setRightPanelOpen: (rightPanelOpen) => set({ rightPanelOpen }),
-        setRightPanelTab: (rightPanelTab) => set({ rightPanelTab, rightPanelOpen: true }),
-        setRightPanelWidth: (rightPanelWidth) => set({ rightPanelWidth }),
-
-        // Modal Actions
-        openModal: (modal) => set((state) => ({
-          modals: { ...state.modals, [modal]: true },
-        })),
-        
-        closeModal: (modal) => set((state) => ({
-          modals: { ...state.modals, [modal]: false },
-        })),
-        
-        closeAllModals: () => set({ modals: defaultModals }),
-
-        // Canvas Settings Actions
-        updateCanvasSettings: (settings) => set((state) => ({
-          canvasSettings: { ...state.canvasSettings, ...settings },
-        })),
-        
-        resetCanvasSettings: () => set({ canvasSettings: defaultCanvasSettings }),
-      }),
-      {
-        name: 'mindmap-ui',
-        partialize: (state) => ({
-          theme: state.theme,
-          language: state.language,
-          sidebarWidth: state.sidebarWidth,
-          rightPanelWidth: state.rightPanelWidth,
-          canvasSettings: state.canvasSettings,
-          notifications: state.notifications,
-        }),
-      }
-    ),
-    { name: 'UIStore' }
-  )
-);
-
-// Listen for system theme changes
-if (typeof window !== 'undefined') {
-  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  // Actions
+  toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
   
-  mediaQuery.addEventListener('change', (e) => {
-    const { theme, setResolvedTheme } = useUIStore.getState();
+  setSidebarTab: (sidebarTab) => set({ sidebarTab, sidebarOpen: true }),
+
+  openRightPanel: (rightPanelContent, rightPanelData = null) =>
+    set({ rightPanelOpen: true, rightPanelContent, rightPanelData }),
+  
+  closeRightPanel: () =>
+    set({ rightPanelOpen: false, rightPanelContent: null, rightPanelData: null }),
+
+  openModal: (modalId, data = null) => set({ modalOpen: modalId, modalData: data }),
+  
+  closeModal: () => set({ modalOpen: null, modalData: null }),
+
+  openContextMenu: (x, y, type, targetId = null) =>
+    set({
+      contextMenu: { open: true, x, y, type, targetId },
+    }),
+  
+  closeContextMenu: () =>
+    set({
+      contextMenu: { open: false, x: 0, y: 0, type: null, targetId: null },
+    }),
+
+  setTheme: (theme) => {
+    set({ theme });
+    
+    // Apply theme to document
+    const root = document.documentElement;
+    root.classList.remove('light', 'dark');
     
     if (theme === 'system') {
-      const resolved = e.matches ? 'dark' : 'light';
-      setResolvedTheme(resolved);
-      document.documentElement.classList.remove('light', 'dark');
-      document.documentElement.classList.add(resolved);
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light';
+      root.classList.add(systemTheme);
+    } else {
+      root.classList.add(theme);
+    }
+  },
+
+  setSearchOpen: (searchOpen) => set({ searchOpen }),
+  
+  setSearchQuery: (searchQuery) => set({ searchQuery }),
+
+  setShortcutsModalOpen: (shortcutsModalOpen) => set({ shortcutsModalOpen }),
+
+  startTour: () => set({ tourActive: true, tourStep: 0 }),
+  
+  nextTourStep: () => set((state) => ({ tourStep: state.tourStep + 1 })),
+  
+  endTour: () => set({ tourActive: false, tourStep: 0 }),
+}));
+
+// Initialize theme on load
+if (typeof window !== 'undefined') {
+  const savedTheme = localStorage.getItem('theme') as UIState['theme'] | null;
+  if (savedTheme) {
+    useUIStore.getState().setTheme(savedTheme);
+  }
+
+  // Listen for system theme changes
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    const { theme, setTheme } = useUIStore.getState();
+    if (theme === 'system') {
+      setTheme('system'); // Re-apply to update
     }
   });
 }
