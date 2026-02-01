@@ -1,0 +1,24 @@
+[Mindmaps] Create error: {
+  code: 'PGRST204',
+  details: null,
+  hint: null,
+  message: "Could not find the 'visibility' column of 'mindmaps' in the schema cache"
+}
+Error: {
+  code: 'PGRST204',
+  details: null,
+  hint: null,
+  message: "Could not find the 'visibility' column of 'mindmaps' in the schema cache"
+}
+[Mindmaps] Create error: {
+  code: 'PGRST204',
+  details: null,
+  hint: null,
+  message: "Could not find the 'visibility' column of 'mindmaps' in the schema cache"
+}
+Error: {
+  code: 'PGRST204',
+  details: null,
+  hint: null,
+  message: "Could not find the 'visibility' column of 'mindmaps' in the schema cache"
+}
