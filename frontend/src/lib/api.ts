@@ -37,10 +37,14 @@ class ApiClient {
   ): Promise<ApiResponse<T>> {
     const { authenticated = true, ...fetchOptions } = options;
 
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...fetchOptions.headers,
     };
+
+    // Merge any custom headers
+    if (fetchOptions.headers) {
+      Object.assign(headers, fetchOptions.headers);
+    }
 
     if (authenticated) {
       const token = await getAccessToken();

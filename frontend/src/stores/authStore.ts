@@ -1,6 +1,14 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+interface User {
+  id: string;
+  email: string;
+  display_name: string;
+  avatar_url: string | null;
+  color: string;
+}
+
 interface Profile {
   id: string;
   email: string;
@@ -25,7 +33,7 @@ const DEFAULT_WORKSPACE: Workspace = {
 };
 
 interface AuthState {
-  user: { id: string; email: string } | null;
+  user: User | null;
   profile: Profile | null;
   workspaces: Workspace[];
   isAuthenticated: boolean;
@@ -72,8 +80,16 @@ export const useAuthStore = create<AuthState>()(
           color: profileData.color,
         };
 
+        const user: User = {
+          id: profileData.id,
+          email: profileData.email,
+          display_name: profileData.display_name || profileData.email.split('@')[0],
+          avatar_url: profileData.avatar_url,
+          color: profileData.color,
+        };
+
         set({
-          user: { id: profileData.id, email: profileData.email },
+          user,
           profile,
           workspaces: [DEFAULT_WORKSPACE],
           isAuthenticated: true,

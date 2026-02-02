@@ -3,49 +3,36 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Brain, User, Sparkles, Briefcase, Code, Palette } from 'lucide-react';
+import { Brain } from 'lucide-react';
 
-// Perfis pré-definidos para seleção
-const PROFILES = [
+// Os 3 usuários do grupo - PABLO, GUILHERME e HELEN
+const TEAM_PROFILES = [
   {
-    id: 'user-1',
+    id: 'guilherme-001',
     name: 'Guilherme',
     email: 'guilherme@mindmap.app',
-    avatar: null,
+    role: 'Pesquisador/Dev',
+    avatar: '👨‍💻',
     color: '#4ECDC4',
-    icon: User,
+    description: 'Cria mapas de pesquisa, analisa papers e delega tarefas',
   },
   {
-    id: 'user-2', 
-    name: 'Designer',
-    email: 'designer@mindmap.app',
-    avatar: null,
+    id: 'helen-002', 
+    name: 'Helen',
+    email: 'helen@mindmap.app',
+    role: 'Pesquisadora',
+    avatar: '👩‍🔬',
     color: '#FF6B6B',
-    icon: Palette,
+    description: 'Recebe delegações, comenta e expande subárvores',
   },
   {
-    id: 'user-3',
-    name: 'Developer',
-    email: 'dev@mindmap.app',
-    avatar: null,
+    id: 'pablo-003',
+    name: 'Pablo',
+    email: 'pablo@mindmap.app',
+    role: 'Pesquisador',
+    avatar: '👨‍🔬',
     color: '#45B7D1',
-    icon: Code,
-  },
-  {
-    id: 'user-4',
-    name: 'Manager',
-    email: 'manager@mindmap.app',
-    avatar: null,
-    color: '#96CEB4',
-    icon: Briefcase,
-  },
-  {
-    id: 'user-5',
-    name: 'Convidado',
-    email: 'guest@mindmap.app',
-    avatar: null,
-    color: '#DDA0DD',
-    icon: Sparkles,
+    description: 'Colabora em tempo real, usa templates e revisa trabalhos',
   },
 ];
 
@@ -61,7 +48,7 @@ export function LoginPage() {
   const handleLogin = () => {
     if (!selectedProfile) return;
     
-    const profile = PROFILES.find(p => p.id === selectedProfile);
+    const profile = TEAM_PROFILES.find(p => p.id === selectedProfile);
     if (profile) {
       loginWithProfile({
         id: profile.id,
@@ -75,23 +62,26 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
-      <Card className="w-full max-w-lg">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
+      <Card className="w-full max-w-2xl bg-white/10 backdrop-blur-lg border-white/20">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="p-3 bg-primary/10 rounded-full">
-              <Brain className="w-10 h-10 text-primary" />
+            <div className="p-4 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl shadow-lg shadow-purple-500/30">
+              <Brain className="w-12 h-12 text-white" />
             </div>
           </div>
-          <CardTitle className="text-2xl">MindMap Hub</CardTitle>
-          <CardDescription>
-            Selecione seu perfil para continuar
+          <CardTitle className="text-3xl font-bold text-white">MindMap Hub</CardTitle>
+          <CardDescription className="text-white/70 text-lg">
+            Pesquisa Cooperativa • Mapas Mentais Compartilhados
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {PROFILES.map((profile) => {
-              const Icon = profile.icon;
+        <CardContent className="space-y-6">
+          <p className="text-center text-white/60">
+            Selecione seu perfil para entrar
+          </p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {TEAM_PROFILES.map((profile) => {
               const isSelected = selectedProfile === profile.id;
               
               return (
@@ -99,24 +89,25 @@ export function LoginPage() {
                   key={profile.id}
                   onClick={() => handleSelectProfile(profile.id)}
                   className={`
-                    p-4 rounded-xl border-2 transition-all duration-200
-                    flex flex-col items-center gap-2 hover:scale-105
+                    p-6 rounded-2xl border-2 transition-all duration-300 text-left
                     ${isSelected 
-                      ? 'border-primary bg-primary/10 shadow-lg' 
-                      : 'border-border hover:border-primary/50 bg-card'
+                      ? 'border-white bg-white/20 shadow-xl scale-105' 
+                      : 'border-white/20 hover:border-white/40 bg-white/5 hover:bg-white/10'
                     }
                   `}
                 >
-                  <div 
-                    className="w-12 h-12 rounded-full flex items-center justify-center"
-                    style={{ backgroundColor: profile.color + '20' }}
-                  >
-                    <Icon 
-                      className="w-6 h-6" 
-                      style={{ color: profile.color }}
-                    />
+                  <div className="text-center mb-4">
+                    <span className="text-5xl">{profile.avatar}</span>
                   </div>
-                  <span className="text-sm font-medium">{profile.name}</span>
+                  <h3 className="text-xl font-bold text-white text-center mb-1">
+                    {profile.name}
+                  </h3>
+                  <p className="text-sm text-center mb-3" style={{ color: profile.color }}>
+                    {profile.role}
+                  </p>
+                  <p className="text-xs text-white/50 text-center">
+                    {profile.description}
+                  </p>
                 </button>
               );
             })}
@@ -125,14 +116,14 @@ export function LoginPage() {
           <Button 
             onClick={handleLogin}
             disabled={!selectedProfile}
-            className="w-full mt-6"
+            className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 border-0 shadow-lg shadow-purple-500/30"
             size="lg"
           >
-            Entrar
+            Entrar no MindMap Hub
           </Button>
 
-          <p className="text-xs text-center text-muted-foreground mt-4">
-            Selecione um perfil para acessar o MindMap Hub
+          <p className="text-xs text-center text-white/40">
+            Hub cooperativo de mindmaps para pesquisa e planejamento
           </p>
         </CardContent>
       </Card>
