@@ -327,8 +327,16 @@ router.post(
       .limit(1)
       .single();
 
-    const taskData: Insertable<'tasks'> = {
-      ...parsed.data,
+    const taskData = {
+      node_id: parsed.data.node_id,
+      title: parsed.data.title,
+      description: parsed.data.description,
+      status: parsed.data.status,
+      priority: parsed.data.priority,
+      due_date: parsed.data.due_date,
+      assigned_to: parsed.data.assigned_to,
+      tags: parsed.data.tags,
+      checklist: parsed.data.checklist,
       order_index: (maxOrder?.order_index ?? -1) + 1,
       created_by: req.user!.id,
     };
@@ -547,7 +555,7 @@ router.get(
           )
         )
       `)
-      .eq('node.map.workspace_id', workspaceId);
+      .eq('node.map.workspace_id', workspaceId) as any;
 
     if (!tasks) {
       return res.json({
@@ -635,17 +643,20 @@ async function createAssignmentNotification(
       .eq('id', assignerId)
       .single();
 
-    await supabaseAdmin.from('notifications').insert({
+    const assignerName = assigner && assigner.display_name ? assigner.display_name : 'Someone';
+
+    const notificationData: any = {
       user_id: assigneeId,
       type: 'task_assigned',
       title: 'New task assigned',
-      message: `${assigner?.display_name || 'Someone'} assigned you a task: "${taskTitle}"`,
+      message: `${assignerName} assigned you a task: "${taskTitle}"`,
       data: {
         task_id: taskId,
         assigner_id: assignerId,
       },
-    });
-
+    };
+    
+    await supabaseAdmin.from('notifications').insert(notificationData);
     logger.debug({ assigneeId, taskId }, 'Assignment notification created');
   } catch (error) {
     logger.warn({ error, taskId }, 'Failed to create assignment notification');

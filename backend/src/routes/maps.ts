@@ -169,8 +169,12 @@ router.post(
       throw new ValidationError(parsed.error.errors[0].message);
     }
 
-    const mapData: Insertable<'maps'> = {
-      ...parsed.data,
+    const mapData = {
+      workspace_id: parsed.data.workspace_id,
+      title: parsed.data.title,
+      description: parsed.data.description,
+      is_template: parsed.data.is_template,
+      settings: parsed.data.settings,
       created_by: req.user!.id,
     };
 
@@ -438,14 +442,16 @@ async function logActivity(
   metadata: Record<string, any> = {}
 ): Promise<void> {
   try {
-    await supabaseAdmin.from('activity_events').insert({
+    const activityData: any = {
       workspace_id: workspaceId,
       map_id: mapId,
       user_id: userId,
       event_type: eventType,
       description,
       metadata,
-    });
+    };
+    
+    await supabaseAdmin.from('activity_events').insert(activityData);
   } catch (error) {
     logger.warn({ error, eventType }, 'Failed to log activity');
   }

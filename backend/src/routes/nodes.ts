@@ -172,8 +172,19 @@ router.post(
       throw new ValidationError(parsed.error.errors[0].message);
     }
 
-    const nodeData: Insertable<'nodes'> = {
-      ...parsed.data,
+    const nodeData = {
+      map_id: parsed.data.map_id,
+      parent_id: parsed.data.parent_id,
+      type: parsed.data.type,
+      label: parsed.data.label,
+      content: parsed.data.content,
+      position_x: parsed.data.position_x,
+      position_y: parsed.data.position_y,
+      width: parsed.data.width,
+      height: parsed.data.height,
+      style: parsed.data.style,
+      data: parsed.data.data,
+      collapsed: parsed.data.collapsed,
       created_by: req.user!.id,
     };
 
@@ -638,14 +649,16 @@ async function logNodeActivity(
       .single();
 
     if (map) {
-      await supabaseAdmin.from('activity_events').insert({
+      const activityData: any = {
         workspace_id: map.workspace_id,
         map_id: mapId,
         node_id: nodeId,
         user_id: userId,
         event_type: eventType,
-        description,
-      });
+        description: description,
+      };
+      
+      await supabaseAdmin.from('activity_events').insert(activityData);
     }
   } catch (error) {
     logger.warn({ error, eventType }, 'Failed to log activity');

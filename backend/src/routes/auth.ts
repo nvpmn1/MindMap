@@ -266,26 +266,30 @@ async function ensureProfile(userId: string, email: string): Promise<void> {
     const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8'];
     const color = colors[Math.floor(Math.random() * colors.length)];
 
-    await supabaseAdmin.from('profiles').insert({
+    const profileData: any = {
       id: userId,
       email,
       display_name: displayName,
       color,
       preferences: {},
-    });
+    };
+    
+    await supabaseAdmin.from('profiles').insert(profileData);
 
     logger.info({ userId, email }, 'Created new user profile');
 
     // Add to default workspace (MindLab)
     const defaultWorkspaceId = '11111111-1111-1111-1111-111111111111';
     
+    const memberData: any = {
+      workspace_id: defaultWorkspaceId,
+      user_id: userId,
+      role: 'member',
+    };
+    
     const { error: memberError } = await supabaseAdmin
       .from('workspace_members')
-      .insert({
-        workspace_id: defaultWorkspaceId,
-        user_id: userId,
-        role: 'member',
-      });
+      .insert(memberData);
 
     if (!memberError) {
       logger.info({ userId, workspaceId: defaultWorkspaceId }, 'Added user to default workspace');
