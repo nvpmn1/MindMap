@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Brain } from 'lucide-react';
+import { Network } from 'lucide-react';
 
 // Os 3 usuários do grupo - PABLO, GUILHERME e HELEN
 const TEAM_PROFILES = [
@@ -11,30 +11,124 @@ const TEAM_PROFILES = [
     id: 'guilherme-001',
     name: 'Guilherme',
     email: 'guilherme@mindmap.app',
-    role: 'Pesquisador/Dev',
-    avatar: '👨‍💻',
-    color: '#4ECDC4',
-    description: 'Cria mapas de pesquisa, analisa papers e delega tarefas',
+    role: 'Lead Researcher',
+    avatar: 'G',
+    color: '#00D9FF',
+    description: 'Arquitetura de sistemas e análise de dados',
   },
   {
     id: 'helen-002', 
     name: 'Helen',
     email: 'helen@mindmap.app',
-    role: 'Pesquisadora',
-    avatar: '👩‍🔬',
-    color: '#FF6B6B',
-    description: 'Recebe delegações, comenta e expande subárvores',
+    role: 'Data Scientist',
+    avatar: 'H',
+    color: '#00FFC8',
+    description: 'Machine learning e modelagem preditiva',
   },
   {
     id: 'pablo-003',
     name: 'Pablo',
     email: 'pablo@mindmap.app',
-    role: 'Pesquisador',
-    avatar: '👨‍🔬',
-    color: '#45B7D1',
-    description: 'Colabora em tempo real, usa templates e revisa trabalhos',
+    role: 'Research Engineer',
+    avatar: 'P',
+    color: '#00B4D8',
+    description: 'Infraestrutura e integração de sistemas',
   },
 ];
+
+// Neural Network Background Animation
+function NeuralBackground() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const resize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Neural nodes
+    interface Node {
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      radius: number;
+    }
+
+    const nodes: Node[] = [];
+    const nodeCount = 60;
+
+    for (let i = 0; i < nodeCount; i++) {
+      nodes.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        vx: (Math.random() - 0.5) * 0.3,
+        vy: (Math.random() - 0.5) * 0.3,
+        radius: Math.random() * 2 + 1,
+      });
+    }
+
+    const animate = () => {
+      ctx.fillStyle = 'rgba(8, 12, 20, 0.1)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Update and draw nodes
+      nodes.forEach((node, i) => {
+        node.x += node.vx;
+        node.y += node.vy;
+
+        if (node.x < 0 || node.x > canvas.width) node.vx *= -1;
+        if (node.y < 0 || node.y > canvas.height) node.vy *= -1;
+
+        // Draw connections
+        nodes.forEach((other, j) => {
+          if (i === j) return;
+          const dx = node.x - other.x;
+          const dy = node.y - other.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < 150) {
+            ctx.beginPath();
+            ctx.moveTo(node.x, node.y);
+            ctx.lineTo(other.x, other.y);
+            const opacity = (1 - dist / 150) * 0.15;
+            ctx.strokeStyle = `rgba(0, 217, 255, ${opacity})`;
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+          }
+        });
+
+        // Draw node
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 217, 255, 0.6)';
+        ctx.fill();
+      });
+
+      requestAnimationFrame(animate);
+    };
+
+    animate();
+
+    return () => window.removeEventListener('resize', resize);
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="absolute inset-0 pointer-events-none"
+      style={{ background: 'linear-gradient(180deg, #080C14 0%, #0A1628 50%, #080C14 100%)' }}
+    />
+  );
+}
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -62,25 +156,29 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
-      <Card className="w-full max-w-2xl bg-white/10 backdrop-blur-lg border-white/20">
-        <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <div className="p-4 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl shadow-lg shadow-purple-500/30">
-              <Brain className="w-12 h-12 text-white" />
+    <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
+      <NeuralBackground />
+      
+      <Card className="w-full max-w-2xl bg-[#0D1520]/90 backdrop-blur-xl border-[#1E3A5F]/50 shadow-2xl shadow-cyan-500/5 relative z-10">
+        <CardHeader className="text-center pb-2">
+          <div className="flex justify-center mb-6">
+            <div className="p-4 bg-gradient-to-br from-cyan-500/20 to-teal-500/20 rounded-2xl border border-cyan-500/30">
+              <Network className="w-10 h-10 text-cyan-400" />
             </div>
           </div>
-          <CardTitle className="text-3xl font-bold text-white">MindMap Hub</CardTitle>
-          <CardDescription className="text-white/70 text-lg">
-            Pesquisa Cooperativa • Mapas Mentais Compartilhados
+          <CardTitle className="text-2xl font-light tracking-wide text-white">
+            Neural<span className="font-semibold text-cyan-400">Map</span>
+          </CardTitle>
+          <CardDescription className="text-slate-400 text-sm tracking-wide">
+            Collaborative Research Intelligence Platform
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          <p className="text-center text-white/60">
-            Selecione seu perfil para entrar
+        <CardContent className="space-y-6 pt-4">
+          <p className="text-center text-slate-500 text-sm">
+            Select your profile to access the workspace
           </p>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {TEAM_PROFILES.map((profile) => {
               const isSelected = selectedProfile === profile.id;
               
@@ -89,25 +187,37 @@ export function LoginPage() {
                   key={profile.id}
                   onClick={() => handleSelectProfile(profile.id)}
                   className={`
-                    p-6 rounded-2xl border-2 transition-all duration-300 text-left
+                    p-5 rounded-xl border transition-all duration-200 text-left relative overflow-hidden
                     ${isSelected 
-                      ? 'border-white bg-white/20 shadow-xl scale-105' 
-                      : 'border-white/20 hover:border-white/40 bg-white/5 hover:bg-white/10'
+                      ? 'border-cyan-500/50 bg-cyan-500/10' 
+                      : 'border-slate-700/50 hover:border-slate-600/50 bg-slate-800/30 hover:bg-slate-800/50'
                     }
                   `}
                 >
-                  <div className="text-center mb-4">
-                    <span className="text-5xl">{profile.avatar}</span>
+                  {isSelected && (
+                    <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent" />
+                  )}
+                  <div className="relative">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div
+                        className="w-10 h-10 rounded-lg flex items-center justify-center text-sm font-semibold"
+                        style={{ 
+                          backgroundColor: `${profile.color}15`,
+                          color: profile.color,
+                          border: `1px solid ${profile.color}30`
+                        }}
+                      >
+                        {profile.avatar}
+                      </div>
+                      <div>
+                        <h3 className="text-white font-medium text-sm">{profile.name}</h3>
+                        <p className="text-xs" style={{ color: profile.color }}>{profile.role}</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      {profile.description}
+                    </p>
                   </div>
-                  <h3 className="text-xl font-bold text-white text-center mb-1">
-                    {profile.name}
-                  </h3>
-                  <p className="text-sm text-center mb-3" style={{ color: profile.color }}>
-                    {profile.role}
-                  </p>
-                  <p className="text-xs text-white/50 text-center">
-                    {profile.description}
-                  </p>
                 </button>
               );
             })}
@@ -116,14 +226,14 @@ export function LoginPage() {
           <Button 
             onClick={handleLogin}
             disabled={!selectedProfile}
-            className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 border-0 shadow-lg shadow-purple-500/30"
+            className="w-full h-12 text-sm font-medium bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-500 hover:to-teal-500 border-0 shadow-lg shadow-cyan-500/20 disabled:opacity-30 disabled:shadow-none"
             size="lg"
           >
-            Entrar no MindMap Hub
+            Access Platform
           </Button>
 
-          <p className="text-xs text-center text-white/40">
-            Hub cooperativo de mindmaps para pesquisa e planejamento
+          <p className="text-xs text-center text-slate-600">
+            Secure collaborative environment for research teams
           </p>
         </CardContent>
       </Card>

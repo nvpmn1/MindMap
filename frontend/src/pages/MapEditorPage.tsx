@@ -16,6 +16,7 @@ import {
   NodeTypes,
   Handle,
   Position,
+  BackgroundVariant,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useAuthStore } from '@/stores/authStore';
@@ -23,24 +24,24 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { 
   ArrowLeft, 
-  Sparkles, 
   Save, 
   Trash2,
   MessageSquare,
   CheckSquare,
   FileText,
   Link2,
-  Users,
-  Bot,
-  Wand2,
-  Expand,
-  ListTree,
+  Cpu,
+  Database,
+  Zap,
   Lightbulb,
   X,
+  Network,
+  Wand2,
+  Expand,
+  GitBranch,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-// Dados mock de mapas e nodes - sincronizados com localStorage
 interface MapData {
   id: string;
   title: string;
@@ -49,106 +50,113 @@ interface MapData {
   edges: Edge[];
 }
 
-// Cores para diferentes tipos de nodes
-const NODE_COLORS = {
-  idea: { bg: 'from-purple-500 to-pink-500', border: 'border-purple-400' },
-  task: { bg: 'from-green-500 to-emerald-500', border: 'border-green-400' },
-  note: { bg: 'from-yellow-500 to-orange-500', border: 'border-yellow-400' },
-  reference: { bg: 'from-blue-500 to-cyan-500', border: 'border-blue-400' },
-  question: { bg: 'from-red-500 to-rose-500', border: 'border-red-400' },
-};
+// Neural Node Component
+const NeuralNode = ({ data, selected }: { data: any; selected: boolean }) => {
+  const typeStyles: Record<string, { icon: any; color: string; glow: string }> = {
+    idea: { icon: Lightbulb, color: '#00D9FF', glow: 'rgba(0, 217, 255, 0.3)' },
+    task: { icon: CheckSquare, color: '#00FFC8', glow: 'rgba(0, 255, 200, 0.3)' },
+    note: { icon: FileText, color: '#FFB800', glow: 'rgba(255, 184, 0, 0.3)' },
+    reference: { icon: Link2, color: '#00B4D8', glow: 'rgba(0, 180, 216, 0.3)' },
+    data: { icon: Database, color: '#A78BFA', glow: 'rgba(167, 139, 250, 0.3)' },
+    process: { icon: Cpu, color: '#34D399', glow: 'rgba(52, 211, 153, 0.3)' },
+  };
 
-// Node customizado para o MindMap
-const MindMapNode = ({ data, selected }: { data: any; selected: boolean }) => {
-  const colors = NODE_COLORS[data.type as keyof typeof NODE_COLORS] || NODE_COLORS.idea;
-  
+  const style = typeStyles[data.type] || typeStyles.idea;
+  const Icon = style.icon;
+
   return (
-    <div className={`
-      px-4 py-3 rounded-xl min-w-[180px] max-w-[300px]
-      bg-gradient-to-br ${colors.bg}
-      shadow-lg ${selected ? 'ring-4 ring-white ring-offset-2 ring-offset-slate-900' : ''}
-      transition-all duration-200 hover:scale-105
-      border-2 ${colors.border}
-    `}>
+    <div 
+      className={`
+        relative px-4 py-3 rounded-lg min-w-[160px] max-w-[240px]
+        bg-[#0D1520] border transition-all duration-150
+        ${selected ? 'border-cyan-400' : 'border-slate-700/50 hover:border-slate-600'}
+      `}
+      style={{
+        boxShadow: selected ? `0 0 20px ${style.glow}` : 'none',
+      }}
+    >
       <Handle 
         type="target" 
         position={Position.Top} 
-        className="!bg-white !w-3 !h-3 !border-2 !border-slate-800"
+        className="!w-2 !h-2 !bg-slate-600 !border-0"
       />
       
-      <div className="flex items-start gap-2">
-        <div className="text-white/80 mt-0.5">
-          {data.type === 'idea' && <Lightbulb className="w-4 h-4" />}
-          {data.type === 'task' && <CheckSquare className="w-4 h-4" />}
-          {data.type === 'note' && <FileText className="w-4 h-4" />}
-          {data.type === 'reference' && <Link2 className="w-4 h-4" />}
-          {data.type === 'question' && <MessageSquare className="w-4 h-4" />}
+      <div className="flex items-center gap-2 mb-2">
+        <div 
+          className="p-1.5 rounded"
+          style={{ backgroundColor: `${style.color}15` }}
+        >
+          <Icon className="w-3.5 h-3.5" style={{ color: style.color }} />
         </div>
-        <div className="flex-1">
-          <p className="text-white font-semibold text-sm leading-tight">{data.label}</p>
-          {data.description && (
-            <p className="text-white/70 text-xs mt-1 line-clamp-2">{data.description}</p>
-          )}
-        </div>
+        <span className="text-[10px] uppercase tracking-wider text-slate-500">
+          {data.type}
+        </span>
       </div>
       
-      {/* Indicadores */}
-      <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/20">
-        {data.tasks > 0 && (
-          <span className="flex items-center gap-1 text-xs text-white/70">
-            <CheckSquare className="w-3 h-3" /> {data.tasks}
-          </span>
-        )}
-        {data.comments > 0 && (
-          <span className="flex items-center gap-1 text-xs text-white/70">
-            <MessageSquare className="w-3 h-3" /> {data.comments}
-          </span>
-        )}
+      <p className="text-white text-sm font-medium leading-snug">{data.label}</p>
+      {data.description && (
+        <p className="text-slate-500 text-xs mt-1.5 line-clamp-2">{data.description}</p>
+      )}
+      
+      <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-800">
+        <div className="flex items-center gap-2">
+          {data.tasks > 0 && (
+            <span className="flex items-center gap-1 text-[10px] text-slate-500">
+              <CheckSquare className="w-3 h-3" /> {data.tasks}
+            </span>
+          )}
+          {data.comments > 0 && (
+            <span className="flex items-center gap-1 text-[10px] text-slate-500">
+              <MessageSquare className="w-3 h-3" /> {data.comments}
+            </span>
+          )}
+        </div>
         {data.creator && (
-          <span 
-            className="ml-auto w-5 h-5 rounded-full flex items-center justify-center text-[10px] text-white font-bold"
-            style={{ backgroundColor: data.creator.color }}
+          <div 
+            className="w-5 h-5 rounded flex items-center justify-center text-[9px] font-semibold"
+            style={{ 
+              backgroundColor: `${data.creator.color}20`,
+              color: data.creator.color 
+            }}
             title={data.creator.name}
           >
             {data.creator.name[0]}
-          </span>
+          </div>
         )}
       </div>
       
       <Handle 
         type="source" 
         position={Position.Bottom} 
-        className="!bg-white !w-3 !h-3 !border-2 !border-slate-800"
+        className="!w-2 !h-2 !bg-slate-600 !border-0"
       />
     </div>
   );
 };
 
 const nodeTypes: NodeTypes = {
-  mindmap: MindMapNode,
+  neural: NeuralNode,
 };
 
-// Dados iniciais de exemplo para mapas
 const getInitialMapData = (mapId: string, userName: string, userColor: string): MapData => {
   const storedMaps = localStorage.getItem('mindmap_nodes_' + mapId);
   if (storedMaps) {
     return JSON.parse(storedMaps);
   }
 
-  // Dados padrão para um novo mapa
   const defaultData: MapData = {
     id: mapId,
-    title: 'Mapa Mental',
+    title: 'Neural Map',
     description: null,
     nodes: [
       {
         id: 'root',
-        type: 'mindmap',
-        position: { x: 400, y: 100 },
+        type: 'neural',
+        position: { x: 400, y: 50 },
         data: { 
-          label: 'Tema Central', 
+          label: 'Central Node', 
           type: 'idea',
-          description: 'Clique em + para adicionar ideias conectadas',
+          description: 'Primary research focus',
           tasks: 0,
           comments: 0,
           creator: { name: userName, color: userColor },
@@ -156,55 +164,82 @@ const getInitialMapData = (mapId: string, userName: string, userColor: string): 
       },
       {
         id: 'node-1',
-        type: 'mindmap',
-        position: { x: 150, y: 250 },
+        type: 'neural',
+        position: { x: 150, y: 200 },
         data: { 
-          label: 'Subtópico 1', 
-          type: 'idea',
-          description: 'Expanda suas ideias aqui',
+          label: 'Data Analysis', 
+          type: 'process',
+          description: 'Processing pipeline',
           tasks: 2,
           comments: 1,
-          creator: { name: 'Helen', color: '#FF6B6B' },
+          creator: { name: 'Helen', color: '#00FFC8' },
         },
       },
       {
         id: 'node-2',
-        type: 'mindmap',
-        position: { x: 400, y: 250 },
+        type: 'neural',
+        position: { x: 400, y: 200 },
         data: { 
-          label: 'Tarefa Importante', 
+          label: 'Model Training', 
           type: 'task',
-          description: 'Uma tarefa delegada para o time',
+          description: 'Neural network optimization',
           tasks: 0,
           comments: 3,
-          creator: { name: 'Pablo', color: '#45B7D1' },
+          creator: { name: 'Pablo', color: '#00B4D8' },
         },
       },
       {
         id: 'node-3',
-        type: 'mindmap',
-        position: { x: 650, y: 250 },
+        type: 'neural',
+        position: { x: 650, y: 200 },
         data: { 
-          label: 'Referência', 
+          label: 'Documentation', 
           type: 'reference',
-          description: 'Link para artigo ou recurso externo',
+          description: 'Research papers',
           tasks: 0,
           comments: 0,
           creator: { name: userName, color: userColor },
         },
       },
+      {
+        id: 'node-4',
+        type: 'neural',
+        position: { x: 275, y: 350 },
+        data: { 
+          label: 'Dataset Prep', 
+          type: 'data',
+          description: 'Data normalization',
+          tasks: 1,
+          comments: 0,
+          creator: { name: 'Helen', color: '#00FFC8' },
+        },
+      },
+      {
+        id: 'node-5',
+        type: 'neural',
+        position: { x: 525, y: 350 },
+        data: { 
+          label: 'Evaluation', 
+          type: 'note',
+          description: 'Performance metrics',
+          tasks: 0,
+          comments: 2,
+          creator: { name: 'Pablo', color: '#00B4D8' },
+        },
+      },
     ],
     edges: [
-      { id: 'e-root-1', source: 'root', target: 'node-1', animated: true, style: { stroke: '#8b5cf6' }, markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' } },
-      { id: 'e-root-2', source: 'root', target: 'node-2', animated: true, style: { stroke: '#8b5cf6' }, markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' } },
-      { id: 'e-root-3', source: 'root', target: 'node-3', animated: true, style: { stroke: '#8b5cf6' }, markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' } },
+      { id: 'e-root-1', source: 'root', target: 'node-1', style: { stroke: '#1E3A5F', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#00D9FF', width: 15, height: 15 } },
+      { id: 'e-root-2', source: 'root', target: 'node-2', style: { stroke: '#1E3A5F', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#00D9FF', width: 15, height: 15 } },
+      { id: 'e-root-3', source: 'root', target: 'node-3', style: { stroke: '#1E3A5F', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#00D9FF', width: 15, height: 15 } },
+      { id: 'e-1-4', source: 'node-1', target: 'node-4', style: { stroke: '#1E3A5F', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#00FFC8', width: 15, height: 15 } },
+      { id: 'e-2-5', source: 'node-2', target: 'node-5', style: { stroke: '#1E3A5F', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#00FFC8', width: 15, height: 15 } },
     ],
   };
 
   return defaultData;
 };
 
-// Busca mapa no localStorage
 const getMapInfo = (mapId: string) => {
   const stored = localStorage.getItem('mindmap_maps');
   if (stored) {
@@ -226,27 +261,23 @@ export function MapEditorPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
 
-  // Estados do React Flow
   const initialData = useMemo(() => 
-    getInitialMapData(mapId || '', user?.display_name || 'User', user?.color || '#8b5cf6'),
+    getInitialMapData(mapId || '', user?.display_name || 'User', user?.color || '#00D9FF'),
     [mapId, user]
   );
   
   const [nodes, setNodes, onNodesChange] = useNodesState(initialData.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialData.edges);
 
-  // Carrega informações do mapa
   useEffect(() => {
     if (!mapId) return;
-    
     setTimeout(() => {
       const info = getMapInfo(mapId);
-      setMapInfo(info || { id: mapId, title: 'Novo Mapa', description: '' });
+      setMapInfo(info || { id: mapId, title: 'New Map', description: '' });
       setIsLoading(false);
     }, 200);
   }, [mapId]);
 
-  // Salva no localStorage quando nodes/edges mudam
   useEffect(() => {
     if (mapId && !isLoading) {
       const data = { id: mapId, title: mapInfo?.title, nodes, edges };
@@ -254,16 +285,14 @@ export function MapEditorPage() {
     }
   }, [nodes, edges, mapId, isLoading, mapInfo]);
 
-  // Conexão entre nodes
   const onConnect = useCallback(
     (params: Connection) => {
       setEdges((eds) =>
         addEdge(
           {
             ...params,
-            animated: true,
-            style: { stroke: '#8b5cf6' },
-            markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' },
+            style: { stroke: '#1E3A5F', strokeWidth: 2 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: '#00D9FF', width: 15, height: 15 },
           },
           eds
         )
@@ -272,30 +301,37 @@ export function MapEditorPage() {
     [setEdges]
   );
 
-  // Adicionar novo node
-  const addNewNode = (type: 'idea' | 'task' | 'note' | 'reference' | 'question' = 'idea') => {
+  const addNewNode = (type: 'idea' | 'task' | 'note' | 'reference' | 'data' | 'process' = 'idea') => {
     const newId = `node-${Date.now()}`;
     const lastNode = nodes[nodes.length - 1];
+    const labels: Record<string, string> = {
+      idea: 'New Concept',
+      task: 'New Task',
+      note: 'New Note',
+      reference: 'New Reference',
+      data: 'Data Node',
+      process: 'Process Node',
+    };
+    
     const newNode: Node = {
       id: newId,
-      type: 'mindmap',
+      type: 'neural',
       position: { 
-        x: lastNode ? lastNode.position.x + 50 : 400, 
-        y: lastNode ? lastNode.position.y + 150 : 300 
+        x: lastNode ? lastNode.position.x + 80 : 400, 
+        y: lastNode ? lastNode.position.y + 120 : 300 
       },
       data: { 
-        label: type === 'task' ? 'Nova Tarefa' : type === 'note' ? 'Nova Nota' : 'Nova Ideia',
+        label: labels[type],
         type,
         description: '',
         tasks: 0,
         comments: 0,
-        creator: { name: user?.display_name || 'User', color: user?.color || '#8b5cf6' },
+        creator: { name: user?.display_name || 'User', color: user?.color || '#00D9FF' },
       },
     };
     
     setNodes((nds) => [...nds, newNode]);
     
-    // Conecta ao node selecionado ou ao root
     if (selectedNode || nodes.length > 0) {
       const sourceId = selectedNode?.id || nodes[0]?.id;
       if (sourceId) {
@@ -305,69 +341,64 @@ export function MapEditorPage() {
             id: `e-${sourceId}-${newId}`,
             source: sourceId,
             target: newId,
-            animated: true,
-            style: { stroke: '#8b5cf6' },
-            markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' },
+            style: { stroke: '#1E3A5F', strokeWidth: 2 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: '#00D9FF', width: 15, height: 15 },
           },
         ]);
       }
     }
     
-    toast.success(`${type === 'task' ? 'Tarefa' : type === 'note' ? 'Nota' : 'Ideia'} adicionada!`);
+    toast.success('Node added');
   };
 
-  // Deletar node selecionado
   const deleteSelectedNode = () => {
     if (!selectedNode) return;
     if (selectedNode.id === 'root') {
-      toast.error('Não é possível deletar o node raiz');
+      toast.error('Cannot delete root node');
       return;
     }
     
     setNodes((nds) => nds.filter((n) => n.id !== selectedNode.id));
     setEdges((eds) => eds.filter((e) => e.source !== selectedNode.id && e.target !== selectedNode.id));
     setSelectedNode(null);
-    toast.success('Node removido');
+    toast.success('Node removed');
   };
 
-  // AI: Gerar ideias
   const handleAIGenerate = async () => {
     if (!aiPrompt.trim()) {
-      toast.error('Digite um prompt para a IA');
+      toast.error('Enter a prompt');
       return;
     }
 
     setAiLoading(true);
     
-    // Simula chamada à API (será substituído pela integração real)
     setTimeout(() => {
       const generatedIdeas = [
-        'Análise de Mercado',
-        'Pesquisa de Usuários',
-        'Prototipação Rápida',
-        'Validação de Hipóteses',
-        'Métricas de Sucesso',
+        'Feature Extraction',
+        'Model Architecture',
+        'Hyperparameter Tuning',
+        'Cross Validation',
+        'Performance Analysis',
       ];
 
-      let yOffset = 0;
-      const newNodes: Node[] = [];
-      const newEdges: Edge[] = [];
       const baseX = selectedNode?.position.x || 400;
       const baseY = (selectedNode?.position.y || 100) + 150;
+      const newNodes: Node[] = [];
+      const newEdges: Edge[] = [];
 
       generatedIdeas.forEach((idea, index) => {
         const newId = `ai-${Date.now()}-${index}`;
         newNodes.push({
           id: newId,
-          type: 'mindmap',
-          position: { x: baseX - 200 + (index * 100), y: baseY + yOffset },
+          type: 'neural',
+          position: { x: baseX - 200 + (index * 100), y: baseY + (index % 2) * 80 },
           data: {
             label: idea,
-            type: 'idea',
-            description: `Gerado por IA: ${aiPrompt}`,
+            type: index % 2 === 0 ? 'process' : 'data',
+            description: 'AI Generated',
             tasks: 0,
             comments: 0,
-            creator: { name: 'AI Agent', color: '#f59e0b' },
+            creator: { name: 'AI System', color: '#FFB800' },
           },
         });
 
@@ -376,24 +407,20 @@ export function MapEditorPage() {
             id: `e-${selectedNode.id}-${newId}`,
             source: selectedNode.id,
             target: newId,
-            animated: true,
-            style: { stroke: '#f59e0b' },
-            markerEnd: { type: MarkerType.ArrowClosed, color: '#f59e0b' },
+            style: { stroke: '#FFB800', strokeWidth: 2, strokeDasharray: '5,5' },
+            markerEnd: { type: MarkerType.ArrowClosed, color: '#FFB800', width: 15, height: 15 },
           });
         }
-
-        yOffset += 80;
       });
 
       setNodes((nds) => [...nds, ...newNodes]);
       setEdges((eds) => [...eds, ...newEdges]);
       setAiLoading(false);
       setAiPrompt('');
-      toast.success(`${generatedIdeas.length} ideias geradas pela IA!`);
+      toast.success(`${generatedIdeas.length} nodes generated`);
     }, 1500);
   };
 
-  // Seleção de node
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedNode(node);
   }, []);
@@ -404,73 +431,71 @@ export function MapEditorPage() {
 
   if (isLoading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-slate-900">
-        <div className="w-10 h-10 border-4 border-purple-500/30 border-t-purple-500 rounded-full animate-spin" />
+      <div className="h-screen flex items-center justify-center bg-[#080C14]">
+        <div className="w-6 h-6 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="h-screen flex flex-col bg-slate-900">
-      {/* Toolbar */}
-      <div className="h-14 border-b border-white/10 bg-slate-900/95 backdrop-blur-sm flex items-center justify-between px-4">
+    <div className="h-screen flex flex-col bg-[#080C14]">
+      {/* Header */}
+      <header className="h-12 border-b border-slate-800/50 bg-[#0A0E18]/95 backdrop-blur-sm flex items-center justify-between px-4 z-10">
         <div className="flex items-center gap-3">
           <Button 
             variant="ghost" 
             size="icon" 
             onClick={() => navigate('/dashboard')}
-            className="text-white/70 hover:text-white hover:bg-white/10"
+            className="text-slate-500 hover:text-white hover:bg-slate-800 h-8 w-8"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4" />
           </Button>
-          <div>
-            <h1 className="text-lg font-semibold text-white">{mapInfo?.title || 'Mapa Mental'}</h1>
-            <p className="text-xs text-white/50">
-              {nodes.length} nodes • Editando como {user?.display_name}
-            </p>
+          <div className="flex items-center gap-2">
+            <Network className="w-4 h-4 text-cyan-400" />
+            <span className="text-sm font-medium text-white">{mapInfo?.title || 'Neural Map'}</span>
           </div>
+          <span className="text-xs text-slate-600">
+            {nodes.length} nodes • {edges.length} connections
+          </span>
         </div>
         
         <div className="flex items-center gap-2">
-          {/* Colaboradores online */}
-          <div className="flex items-center gap-1 mr-4">
-            <Users className="w-4 h-4 text-white/50" />
-            <div className="flex -space-x-2">
-              {['Guilherme', 'Helen', 'Pablo'].map((name, i) => (
-                <div
-                  key={i}
-                  className="w-7 h-7 rounded-full border-2 border-slate-900 flex items-center justify-center text-xs text-white font-medium"
-                  style={{ 
-                    backgroundColor: i === 0 ? '#4ECDC4' : i === 1 ? '#FF6B6B' : '#45B7D1',
-                  }}
-                  title={`${name} online`}
-                >
-                  {name[0]}
-                </div>
-              ))}
-            </div>
+          <div className="flex items-center gap-1 mr-2">
+            {['Guilherme', 'Helen', 'Pablo'].map((name, i) => (
+              <div
+                key={i}
+                className="w-6 h-6 rounded flex items-center justify-center text-[10px] font-medium border border-slate-700/50"
+                style={{ 
+                  backgroundColor: i === 0 ? '#00D9FF10' : i === 1 ? '#00FFC810' : '#00B4D810',
+                  color: i === 0 ? '#00D9FF' : i === 1 ? '#00FFC8' : '#00B4D8',
+                }}
+                title={`${name} online`}
+              >
+                {name[0]}
+              </div>
+            ))}
           </div>
 
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setShowAIPanel(!showAIPanel)}
-            className={`gap-2 ${showAIPanel ? 'bg-purple-500/20 text-purple-300' : 'text-white/70 hover:text-white hover:bg-white/10'}`}
+            className={`h-8 gap-1.5 text-xs ${showAIPanel ? 'bg-cyan-500/10 text-cyan-400' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
           >
-            <Bot className="w-4 h-4" />
-            AI Agent
+            <Cpu className="w-3.5 h-3.5" />
+            AI Assistant
           </Button>
           
           <Button
             size="sm"
-            onClick={() => toast.success('Mapa salvo!')}
-            className="gap-2 bg-purple-500 hover:bg-purple-600"
+            onClick={() => toast.success('Changes saved')}
+            className="h-8 gap-1.5 text-xs bg-cyan-600 hover:bg-cyan-500 text-white"
           >
-            <Save className="w-4 h-4" />
-            Salvar
+            <Save className="w-3.5 h-3.5" />
+            Save
           </Button>
         </div>
-      </div>
+      </header>
 
       <div className="flex-1 flex relative">
         {/* Canvas */}
@@ -486,72 +511,77 @@ export function MapEditorPage() {
             nodeTypes={nodeTypes}
             fitView
             proOptions={{ hideAttribution: true }}
-            className="bg-slate-900"
+            className="bg-[#080C14]"
+            defaultEdgeOptions={{
+              style: { stroke: '#1E3A5F', strokeWidth: 2 },
+            }}
           >
-            <Background color="#334155" gap={20} />
-            <Controls className="!bg-slate-800 !border-slate-700 !rounded-lg [&>button]:!bg-slate-700 [&>button]:!border-slate-600 [&>button]:!text-white [&>button:hover]:!bg-slate-600" />
+            <Background 
+              color="#1E3A5F" 
+              gap={40} 
+              size={1}
+              variant={BackgroundVariant.Dots}
+            />
+            <Controls 
+              className="!bg-[#0D1520] !border-slate-800/50 !rounded-lg [&>button]:!bg-[#0D1520] [&>button]:!border-slate-800/50 [&>button]:!text-slate-400 [&>button:hover]:!bg-slate-800 [&>button:hover]:!text-white" 
+            />
             <MiniMap 
-              className="!bg-slate-800 !rounded-lg"
-              nodeColor={(n) => {
-                const type = n.data?.type as string;
-                if (type === 'task') return '#10b981';
-                if (type === 'note') return '#f59e0b';
-                if (type === 'reference') return '#3b82f6';
-                return '#8b5cf6';
-              }}
+              className="!bg-[#0D1520] !rounded-lg !border-slate-800/50"
+              nodeColor={() => '#1E3A5F'}
+              maskColor="rgba(8, 12, 20, 0.8)"
             />
 
-            {/* Quick Actions Panel */}
-            <Panel position="bottom-center" className="!mb-4">
-              <div className="flex items-center gap-2 px-4 py-2 bg-slate-800/90 backdrop-blur-sm rounded-full border border-white/10 shadow-xl">
+            {/* Quick Actions */}
+            <Panel position="bottom-center" className="!mb-3">
+              <div className="flex items-center gap-1 px-2 py-1.5 bg-[#0D1520]/95 backdrop-blur-sm rounded-lg border border-slate-800/50">
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={() => addNewNode('idea')}
-                  className="gap-2 text-purple-300 hover:text-purple-200 hover:bg-purple-500/20"
+                  className="h-7 gap-1.5 text-xs text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10"
                 >
-                  <Lightbulb className="w-4 h-4" />
-                  Ideia
+                  <Lightbulb className="w-3.5 h-3.5" />
+                  Concept
                 </Button>
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={() => addNewNode('task')}
-                  className="gap-2 text-green-300 hover:text-green-200 hover:bg-green-500/20"
+                  className="h-7 gap-1.5 text-xs text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10"
                 >
-                  <CheckSquare className="w-4 h-4" />
-                  Tarefa
+                  <CheckSquare className="w-3.5 h-3.5" />
+                  Task
                 </Button>
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => addNewNode('note')}
-                  className="gap-2 text-yellow-300 hover:text-yellow-200 hover:bg-yellow-500/20"
+                  onClick={() => addNewNode('data')}
+                  className="h-7 gap-1.5 text-xs text-slate-400 hover:text-purple-400 hover:bg-purple-500/10"
                 >
-                  <FileText className="w-4 h-4" />
-                  Nota
+                  <Database className="w-3.5 h-3.5" />
+                  Data
                 </Button>
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => addNewNode('reference')}
-                  className="gap-2 text-blue-300 hover:text-blue-200 hover:bg-blue-500/20"
+                  onClick={() => addNewNode('process')}
+                  className="h-7 gap-1.5 text-xs text-slate-400 hover:text-teal-400 hover:bg-teal-500/10"
                 >
-                  <Link2 className="w-4 h-4" />
-                  Referência
+                  <Cpu className="w-3.5 h-3.5" />
+                  Process
                 </Button>
                 
                 {selectedNode && selectedNode.id !== 'root' && (
                   <>
-                    <div className="w-px h-6 bg-white/20" />
+                    <div className="w-px h-4 bg-slate-700" />
                     <Button
                       size="sm"
                       variant="ghost"
                       onClick={deleteSelectedNode}
-                      className="gap-2 text-red-300 hover:text-red-200 hover:bg-red-500/20"
+                      className="h-7 gap-1.5 text-xs text-slate-400 hover:text-red-400 hover:bg-red-500/10"
                     >
-                      <Trash2 className="w-4 h-4" />
-                      Deletar
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Delete
                     </Button>
                   </>
                 )}
@@ -560,105 +590,100 @@ export function MapEditorPage() {
           </ReactFlow>
         </div>
 
-        {/* AI Agent Panel */}
+        {/* AI Panel */}
         {showAIPanel && (
-          <div className="w-80 border-l border-white/10 bg-slate-800/50 backdrop-blur-sm flex flex-col">
-            <div className="p-4 border-b border-white/10 flex items-center justify-between">
+          <div className="w-72 border-l border-slate-800/50 bg-[#0A0E18]/95 backdrop-blur-sm flex flex-col">
+            <div className="p-3 border-b border-slate-800/50 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Bot className="w-5 h-5 text-purple-400" />
-                <h3 className="font-semibold text-white">AI Agent Console</h3>
+                <Cpu className="w-4 h-4 text-cyan-400" />
+                <span className="text-sm font-medium text-white">AI Assistant</span>
               </div>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => setShowAIPanel(false)}
-                className="text-white/50 hover:text-white h-8 w-8"
+                className="text-slate-500 hover:text-white h-6 w-6"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </Button>
             </div>
 
-            <div className="flex-1 p-4 space-y-4 overflow-y-auto">
-              {/* AI Actions */}
+            <div className="flex-1 p-3 space-y-4 overflow-y-auto">
               <div className="space-y-2">
-                <p className="text-xs text-white/50 uppercase tracking-wider">Ações Rápidas</p>
-                <div className="grid grid-cols-2 gap-2">
+                <p className="text-[10px] text-slate-600 uppercase tracking-wider">Quick Actions</p>
+                <div className="grid grid-cols-2 gap-1.5">
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="justify-start text-white/70 hover:text-white hover:bg-white/10 h-auto py-3"
+                    className="justify-start text-slate-400 hover:text-white hover:bg-slate-800 h-auto py-2 px-2"
                     onClick={() => {
-                      setAiPrompt('Gere ideias relacionadas a este tópico');
+                      setAiPrompt('Generate related concepts');
                       handleAIGenerate();
                     }}
                   >
-                    <Wand2 className="w-4 h-4 mr-2 text-purple-400" />
-                    <span className="text-xs">Gerar Ideias</span>
+                    <Wand2 className="w-3.5 h-3.5 mr-1.5 text-cyan-400" />
+                    <span className="text-[11px]">Generate</span>
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="justify-start text-white/70 hover:text-white hover:bg-white/10 h-auto py-3"
-                    onClick={() => toast.success('Expandindo node selecionado...')}
+                    className="justify-start text-slate-400 hover:text-white hover:bg-slate-800 h-auto py-2 px-2"
+                    onClick={() => toast.success('Expanding selected node...')}
                   >
-                    <Expand className="w-4 h-4 mr-2 text-green-400" />
-                    <span className="text-xs">Expandir</span>
+                    <Expand className="w-3.5 h-3.5 mr-1.5 text-teal-400" />
+                    <span className="text-[11px]">Expand</span>
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="justify-start text-white/70 hover:text-white hover:bg-white/10 h-auto py-3"
-                    onClick={() => toast.success('Resumindo mapa...')}
+                    className="justify-start text-slate-400 hover:text-white hover:bg-slate-800 h-auto py-2 px-2"
+                    onClick={() => toast.success('Analyzing map...')}
                   >
-                    <ListTree className="w-4 h-4 mr-2 text-blue-400" />
-                    <span className="text-xs">Resumir</span>
+                    <GitBranch className="w-3.5 h-3.5 mr-1.5 text-blue-400" />
+                    <span className="text-[11px]">Analyze</span>
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="justify-start text-white/70 hover:text-white hover:bg-white/10 h-auto py-3"
-                    onClick={() => toast.success('Convertendo para tarefas...')}
+                    className="justify-start text-slate-400 hover:text-white hover:bg-slate-800 h-auto py-2 px-2"
+                    onClick={() => toast.success('Converting to tasks...')}
                   >
-                    <CheckSquare className="w-4 h-4 mr-2 text-yellow-400" />
-                    <span className="text-xs">→ Tarefas</span>
+                    <CheckSquare className="w-3.5 h-3.5 mr-1.5 text-emerald-400" />
+                    <span className="text-[11px]">To Tasks</span>
                   </Button>
                 </div>
               </div>
 
-              {/* Custom Prompt */}
               <div className="space-y-2">
-                <p className="text-xs text-white/50 uppercase tracking-wider">Prompt Personalizado</p>
-                <div className="space-y-2">
-                  <Input
-                    placeholder="Ex: Analise gaps neste mapa..."
-                    value={aiPrompt}
-                    onChange={(e) => setAiPrompt(e.target.value)}
-                    className="bg-white/5 border-white/20 text-white placeholder:text-white/30"
-                    onKeyDown={(e) => e.key === 'Enter' && handleAIGenerate()}
-                  />
-                  <Button
-                    onClick={handleAIGenerate}
-                    disabled={aiLoading || !aiPrompt.trim()}
-                    className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
-                  >
-                    {aiLoading ? (
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4 mr-2" />
-                        Executar
-                      </>
-                    )}
-                  </Button>
-                </div>
+                <p className="text-[10px] text-slate-600 uppercase tracking-wider">Custom Prompt</p>
+                <Input
+                  placeholder="Describe what to generate..."
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  className="h-8 text-xs bg-[#0D1520] border-slate-800/50 text-white placeholder:text-slate-600 focus:border-cyan-500/50"
+                  onKeyDown={(e) => e.key === 'Enter' && handleAIGenerate()}
+                />
+                <Button
+                  onClick={handleAIGenerate}
+                  disabled={aiLoading || !aiPrompt.trim()}
+                  className="w-full h-8 text-xs bg-cyan-600 hover:bg-cyan-500 disabled:opacity-30"
+                >
+                  {aiLoading ? (
+                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Zap className="w-3.5 h-3.5 mr-1.5" />
+                      Execute
+                    </>
+                  )}
+                </Button>
               </div>
 
-              {/* Selected Node Info */}
               {selectedNode && (
-                <div className="space-y-2 p-3 bg-white/5 rounded-lg border border-white/10">
-                  <p className="text-xs text-white/50 uppercase tracking-wider">Node Selecionado</p>
-                  <p className="text-white font-medium">{selectedNode.data?.label as string}</p>
-                  <p className="text-xs text-white/50">{selectedNode.data?.type as string}</p>
+                <div className="space-y-2 p-2.5 bg-slate-800/30 rounded-lg border border-slate-800/50">
+                  <p className="text-[10px] text-slate-600 uppercase tracking-wider">Selected Node</p>
+                  <p className="text-white text-sm font-medium">{selectedNode.data?.label as string}</p>
+                  <p className="text-[10px] text-slate-500 uppercase">{selectedNode.data?.type as string}</p>
                 </div>
               )}
             </div>
