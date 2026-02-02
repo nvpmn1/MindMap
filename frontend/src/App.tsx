@@ -7,7 +7,6 @@ import { AuthLayout } from '@/components/layout/AuthLayout';
 
 // Pages
 import { LoginPage } from '@/pages/LoginPage';
-import { AuthCallbackPage } from '@/pages/AuthCallbackPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { MapEditorPage } from '@/pages/MapEditorPage';
 import { KanbanPage } from '@/pages/KanbanPage';
@@ -65,7 +64,6 @@ function App() {
             </PublicRoute>
           }
         />
-        <Route path="/auth/callback" element={<AuthCallbackPage />} />
       </Route>
 
       {/* Protected routes */}
