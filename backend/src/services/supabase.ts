@@ -1,13 +1,12 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { env } from '../utils/env';
-import { Database } from '../types/database';
 
 /**
  * Supabase Admin Client
  * Uses service_role key - bypasses RLS
  * Use only for server-side operations that need full access
  */
-export const supabaseAdmin: SupabaseClient<Database> = createClient<Database>(
+export const supabaseAdmin: SupabaseClient<any, any, any> = createClient(
   env.SUPABASE_URL,
   env.SUPABASE_SERVICE_ROLE_KEY,
   {
@@ -22,8 +21,8 @@ export const supabaseAdmin: SupabaseClient<Database> = createClient<Database>(
  * Create a Supabase client for a specific user
  * Uses the user's JWT token for RLS-enabled queries
  */
-export const supabaseClient = (accessToken: string): SupabaseClient<Database> => {
-  return createClient<Database>(
+export const supabaseClient = (accessToken: string): SupabaseClient<any, any, any> => {
+  return createClient(
     env.SUPABASE_URL,
     env.SUPABASE_ANON_KEY || env.SUPABASE_SERVICE_ROLE_KEY,
     {
@@ -44,7 +43,7 @@ export const supabaseClient = (accessToken: string): SupabaseClient<Database> =>
  * Supabase Realtime subscription helper
  */
 export const subscribeToChannel = (
-  client: SupabaseClient<Database>,
+  client: SupabaseClient<any, any, any>,
   channelName: string,
   table: string,
   filter: string,

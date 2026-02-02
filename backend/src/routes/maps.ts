@@ -147,7 +147,8 @@ router.get(
     }
 
     // Log activity
-    await logActivity(req.user!.id, map.workspace_id, mapId, 'map_viewed', 'Viewed map');
+    const mapIdStr = Array.isArray(mapId) ? mapId[0] : mapId;
+    await logActivity(req.user!.id, map.workspace_id, mapIdStr, 'map_viewed', 'Viewed map');
 
     res.json({
       success: true,

@@ -352,10 +352,12 @@ router.delete(
       throw new NotFoundError('Node not found');
     }
 
+    const nodeIdStr = Array.isArray(nodeId) ? nodeId[0] : nodeId;
+    
     if (cascade === 'true') {
       // Get all descendant nodes
-      const descendants = await getDescendantIds(req.supabase!, nodeId);
-      const allNodeIds = [nodeId, ...descendants];
+      const descendants = await getDescendantIds(req.supabase!, nodeIdStr);
+      const allNodeIds = [nodeIdStr, ...descendants];
 
       // Delete all nodes (edges cascade automatically)
       const { error } = await req.supabase!
@@ -646,7 +648,7 @@ async function logNodeActivity(
       .from('maps')
       .select('workspace_id')
       .eq('id', mapId)
-      .single();
+      .single() as any;
 
     if (map) {
       const activityData: any = {

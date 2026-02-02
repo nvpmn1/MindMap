@@ -57,18 +57,20 @@ class AIOrchestrator {
 
     try {
       // Create AI run record
+      const aiRunData: any = {
+        map_id: params.mapId,
+        user_id: params.userId,
+        agent_type: params.agentType,
+        input_context: params.input,
+        model_used: this.model,
+        status: 'running',
+      };
+      
       const { data: run, error: insertError } = await supabaseAdmin
         .from('ai_runs')
-        .insert({
-          map_id: params.mapId,
-          user_id: params.userId,
-          agent_type: params.agentType,
-          input_context: params.input,
-          model_used: this.model,
-          status: 'running',
-        })
+        .insert(aiRunData)
         .select('id')
-        .single();
+        .single() as any;
 
       if (insertError || !run) {
         throw new Error('Failed to create AI run record');
@@ -108,16 +110,18 @@ class AIOrchestrator {
       const parsedResult = this.parseResponse(params.agentType, rawResponse);
 
       // Update AI run record
+      const updateData: any = {
+        output_result: parsedResult,
+        tokens_input: response.usage.input_tokens,
+        tokens_output: response.usage.output_tokens,
+        duration_ms: durationMs,
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+      };
+      
       await supabaseAdmin
         .from('ai_runs')
-        .update({
-          output_result: parsedResult,
-          tokens_input: response.usage.input_tokens,
-          tokens_output: response.usage.output_tokens,
-          duration_ms: durationMs,
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('id', runId);
 
       logger.info({ 
@@ -150,14 +154,16 @@ class AIOrchestrator {
 
       // Update AI run record with failure
       if (runId) {
+        const failedData: any = {
+          status: 'failed',
+          error_message: errorMessage,
+          duration_ms: durationMs,
+          completed_at: new Date().toISOString(),
+        };
+        
         await supabaseAdmin
           .from('ai_runs')
-          .update({
-            status: 'failed',
-            error_message: errorMessage,
-            duration_ms: durationMs,
-            completed_at: new Date().toISOString(),
-          })
+          .update(failedData)
           .eq('id', runId);
       }
 

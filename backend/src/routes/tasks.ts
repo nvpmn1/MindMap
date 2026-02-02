@@ -641,9 +641,9 @@ async function createAssignmentNotification(
       .from('profiles')
       .select('display_name')
       .eq('id', assignerId)
-      .single();
+      .single() as any;
 
-    const assignerName = assigner && assigner.display_name ? assigner.display_name : 'Someone';
+    const assignerName = assigner?.display_name || 'Someone';
 
     const notificationData: any = {
       user_id: assigneeId,

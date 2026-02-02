@@ -233,18 +233,21 @@ router.get(
       `)
       .eq('user_id', user.id);
 
+    const userProfile = profile as any;
+    const membershipsList = memberships as any[] || [];
+    
     res.json({
       success: true,
       data: {
         user: {
           id: user.id,
           email: user.email,
-          ...profile,
+          ...(userProfile || {}),
         },
-        workspaces: memberships?.map(m => ({
-          ...m.workspace,
+        workspaces: membershipsList.map(m => ({
+          ...(m.workspace || {}),
           role: m.role,
-        })) || [],
+        })),
       },
     });
   })
