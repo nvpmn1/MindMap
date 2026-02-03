@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: mindmap-hub-api
+    runtime: node
+    plan: standard
+    region: ohio
+    
+    buildCommand: cd backend && npm install && npm run build
+    startCommand: cd backend && npm start
+    
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: LOG_LEVEL
+        value: info
+      
+      # Database
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      
+      # AI
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      
+      # CORS
+      - key: CORS_ORIGIN
+        value: https://seu-dominio-vercel.vercel.app
+
+databases:
+  - name: mindmap-postgres
+    plan: starter
