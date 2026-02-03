@@ -1,9 +1,13 @@
 /**
  * AI Agent Service - Powerful AI Integration for MindMap Hub
  * Uses Claude API through backend for intelligent mind mapping
+ * Includes local fallback for demo purposes
  */
 
 import { aiApi } from '@/lib/api';
+
+// Configuration - set to true to use local AI simulation for demo
+const USE_LOCAL_AI = true;
 
 // Types for AI Agent
 export interface AIMessage {
@@ -102,12 +106,205 @@ export const AI_AGENTS: AIAgent[] = [
   },
 ];
 
+// Local AI templates for demo
+const LOCAL_AI_TEMPLATES = {
+  ideaExpansions: {
+    'pesquisa': ['Revisão Bibliográfica', 'Metodologia', 'Coleta de Dados', 'Análise', 'Conclusões'],
+    'projeto': ['Planejamento', 'Design', 'Implementação', 'Testes', 'Deploy'],
+    'negócio': ['Modelo de Negócio', 'Análise de Mercado', 'Estratégia', 'Marketing', 'Finanças'],
+    'produto': ['Pesquisa de Usuários', 'Features', 'MVP', 'Roadmap', 'Métricas'],
+    'marketing': ['Público-alvo', 'Canais', 'Conteúdo', 'SEO', 'Conversão'],
+    'tecnologia': ['Arquitetura', 'Frontend', 'Backend', 'Banco de Dados', 'DevOps'],
+    'ia': ['Machine Learning', 'Deep Learning', 'NLP', 'Computer Vision', 'Agentes Autônomos'],
+    'default': ['Subtópico 1', 'Subtópico 2', 'Detalhes', 'Próximos Passos', 'Referências'],
+  },
+  chatResponses: [
+    'Analisei seu mapa e identifiquei alguns padrões interessantes. Posso sugerir expansões para os nós principais?',
+    'Seu mapa está bem estruturado! Recomendo adicionar mais conexões entre os conceitos relacionados.',
+    'Identifiquei que alguns nós podem ser convertidos em tarefas acionáveis. Deseja que eu faça isso?',
+    'Baseado no contexto do seu mapa, posso gerar ideias complementares para expandir o tema principal.',
+    'Notei que há oportunidades de criar sub-categorias para melhor organização. Gostaria de sugestões?',
+  ],
+  taskTemplates: [
+    { prefix: 'Pesquisar sobre', priority: 'medium' as const },
+    { prefix: 'Documentar', priority: 'low' as const },
+    { prefix: 'Implementar', priority: 'high' as const },
+    { prefix: 'Revisar', priority: 'medium' as const },
+    { prefix: 'Validar', priority: 'high' as const },
+  ],
+};
+
+/**
+ * Local AI simulation for demo purposes
+ */
+class LocalAISimulator {
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  async generate(prompt: string, count: number = 5): Promise<AISuggestion[]> {
+    await this.delay(800 + Math.random() * 500);
+    
+    const words = prompt.toLowerCase().split(' ');
+    let template = LOCAL_AI_TEMPLATES.ideaExpansions.default;
+    
+    for (const word of words) {
+      for (const [key, expansions] of Object.entries(LOCAL_AI_TEMPLATES.ideaExpansions)) {
+        if (word.includes(key) || key.includes(word)) {
+          template = expansions;
+          break;
+        }
+      }
+    }
+
+    return template.slice(0, count).map((label, i) => ({
+      id: `gen-${Date.now()}-${i}`,
+      label: `${label}`,
+      type: i < 2 ? 'idea' : i < 4 ? 'process' : 'reference' as any,
+      description: `Ideia gerada para: ${prompt}`,
+      priority: (['medium', 'high', 'low'] as const)[i % 3],
+      tags: [prompt.split(' ')[0], label.split(' ')[0]].filter(Boolean),
+    }));
+  }
+
+  async expand(node: { label: string; type: string }, count: number = 4): Promise<AISuggestion[]> {
+    await this.delay(600 + Math.random() * 400);
+    
+    const baseLabel = node.label.toLowerCase();
+    let expansions = LOCAL_AI_TEMPLATES.ideaExpansions.default;
+
+    for (const [key, values] of Object.entries(LOCAL_AI_TEMPLATES.ideaExpansions)) {
+      if (baseLabel.includes(key)) {
+        expansions = values;
+        break;
+      }
+    }
+
+    const types: AISuggestion['type'][] = ['idea', 'task', 'note', 'reference', 'process', 'data'];
+    
+    return expansions.slice(0, count).map((label, i) => ({
+      id: `exp-${Date.now()}-${i}`,
+      label: `${label}`,
+      type: types[i % types.length],
+      description: `Expansão de "${node.label}"`,
+      priority: (['medium', 'high', 'low', 'medium'] as const)[i % 4],
+      tags: [node.type, label.split(' ')[0]].filter(Boolean),
+    }));
+  }
+
+  async summarize(nodes: Array<{ label: string; type: string }>): Promise<{ summary: string; insights: string[] }> {
+    await this.delay(1000 + Math.random() * 500);
+    
+    const nodeLabels = nodes.map(n => n.label).join(', ');
+    const types = [...new Set(nodes.map(n => n.type))];
+    
+    return {
+      summary: `Este mapa mental contém ${nodes.length} nós organizados em categorias: ${types.join(', ')}. Os principais temas abordados são: ${nodes.slice(0, 5).map(n => n.label).join(', ')}.`,
+      insights: [
+        `Total de ${nodes.length} conceitos mapeados`,
+        `Predominância de nós do tipo "${types[0]}"`,
+        `Boa estrutura hierárquica identificada`,
+        `Sugestão: Adicionar mais conexões entre ideias relacionadas`,
+        `Oportunidade de expandir os conceitos principais`,
+      ],
+    };
+  }
+
+  async toTasks(nodes: Array<{ label: string; type: string }>): Promise<AISuggestion[]> {
+    await this.delay(700 + Math.random() * 400);
+    
+    return nodes.slice(0, 5).map((node, i) => {
+      const template = LOCAL_AI_TEMPLATES.taskTemplates[i % LOCAL_AI_TEMPLATES.taskTemplates.length];
+      return {
+        id: `task-${Date.now()}-${i}`,
+        label: `${template.prefix} ${node.label}`,
+        type: 'task' as const,
+        description: `Tarefa criada a partir do nó "${node.label}"`,
+        priority: template.priority,
+        tags: ['gerado-ia', node.type],
+      };
+    });
+  }
+
+  async chat(message: string, nodes?: Array<{ label: string }>): Promise<string> {
+    await this.delay(500 + Math.random() * 800);
+    
+    const lowerMessage = message.toLowerCase();
+    
+    if (lowerMessage.includes('ajud') || lowerMessage.includes('help')) {
+      return `Posso ajudar você de várias formas:
+      
+🔹 **Gerar ideias**: Digite um tema e usarei IA para criar novos nós
+🔹 **Expandir nós**: Selecione um nó e peça para expandir
+🔹 **Criar tarefas**: Converto ideias em tarefas acionáveis
+🔹 **Resumir**: Faço um resumo de todo o seu mapa
+🔹 **Analisar**: Identifico padrões e sugiro conexões
+
+O que você gostaria de fazer?`;
+    }
+    
+    if (lowerMessage.includes('gerar') || lowerMessage.includes('criar') || lowerMessage.includes('ideia')) {
+      return `Ótimo! Identifiquei que você quer gerar novas ideias. Para melhor resultado:
+
+1. Selecione o botão **"Gerar"** no menu de agentes
+2. Descreva o tema com detalhes
+3. Eu criarei ${nodes?.length || 5}+ sugestões relevantes
+
+Posso gerar ideias sobre qualquer tópico: negócios, tecnologia, pesquisa, projetos e muito mais!`;
+    }
+    
+    if (lowerMessage.includes('tarefa') || lowerMessage.includes('task')) {
+      return `Posso converter seus conceitos em tarefas! ${nodes ? `\n\nVejo que você tem ${nodes.length} nós no mapa. Selecione "Converter em Tarefas" para transformar ideias em ações.` : ''}`;
+    }
+
+    // Default response
+    return LOCAL_AI_TEMPLATES.chatResponses[Math.floor(Math.random() * LOCAL_AI_TEMPLATES.chatResponses.length)] +
+      (nodes?.length ? `\n\nSeu mapa atual tem ${nodes.length} nós. Posso ajudar a expandir ou organizar melhor.` : '');
+  }
+
+  async analyze(nodes: Array<{ label: string; type: string }>): Promise<{
+    patterns: string[];
+    connections: Array<{ from: string; to: string; reason: string }>;
+    recommendations: string[];
+  }> {
+    await this.delay(1200 + Math.random() * 600);
+    
+    const types = nodes.map(n => n.type);
+    const typeCount = types.reduce((acc, t) => {
+      acc[t] = (acc[t] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    const patterns = [
+      `Estrutura com ${nodes.length} nós identificados`,
+      `Tipo predominante: ${Object.entries(typeCount).sort((a, b) => b[1] - a[1])[0]?.[0] || 'idea'}`,
+      `Distribuição de tipos: ${Object.entries(typeCount).map(([k, v]) => `${k}(${v})`).join(', ')}`,
+      `Profundidade de conceitos adequada para brainstorming`,
+    ];
+
+    const connections = nodes.length >= 2 ? [
+      { from: nodes[0].label, to: nodes[1]?.label || 'Novo nó', reason: 'Relação conceitual identificada' },
+      ...(nodes.length > 3 ? [{ from: nodes[2].label, to: nodes[3]?.label || 'Novo nó', reason: 'Possível dependência' }] : []),
+    ] : [];
+
+    const recommendations = [
+      'Considere adicionar mais sub-nós aos conceitos principais',
+      'Recomendo criar conexões entre ideias relacionadas',
+      'Adicione descrições detalhadas para melhor contexto',
+      'Converta ideias maduras em tarefas acionáveis',
+    ];
+
+    return { patterns, connections, recommendations };
+  }
+}
+
 /**
  * AI Agent Service Class
  */
 class AIAgentService {
   private conversationHistory: AIMessage[] = [];
   private isProcessing: boolean = false;
+  private localAI = new LocalAISimulator();
 
   /**
    * Generate new ideas based on a prompt
@@ -121,6 +318,14 @@ class AIAgentService {
     this.isProcessing = true;
     
     try {
+      if (USE_LOCAL_AI) {
+        const suggestions = await this.localAI.generate(prompt, options.count || 5);
+        return {
+          suggestions,
+          message: `Gerado ${suggestions.length} ideias baseadas em "${prompt}"`,
+        };
+      }
+
       const response = await aiApi.generate({
         map_id: mapId,
         prompt,
@@ -158,6 +363,14 @@ class AIAgentService {
     this.isProcessing = true;
     
     try {
+      if (USE_LOCAL_AI) {
+        const suggestions = await this.localAI.expand(node, options.count || 4);
+        return {
+          suggestions,
+          message: `Expandido "${node.label}" com ${suggestions.length} sub-ideias`,
+        };
+      }
+
       const response = await aiApi.expand({
         map_id: mapId,
         node_id: node.id,
@@ -195,6 +408,10 @@ class AIAgentService {
     this.isProcessing = true;
     
     try {
+      if (USE_LOCAL_AI) {
+        return await this.localAI.summarize(nodes);
+      }
+
       const response = await aiApi.summarize({
         map_id: mapId,
         context: { nodes },
@@ -227,6 +444,14 @@ class AIAgentService {
     this.isProcessing = true;
     
     try {
+      if (USE_LOCAL_AI) {
+        const tasks = await this.localAI.toTasks(nodes);
+        return {
+          tasks,
+          message: `Criadas ${tasks.length} tarefas a partir de ${nodes.length} nós`,
+        };
+      }
+
       const response = await aiApi.toTasks({
         map_id: mapId,
         node_ids: nodes.map(n => n.id),
@@ -270,6 +495,19 @@ class AIAgentService {
     this.conversationHistory.push(userMessage);
 
     try {
+      if (USE_LOCAL_AI) {
+        const responseText = await this.localAI.chat(message, nodes);
+        const assistantMessage: AIMessage = {
+          id: `msg-${Date.now()}-assistant`,
+          role: 'assistant',
+          content: responseText,
+          timestamp: new Date(),
+          metadata: { agentType: 'chat' },
+        };
+        this.conversationHistory.push(assistantMessage);
+        return assistantMessage;
+      }
+
       const response = await aiApi.chat({
         map_id: mapId,
         message,
@@ -320,6 +558,10 @@ class AIAgentService {
     this.isProcessing = true;
     
     try {
+      if (USE_LOCAL_AI) {
+        return await this.localAI.analyze(nodes);
+      }
+
       // Use chat endpoint with analysis prompt
       const response = await aiApi.chat({
         map_id: mapId,

@@ -197,7 +197,7 @@ export function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#080C14]">
+    <div className="min-h-full bg-[#080C14] pb-8">
       {/* Animated Background */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-cyan-500/5 rounded-full blur-3xl" />

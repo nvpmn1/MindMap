@@ -61,11 +61,13 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       {/* Main Content Area */}
       <div className={cn(
-        'flex flex-1 flex-col overflow-hidden transition-all duration-300',
+        'flex flex-1 flex-col overflow-y-auto overflow-x-hidden transition-all duration-300',
         aiChatOpen && 'mr-96'
       )}>
         {/* Render children or Outlet */}
-        {children || <Outlet />}
+        <main className="flex-1">
+          {children || <Outlet />}
+        </main>
       </div>
 
       {/* AI Chat Panel */}

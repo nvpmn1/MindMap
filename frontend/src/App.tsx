@@ -12,6 +12,8 @@ import { MapEditorPage } from '@/pages/MapEditorPage';
 import { KanbanPage } from '@/pages/KanbanPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
+import { MapsPage } from '@/pages/MapsPage';
+import { TasksPage } from '@/pages/TasksPage';
 
 // Protected Route wrapper
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -85,6 +87,8 @@ function App() {
         }
       >
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/maps" element={<MapsPage />} />
+        <Route path="/tasks" element={<TasksPage />} />
         <Route path="/kanban" element={<KanbanPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>

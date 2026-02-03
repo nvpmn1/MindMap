@@ -1,7 +1,8 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { Button, SimpleTooltip } from '@/components/ui';
-import { X, Sparkles, Send, Loader2 } from 'lucide-react';
+import { X, Sparkles, Send, Loader2, Brain, Lightbulb, ListTodo, FileText, Link2 } from 'lucide-react';
+import { aiAgentService } from '@/services/aiAgent';
 
 interface RightPanelProps {
   open: boolean;
@@ -83,20 +84,32 @@ export function AIChatPanel({ open, onClose }: AIChatPanelProps) {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const userInput = input.trim();
     setInput('');
     setIsLoading(true);
 
-    // Simulate AI response
-    setTimeout(() => {
+    try {
+      // Use the AI agent service for intelligent responses
+      const response = await aiAgentService.chat(userInput, messages);
+      
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Esta é uma resposta simulada. Em produção, isso seria conectado ao backend com a API do Claude.',
+        content: response,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, aiMessage]);
+    } catch (error) {
+      const aiMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'Desculpe, ocorreu um erro ao processar sua mensagem. Tente novamente.',
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, aiMessage]);
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -107,10 +120,11 @@ export function AIChatPanel({ open, onClose }: AIChatPanelProps) {
   };
 
   const quickActions = [
-    { label: '💡 Expandir ideia', prompt: 'Expanda essa ideia com mais detalhes:' },
-    { label: '📋 Criar tarefas', prompt: 'Crie tarefas a partir de:' },
-    { label: '📝 Resumir', prompt: 'Resuma o seguinte:' },
-    { label: '🔗 Conectar conceitos', prompt: 'Conecte esses conceitos:' },
+    { label: '💡 Expandir ideia', prompt: 'Expanda essa ideia com mais detalhes e sub-tópicos:', icon: <Lightbulb className="w-3 h-3" /> },
+    { label: '📋 Criar tarefas', prompt: 'Crie tarefas acionáveis a partir de:', icon: <ListTodo className="w-3 h-3" /> },
+    { label: '📝 Resumir', prompt: 'Faça um resumo conciso de:', icon: <FileText className="w-3 h-3" /> },
+    { label: '🔗 Conectar', prompt: 'Encontre conexões entre esses conceitos:', icon: <Link2 className="w-3 h-3" /> },
+    { label: '🧠 Analisar', prompt: 'Faça uma análise profunda de:', icon: <Brain className="w-3 h-3" /> },
   ];
 
   if (!open) return null;

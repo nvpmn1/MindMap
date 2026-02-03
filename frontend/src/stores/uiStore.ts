@@ -3,12 +3,14 @@ import { create } from 'zustand';
 interface UIState {
   // Sidebar
   sidebarOpen: boolean;
+  sidebarCollapsed: boolean;
   sidebarTab: 'nodes' | 'tasks' | 'ai' | 'settings';
   
   // Panels
   rightPanelOpen: boolean;
   rightPanelContent: 'node-details' | 'task-details' | 'ai-chat' | 'comments' | null;
   rightPanelData: Record<string, unknown> | null;
+  aiChatOpen: boolean;
   
   // Modals
   modalOpen: string | null; // modal ID or null
@@ -39,10 +41,12 @@ interface UIState {
 
   // Actions
   toggleSidebar: () => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
   setSidebarTab: (tab: UIState['sidebarTab']) => void;
   
   openRightPanel: (content: UIState['rightPanelContent'], data?: Record<string, unknown>) => void;
   closeRightPanel: () => void;
+  setAIChatOpen: (open: boolean) => void;
   
   openModal: (modalId: string, data?: Record<string, unknown>) => void;
   closeModal: () => void;
@@ -65,10 +69,12 @@ interface UIState {
 export const useUIStore = create<UIState>((set) => ({
   // Initial state
   sidebarOpen: true,
+  sidebarCollapsed: false,
   sidebarTab: 'nodes',
   rightPanelOpen: false,
   rightPanelContent: null,
   rightPanelData: null,
+  aiChatOpen: false,
   modalOpen: null,
   modalData: null,
   contextMenu: {
@@ -88,6 +94,8 @@ export const useUIStore = create<UIState>((set) => ({
   // Actions
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
   
+  setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
+  
   setSidebarTab: (sidebarTab) => set({ sidebarTab, sidebarOpen: true }),
 
   openRightPanel: (rightPanelContent, rightPanelData = null) =>
@@ -95,6 +103,8 @@ export const useUIStore = create<UIState>((set) => ({
   
   closeRightPanel: () =>
     set({ rightPanelOpen: false, rightPanelContent: null, rightPanelData: null }),
+  
+  setAIChatOpen: (aiChatOpen) => set({ aiChatOpen }),
 
   openModal: (modalId, data = null) => set({ modalOpen: modalId, modalData: data }),
   
