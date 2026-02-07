@@ -4,10 +4,10 @@ services:
     runtime: node
     plan: starter
     region: ohio
-    rootDir: backend
     
-    buildCommand: npm install && npm run build
-    startCommand: node dist/index.js
+    # Build and start the backend service
+    buildCommand: bash build.sh
+    startCommand: cd backend && npm start
     
     envVars:
       - key: NODE_ENV
