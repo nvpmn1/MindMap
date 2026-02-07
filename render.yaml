@@ -4,36 +4,38 @@ services:
     runtime: node
     plan: starter
     region: ohio
+    dir: backend
     
-    # Build and start the backend service
-    buildCommand: bash build.sh
-    startCommand: cd backend && npm start
+    buildCommand: npm install
+    startCommand: npm start
     
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 3001
-      
-      # Supabase - configure no painel do Render
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      
-      # Claude AI - configure no painel do Render
-      - key: CLAUDE_API_KEY
-        sync: false
       - key: CLAUDE_MODEL
         value: claude-haiku-4-5-20251001
       - key: CLAUDE_MAX_TOKENS
         value: "8192"
       - key: CLAUDE_TEMPERATURE
         value: "0.9"
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: RATE_LIMIT_MAX
+        value: "100"
+      - key: AI_RATE_LIMIT_MAX
+        value: "10"
       
-      # CORS - atualize com sua URL da Vercel
+      # Secrets - configure these in the Render dashboard
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: CLAUDE_API_KEY
+        sync: false
       - key: CORS_ORIGIN
         sync: false
       - key: FRONTEND_URL
