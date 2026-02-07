@@ -2,6 +2,9 @@
 # MindMap Hub - .gitignore
 # ==============================================
 
+# =========== VERCEL ===========
+.vercel/
+
 # =========== ENVIRONMENT & SECRETS ===========
 .env
 .env.local
@@ -95,3 +98,4 @@ coverage/
 *.lcov
 junit.xml
 test-results/
+.vercel
