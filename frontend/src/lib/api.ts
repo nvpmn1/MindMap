@@ -1,6 +1,7 @@
 import { getAccessToken } from './supabase';
+import { useAuthStore } from '@/stores/authStore';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://mindmap-hub-api.onrender.com/api/v1';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 interface FetchOptions extends RequestInit {
   authenticated?: boolean;
@@ -50,6 +51,15 @@ class ApiClient {
       const token = await getAccessToken();
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
+      } else {
+        const { profile, user } = useAuthStore.getState();
+        const profileId = profile?.id || user?.id;
+        if (profileId) {
+          headers['x-profile-id'] = profileId;
+          headers['x-profile-email'] = profile?.email || user?.email || '';
+          headers['x-profile-name'] = profile?.display_name || user?.display_name || 'Guest';
+          headers['x-profile-color'] = profile?.color || user?.color || '#00D9FF';
+        }
       }
     }
 
@@ -141,6 +151,14 @@ export const authApi = {
 
   getMe: () =>
     api.get('/api/auth/me'),
+
+  updateProfile: (data: {
+    display_name?: string;
+    avatar_url?: string | null;
+    color?: string;
+    preferences?: Record<string, unknown>;
+  }) =>
+    api.patch('/api/auth/me', data),
 };
 
 export const mapsApi = {
@@ -195,6 +213,7 @@ export const nodesApi = {
     position_y?: number;
     collapsed?: boolean;
     style?: Record<string, unknown>;
+    data?: Record<string, unknown>;
   }) =>
     api.patch(`/api/nodes/${nodeId}`, data),
 

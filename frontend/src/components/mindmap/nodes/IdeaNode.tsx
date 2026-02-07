@@ -1,7 +1,6 @@
 import React, { memo } from 'react';
 import { Handle, Position, NodeProps, useReactFlow } from '@xyflow/react';
 import { cn } from '@/lib/utils';
-import { useMapStore } from '@/stores';
 import { 
   MoreHorizontal, 
   GripVertical,
@@ -37,9 +36,10 @@ export interface IdeaNodeData extends BaseNodeData {
   type: 'idea';
 }
 
-const IdeaNode = memo(({ id, data, selected }: NodeProps<IdeaNodeData>) => {
+const IdeaNode = memo((props: NodeProps) => {
+  const { id, selected } = props;
+  const data = props.data as unknown as IdeaNodeData;
   const { setNodes, getNode, addNodes, addEdges } = useReactFlow();
-  const { setSelectedNodeId } = useMapStore();
   const [isEditing, setIsEditing] = React.useState(false);
   const [editValue, setEditValue] = React.useState(data.label);
   const inputRef = React.useRef<HTMLInputElement>(null);

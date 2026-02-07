@@ -40,7 +40,7 @@ O sistema de IA segue o princípio **"Agent-First"**: usuários interagem via **
 ```typescript
 // Configuração via env vars
 const AI_CONFIG = {
-  model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
+  model: process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001',
   maxTokens: parseInt(process.env.CLAUDE_MAX_TOKENS || '4096'),
   temperature: parseFloat(process.env.CLAUDE_TEMPERATURE || '0.7'),
 };
@@ -50,8 +50,8 @@ const AI_CONFIG = {
 
 | Modelo | Uso Recomendado | Tokens/min |
 |--------|-----------------|------------|
-| `claude-sonnet-4-20250514` | Tarefas gerais, expansão | Alto |
-| `claude-opus-4-20250514` | Tarefas complexas, análise | Médio |
+| `claude-haiku-4-5-20251001` | Tarefas gerais, rápido e econômico | Alto |
+| `claude-sonnet-4-20250514` | Tarefas complexas, análise profunda | Médio |
 
 ### 2.3 Endpoint de Modelos
 

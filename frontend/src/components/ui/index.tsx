@@ -1,4 +1,4 @@
-// UI Components - Export all
+// UI Components
 export * from './button';
 export * from './input';
 export * from './textarea';

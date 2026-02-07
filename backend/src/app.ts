@@ -22,17 +22,24 @@ const app: Express = express();
 app.use(helmet());
 
 // CORS
+const parseCorsOrigins = (value?: string): string[] =>
+  (value || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+const allowedOrigins = Array.from(
+  new Set([
+    env.FRONTEND_URL,
+    ...parseCorsOrigins(env.CORS_ORIGINS),
+    ...parseCorsOrigins(env.CORS_ORIGIN),
+  ])
+);
+
 const corsOptions = {
   origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
-    const allowedOrigins = [
-      env.FRONTEND_URL,
-      'http://localhost:3000',
-      'http://localhost:5173',
-      'https://mind-map-three-blue.vercel.app',
-      'https://mind-pobl2i17w-guilherme-oliveira-de-paulas-projects.vercel.app'
-    ];
-    
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Include localhost origins even if origin is undefined (local development)
+    if (!origin || allowedOrigins.includes(origin) || origin?.includes('localhost')) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -41,6 +48,7 @@ const corsOptions = {
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 86400,
   optionsSuccessStatus: 200
 };
 

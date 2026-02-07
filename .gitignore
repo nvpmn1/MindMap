@@ -1,39 +1,97 @@
-# Environment variables
+# ==============================================
+# MindMap Hub - .gitignore
+# ==============================================
+
+# =========== ENVIRONMENT & SECRETS ===========
 .env
 .env.local
+.env*.local
+.env.production
+.env.development
+.env.test
+.env.staging
 .env.production.local
 .env.development.local
 .env.test.local
 PRIVATE_*.md
 *_KEYS.md
+*.pem
+*.key
 
-# Dependencies
+# ============== DEPENDENCIES =================
 node_modules/
-frontend/node_modules/
-backend/node_modules/
+**/node_modules/
+.pnpm-store/
+.yarn/
 
-# Build outputs
+# ============== PYTHON =======================
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+pip-log.txt
+
+# ============== BUILD OUTPUTS ================
 dist/
 build/
+out/
 *.tsbuildinfo
+.next/
+.nuxt/
+.output/
 
-# IDE
+# ============== CACHE & TEMP =================
+.cache/
+.turbo/
+.vite/
+.parcel-cache/
+*.tmp
+*.temp
+coverage/
+.nyc_output/
+
+# ============== IDE & EDITORS ================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+*.sublime-*
+.project
+.classpath
+.settings/
 
-# OS
+# ============== OS GENERATED =================
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+desktop.ini
 
-# Logs
+# ============== LOGS =========================
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# Misc
-.cache/
-.turbo/
+# ============== MISC =========================
+_trash/
+*.bak
+*.backup
+*.old
+*~
+\#*\#
+
+# ============== TESTING ======================
+coverage/
+.nyc_output/
+*.lcov
+junit.xml
+test-results/

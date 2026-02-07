@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { supabaseAdmin } from '../services/supabase';
-import { asyncHandler } from '../middleware';
+import { asyncHandler, authenticate } from '../middleware';
 import { ValidationError, NotFoundError } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { env } from '../utils/env';
@@ -198,29 +198,23 @@ router.post(
  */
 router.get(
   '/me',
+  authenticate,
   asyncHandler(async (req: Request, res: Response) => {
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new ValidationError('Authorization header required');
+    if (!req.user) {
+      throw new ValidationError('User not authenticated');
     }
 
-    const token = authHeader.split(' ')[1];
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
-
-    if (error || !user) {
-      throw new NotFoundError('User not found');
-    }
+    const userId = req.user.id;
 
     // Get profile
-    const { data: profile } = await supabaseAdmin
+    const { data: profile } = await req.supabase!
       .from('profiles')
       .select('*')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single();
 
     // Get workspaces
-    const { data: memberships } = await supabaseAdmin
+    const { data: memberships } = await req.supabase!
       .from('workspace_members')
       .select(`
         role,
@@ -231,7 +225,7 @@ router.get(
           description
         )
       `)
-      .eq('user_id', user.id);
+      .eq('user_id', userId);
 
     const userProfile = profile as any;
     const membershipsList = memberships as any[] || [];
@@ -240,14 +234,96 @@ router.get(
       success: true,
       data: {
         user: {
-          id: user.id,
-          email: user.email,
+          id: userId,
+          email: req.user.email,
           ...(userProfile || {}),
         },
         workspaces: membershipsList.map(m => ({
           ...(m.workspace || {}),
           role: m.role,
         })),
+      },
+    });
+  })
+);
+
+/**
+ * PATCH /api/auth/me
+ * Update current user profile (display_name, avatar_url, color, preferences)
+ */
+const updateProfileSchema = z.object({
+  display_name: z.string().max(100).optional(),
+  // Accept data URLs (from local canvas) or regular URLs
+  avatar_url: z.string()
+    .refine(val => {
+      if (!val || val === '') return true;
+      // Accept data URLs or HTTP(S) URLs
+      return val.startsWith('data:') || val.startsWith('http://') || val.startsWith('https://');
+    }, 'Must be a valid data URL or HTTP(S) URL')
+    .optional(),
+  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  preferences: z.record(z.unknown()).optional(),
+});
+
+router.patch(
+  '/me',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    if (!req.user) {
+      throw new ValidationError('User not authenticated');
+    }
+
+    const userId = req.user.id;
+
+    // Validate input
+    const parsed = updateProfileSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError(parsed.error.errors[0].message);
+    }
+
+    const { display_name, avatar_url, color, preferences } = parsed.data;
+
+    // Build update data
+    const updateData: any = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (display_name !== undefined) {
+      updateData.display_name = display_name;
+    }
+    if (avatar_url !== undefined) {
+      updateData.avatar_url = avatar_url || null;
+    }
+    if (color !== undefined) {
+      updateData.color = color;
+    }
+    if (preferences !== undefined) {
+      updateData.preferences = preferences;
+    }
+
+    // Update profile using authenticated supabase client
+    const { data: updatedProfile, error: updateError } = await req.supabase!
+      .from('profiles')
+      .update(updateData)
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (updateError || !updatedProfile) {
+      logger.error({ error: updateError?.message, userId }, 'Failed to update profile');
+      throw new ValidationError('Failed to update profile');
+    }
+
+    logger.info({ userId }, 'Profile updated successfully');
+
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: userId,
+          email: req.user.email,
+          ...updatedProfile,
+        },
       },
     });
   })

@@ -34,7 +34,9 @@ const noteColors = [
   { name: 'Roxo', bg: 'bg-purple-100 dark:bg-purple-900/30', border: 'border-purple-300 dark:border-purple-700' },
 ];
 
-const NoteNode = memo(({ id, data, selected }: NodeProps<NoteNodeData>) => {
+const NoteNode = memo((props: NodeProps) => {
+  const { id, selected } = props;
+  const data = props.data as unknown as NoteNodeData;
   const { setNodes, getNode, addNodes } = useReactFlow();
   const [isEditing, setIsEditing] = React.useState(false);
   const [editLabel, setEditLabel] = React.useState(data.label);

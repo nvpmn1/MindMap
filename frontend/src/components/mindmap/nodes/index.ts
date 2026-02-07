@@ -3,12 +3,13 @@ export * from './IdeaNode';
 export * from './TaskNode';
 export * from './NoteNode';
 
+import { NodeTypes } from '@xyflow/react';
 import { IdeaNode } from './IdeaNode';
 import { TaskNode } from './TaskNode';
 import { NoteNode } from './NoteNode';
 
 // Node types map for React Flow
-export const nodeTypes = {
+export const nodeTypes: NodeTypes = {
   idea: IdeaNode,
   task: TaskNode,
   note: NoteNode,

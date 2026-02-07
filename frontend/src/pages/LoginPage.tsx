@@ -8,7 +8,7 @@ import { Network } from 'lucide-react';
 // Os 3 usuários do grupo - PABLO, GUILHERME e HELEN
 const TEAM_PROFILES = [
   {
-    id: 'guilherme-001',
+    id: 'f7a2d3b1-6b1f-4e0e-8a2b-1f3e2d4c5b6a',
     name: 'Guilherme',
     email: 'guilherme@mindmap.app',
     role: 'Lead Researcher',
@@ -17,7 +17,7 @@ const TEAM_PROFILES = [
     description: 'Arquitetura de sistemas e análise de dados',
   },
   {
-    id: 'helen-002', 
+    id: '3b9c1f8a-2a1f-4c4f-9d3b-7c6a5e4d3f2b', 
     name: 'Helen',
     email: 'helen@mindmap.app',
     role: 'Data Scientist',
@@ -26,7 +26,7 @@ const TEAM_PROFILES = [
     description: 'Machine learning e modelagem preditiva',
   },
   {
-    id: 'pablo-003',
+    id: '9c2b7d4a-1f3e-4b6a-8d2c-5e1f9a0b7c6d',
     name: 'Pablo',
     email: 'pablo@mindmap.app',
     role: 'Research Engineer',
@@ -76,6 +76,8 @@ function NeuralBackground() {
       });
     }
 
+    let rafId: number;
+
     const animate = () => {
       ctx.fillStyle = 'rgba(8, 12, 20, 0.1)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -113,12 +115,15 @@ function NeuralBackground() {
         ctx.fill();
       });
 
-      requestAnimationFrame(animate);
+      rafId = requestAnimationFrame(animate);
     };
 
-    animate();
+    rafId = requestAnimationFrame(animate);
 
-    return () => window.removeEventListener('resize', resize);
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', resize);
+    };
   }, []);
 
   return (

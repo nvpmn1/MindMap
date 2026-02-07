@@ -8,7 +8,7 @@ import { AuthLayout } from '@/components/layout/AuthLayout';
 // Pages
 import { LoginPage } from '@/pages/LoginPage';
 import { DashboardPage } from '@/pages/DashboardPage';
-import { MapEditorPage } from '@/pages/MapEditorPage';
+import NeuralMapEditorPage from '@/pages/NeuralMapEditorPage';
 import { KanbanPage } from '@/pages/KanbanPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -73,7 +73,7 @@ function App() {
         path="/map/:mapId"
         element={
           <ProtectedRoute>
-            <MapEditorPage />
+            <NeuralMapEditorPage />
           </ProtectedRoute>
         }
       />

@@ -323,6 +323,5 @@ export {
   CardTitle, 
   CardDescription, 
   CardContent,
-  MapCard,
   TaskCard,
 };

@@ -1,29 +1,23 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/stores/authStore';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { GlassCard, MapCard, LoadingCard } from '@/components/ui/AnimatedCards';
+import { mapsApi } from '@/lib/api';
+import { formatRelativeTime } from '@/lib/utils';
 import {
-  Plus,
+  Network,
+  Layers,
+  Clock,
   Search,
+  Plus,
   LayoutGrid,
   List,
-  Star,
-  Folder,
-  FolderOpen,
-  Clock,
-  Archive,
+  ArrowUpDown,
   Trash2,
-  SortAsc,
-  SortDesc,
-  Sparkles,
-  ChevronRight,
-  Network,
+  Copy,
+  MoreHorizontal,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { cn } from '@/lib/utils';
 
 interface MapItem {
   id: string;
@@ -32,598 +26,475 @@ interface MapItem {
   created_at: string;
   updated_at: string;
   nodes_count: number;
-  collaborators: Array<{ name: string; color: string }>;
-  status: 'active' | 'archived' | 'draft';
-  starred?: boolean;
-  folder?: string;
-  tags?: string[];
 }
 
-interface FolderItem {
-  id: string;
-  name: string;
-  color: string;
-  count: number;
-}
+type SortBy = 'updated' | 'created' | 'title' | 'nodes';
+type ViewMode = 'grid' | 'list';
 
-// Mock data
-const MOCK_MAPS: MapItem[] = [
-  {
-    id: 'map-001',
-    title: 'Pesquisa de IA Generativa',
-    description: 'Análise de papers e arquiteturas de LLMs para o projeto de pesquisa',
-    created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
-    updated_at: new Date(Date.now() - 3600000).toISOString(),
-    nodes_count: 47,
-    collaborators: [
-      { name: 'Guilherme', color: '#00D9FF' },
-      { name: 'Helen', color: '#00FFC8' },
-      { name: 'Pablo', color: '#A78BFA' },
-    ],
-    status: 'active',
-    starred: true,
-    folder: 'Pesquisa',
-    tags: ['IA', 'LLM', 'GPT'],
-  },
-  {
-    id: 'map-002',
-    title: 'Roadmap Q1 2026',
-    description: 'Planejamento de sprints e entregas do trimestre',
-    created_at: new Date(Date.now() - 86400000 * 5).toISOString(),
-    updated_at: new Date(Date.now() - 86400000).toISOString(),
-    nodes_count: 32,
-    collaborators: [
-      { name: 'Pablo', color: '#A78BFA' },
-      { name: 'Guilherme', color: '#00D9FF' },
-    ],
-    status: 'active',
-    folder: 'Planejamento',
-    tags: ['Roadmap', 'Sprint'],
-  },
-  {
-    id: 'map-003',
-    title: 'Arquitetura do Sistema',
-    description: 'Diagramas e decisões técnicas do MindMap Hub',
-    created_at: new Date(Date.now() - 86400000 * 10).toISOString(),
-    updated_at: new Date(Date.now() - 86400000 * 2).toISOString(),
-    nodes_count: 58,
-    collaborators: [
-      { name: 'Helen', color: '#00FFC8' },
-      { name: 'Guilherme', color: '#00D9FF' },
-    ],
-    status: 'active',
-    starred: true,
-    folder: 'Técnico',
-    tags: ['Arquitetura', 'Infra'],
-  },
-  {
-    id: 'map-004',
-    title: 'Brainstorm - Novos Features',
-    description: 'Ideias para próximas versões do produto',
-    created_at: new Date(Date.now() - 86400000 * 15).toISOString(),
-    updated_at: new Date(Date.now() - 86400000 * 5).toISOString(),
-    nodes_count: 23,
-    collaborators: [
-      { name: 'Guilherme', color: '#00D9FF' },
-    ],
-    status: 'draft',
-    tags: ['Brainstorm', 'Features'],
-  },
-  {
-    id: 'map-005',
-    title: 'Análise de Competidores',
-    description: 'Estudo detalhado dos principais concorrentes do mercado',
-    created_at: new Date(Date.now() - 86400000 * 20).toISOString(),
-    updated_at: new Date(Date.now() - 86400000 * 10).toISOString(),
-    nodes_count: 35,
-    collaborators: [
-      { name: 'Pablo', color: '#A78BFA' },
-    ],
-    status: 'archived',
-    folder: 'Pesquisa',
-    tags: ['Mercado', 'Competidores'],
-  },
-  {
-    id: 'map-006',
-    title: 'Estratégia de Marketing',
-    description: 'Plano de lançamento e growth hacking',
-    created_at: new Date(Date.now() - 86400000 * 8).toISOString(),
-    updated_at: new Date(Date.now() - 86400000 * 3).toISOString(),
-    nodes_count: 41,
-    collaborators: [
-      { name: 'Helen', color: '#00FFC8' },
-      { name: 'Pablo', color: '#A78BFA' },
-    ],
-    status: 'active',
-    starred: true,
-    folder: 'Marketing',
-    tags: ['Marketing', 'Growth'],
-  },
-];
+const container = {
+  hidden: { opacity: 0 },
+  show: { opacity: 1, transition: { staggerChildren: 0.04, delayChildren: 0.05 } },
+};
 
-const MOCK_FOLDERS: FolderItem[] = [
-  { id: 'pesquisa', name: 'Pesquisa', color: '#00D9FF', count: 2 },
-  { id: 'planejamento', name: 'Planejamento', color: '#A78BFA', count: 1 },
-  { id: 'tecnico', name: 'Técnico', color: '#00FFC8', count: 1 },
-  { id: 'marketing', name: 'Marketing', color: '#F59E0B', count: 1 },
-];
+const fadeUp = {
+  hidden: { opacity: 0, y: 10 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: [0.25, 0.1, 0.25, 1] } },
+};
 
 export function MapsPage() {
   const navigate = useNavigate();
-  const { user } = useAuthStore();
+  const { workspaces } = useAuthStore();
   const [maps, setMaps] = useState<MapItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [filter, setFilter] = useState<'all' | 'starred' | 'active' | 'draft' | 'archived'>('all');
-  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<'updated' | 'created' | 'name' | 'nodes'>('updated');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [showSidebar] = useState(true);
+  const [query, setQuery] = useState('');
+  const [sortBy, setSortBy] = useState<SortBy>('updated');
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [contextMenu, setContextMenu] = useState<string | null>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setMaps(MOCK_MAPS);
-      setIsLoading(false);
-    }, 600);
-    return () => clearTimeout(timer);
-  }, []);
+    loadMaps();
+  }, [workspaces]);
 
-  const filteredMaps = useMemo(() => {
-    let result = [...maps];
-    
-    // Apply folder filter
-    if (selectedFolder) {
-      result = result.filter(m => m.folder?.toLowerCase() === selectedFolder.toLowerCase());
-    }
-    
-    // Apply status filter
-    if (filter === 'starred') {
-      result = result.filter(m => m.starred);
-    } else if (filter !== 'all') {
-      result = result.filter(m => m.status === filter);
-    }
-    
-    // Apply search
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(m => 
-        m.title.toLowerCase().includes(query) ||
-        m.description?.toLowerCase().includes(query) ||
-        m.tags?.some(t => t.toLowerCase().includes(query))
-      );
-    }
-    
-    // Apply sorting
-    result.sort((a, b) => {
-      let comparison = 0;
-      switch (sortBy) {
-        case 'updated':
-          comparison = new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
-          break;
-        case 'created':
-          comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-          break;
-        case 'name':
-          comparison = a.title.localeCompare(b.title);
-          break;
-        case 'nodes':
-          comparison = a.nodes_count - b.nodes_count;
-          break;
+  const loadMaps = async () => {
+    setIsLoading(true);
+    const workspaceId = workspaces[0]?.id;
+
+    if (workspaceId) {
+      try {
+        const response = await mapsApi.list({ workspace_id: workspaceId, limit: 100, offset: 0 });
+        const data = (response.data as any[]) || [];
+        const normalized = data.map((map) => ({
+          id: map.id,
+          title: map.title,
+          description: map.description || null,
+          created_at: map.created_at || map.updated_at || new Date().toISOString(),
+          updated_at: map.updated_at || map.created_at || new Date().toISOString(),
+          nodes_count: map._count?.count || map.nodes_count || 0,
+        })) as MapItem[];
+        setMaps(normalized);
+        setIsLoading(false);
+        return;
+      } catch {
+        // fallback
       }
-      return sortOrder === 'desc' ? -comparison : comparison;
-    });
-    
-    return result;
-  }, [maps, filter, searchQuery, selectedFolder, sortBy, sortOrder]);
+    }
 
-  const stats = useMemo(() => ({
-    total: maps.length,
-    active: maps.filter(m => m.status === 'active').length,
-    draft: maps.filter(m => m.status === 'draft').length,
-    archived: maps.filter(m => m.status === 'archived').length,
-    starred: maps.filter(m => m.starred).length,
-  }), [maps]);
+    const stored = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
+    setMaps(stored);
+    setIsLoading(false);
+  };
 
-  const handleCreateMap = () => {
+  const handleCreateMap = async () => {
+    const workspaceId = workspaces[0]?.id;
+    if (workspaceId) {
+      try {
+        const response = await mapsApi.create({
+          workspace_id: workspaceId,
+          title: 'Novo Mapa Mental',
+          description: '',
+        });
+        const map = response.data as any;
+        toast.success('Mapa criado!');
+        navigate(`/map/${map.id}`);
+        return;
+      } catch {
+        // fallback
+      }
+    }
+
     const newMap: MapItem = {
-      id: `map-${Date.now()}`,
+      id: crypto.randomUUID(),
       title: 'Novo Mapa Mental',
-      description: 'Clique para começar a adicionar ideias',
+      description: '',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       nodes_count: 1,
-      collaborators: [{ name: user?.display_name || 'User', color: user?.color || '#00D9FF' }],
-      status: 'draft',
     };
-    
-    const existingMaps = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
-    localStorage.setItem('mindmap_maps', JSON.stringify([newMap, ...existingMaps]));
-    
-    toast.success('Mapa criado com sucesso!');
+
+    const existing = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
+    localStorage.setItem('mindmap_maps', JSON.stringify([newMap, ...existing]));
+    toast.success('Mapa criado!');
     navigate(`/map/${newMap.id}`);
   };
 
-  const handleToggleStar = (mapId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setMaps(prev => prev.map(m => 
-      m.id === mapId ? { ...m, starred: !m.starred } : m
-    ));
-    toast.success('Favorito atualizado!');
+  const handleDeleteMap = async (mapId: string) => {
+    try {
+      await mapsApi.delete(mapId);
+      setMaps((prev) => prev.filter((m) => m.id !== mapId));
+      toast.success('Mapa excluído');
+    } catch {
+      // Fallback: delete from localStorage
+      try {
+        const existing = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
+        const updated = existing.filter((m: MapItem) => m.id !== mapId);
+        localStorage.setItem('mindmap_maps', JSON.stringify(updated));
+        setMaps((prev) => prev.filter((m) => m.id !== mapId));
+        
+        // Also delete associated nodes
+        localStorage.removeItem(`mindmap_nodes_${mapId}`);
+        
+        toast.success('Mapa excluído');
+      } catch {
+        toast.error('Erro ao excluir');
+      }
+    }
+    setContextMenu(null);
   };
 
-  const handleDeleteMap = (mapId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setMaps(prev => prev.filter(m => m.id !== mapId));
-    toast.success('Mapa excluído!');
+  const handleDuplicateMap = async (mapId: string) => {
+    try {
+      const response = await mapsApi.duplicate(mapId);
+      const map = response.data as any;
+      toast.success('Mapa duplicado!');
+      loadMaps();
+    } catch {
+      // Fallback: duplicate from localStorage
+      try {
+        const existing = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
+        const mapToDuplicate = existing.find((m: MapItem) => m.id === mapId);
+        
+        if (mapToDuplicate) {
+          const newMap: MapItem = {
+            ...mapToDuplicate,
+            id: crypto.randomUUID(),
+            title: `${mapToDuplicate.title} (Cópia)`,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          
+          localStorage.setItem('mindmap_maps', JSON.stringify([newMap, ...existing]));
+          
+          // Also duplicate nodes
+          const nodesCacheKey = `mindmap_nodes_${mapId}`;
+          const nodes = JSON.parse(localStorage.getItem(nodesCacheKey) || '[]');
+          if (nodes.length > 0) {
+            localStorage.setItem(`mindmap_nodes_${newMap.id}`, JSON.stringify(nodes));
+          }
+          
+          toast.success('Mapa duplicado!');
+          loadMaps();
+        } else {
+          toast.error('Mapa não encontrado');
+        }
+      } catch {
+        toast.error('Erro ao duplicar');
+      }
+    }
+    setContextMenu(null);
   };
 
-  const handleArchiveMap = (mapId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setMaps(prev => prev.map(m => 
-      m.id === mapId ? { ...m, status: m.status === 'archived' ? 'active' : 'archived' } : m
-    ));
-    toast.success('Status atualizado!');
+  const safeDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? 'Recente' : formatRelativeTime(d);
   };
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-    const minutes = Math.floor(diff / (1000 * 60));
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    
-    if (minutes < 60) return `${minutes}min atrás`;
-    if (hours < 24) return `${hours}h atrás`;
-    if (days === 1) return 'Ontem';
-    if (days < 7) return `${days} dias atrás`;
-    return date.toLocaleDateString('pt-BR');
-  };
+  const filteredMaps = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    let list = q
+      ? maps.filter(
+          (m) =>
+            m.title.toLowerCase().includes(q) ||
+            (m.description ?? '').toLowerCase().includes(q)
+        )
+      : maps;
+
+    // Sort
+    list = [...list].sort((a, b) => {
+      switch (sortBy) {
+        case 'created':
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        case 'title':
+          return a.title.localeCompare(b.title);
+        case 'nodes':
+          return b.nodes_count - a.nodes_count;
+        default: // updated
+          return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+      }
+    });
+
+    return list;
+  }, [maps, query, sortBy]);
+
+  const sortOptions: { value: SortBy; label: string }[] = [
+    { value: 'updated', label: 'Recentes' },
+    { value: 'created', label: 'Criação' },
+    { value: 'title', label: 'Nome' },
+    { value: 'nodes', label: 'Nós' },
+  ];
+
+  const iconColors = [
+    'from-cyan-500/20 to-blue-600/20 text-cyan-400',
+    'from-purple-500/20 to-pink-600/20 text-purple-400',
+    'from-emerald-500/20 to-teal-600/20 text-emerald-400',
+    'from-amber-500/20 to-orange-600/20 text-amber-400',
+    'from-rose-500/20 to-red-600/20 text-rose-400',
+    'from-indigo-500/20 to-violet-600/20 text-indigo-400',
+  ];
 
   return (
-    <div className="min-h-screen bg-[#080C14] overflow-y-auto">
-      {/* Animated Background */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-cyan-500/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 right-1/4 w-[600px] h-[600px] bg-purple-500/5 rounded-full blur-3xl" />
-      </div>
+    <div className="min-h-full bg-[#060910]">
+      <motion.div
+        variants={container}
+        initial="hidden"
+        animate="show"
+        className="max-w-6xl mx-auto px-6 py-8 space-y-6"
+      >
+        {/* Title + Create */}
+        <motion.div variants={fadeUp} className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-white tracking-tight">Meus Mapas</h1>
+            <p className="text-sm text-slate-400 mt-1">
+              {maps.length} {maps.length === 1 ? 'mapa' : 'mapas'} no total
+            </p>
+          </div>
+          <button
+            onClick={handleCreateMap}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-[13px] font-medium hover:from-cyan-500 hover:to-blue-500 transition-all shadow-lg shadow-cyan-500/15"
+          >
+            <Plus className="w-4 h-4" />
+            Novo Mapa
+          </button>
+        </motion.div>
 
-      <div className="relative flex">
-        {/* Sidebar com Folders */}
-        <AnimatePresence>
-          {showSidebar && (
-            <motion.aside
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 280, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              className="sticky top-0 h-screen border-r border-slate-800/50 bg-[#0A0E18]/80 backdrop-blur-xl overflow-hidden"
-            >
-              <div className="p-4 h-full flex flex-col">
-                {/* Create Button */}
-                <Button
-                  onClick={handleCreateMap}
-                  className="w-full bg-gradient-to-r from-cyan-600 to-purple-600 hover:from-cyan-500 hover:to-purple-500 text-white mb-6"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Novo Mapa
-                </Button>
-
-                {/* Quick Filters */}
-                <div className="space-y-1 mb-6">
-                  <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-2 mb-2">
-                    Filtros Rápidos
-                  </h3>
-                  {[
-                    { key: 'all', icon: <Folder className="w-4 h-4" />, label: 'Todos os Mapas', count: stats.total },
-                    { key: 'starred', icon: <Star className="w-4 h-4 text-yellow-400" />, label: 'Favoritos', count: stats.starred },
-                    { key: 'active', icon: <Clock className="w-4 h-4 text-green-400" />, label: 'Ativos', count: stats.active },
-                    { key: 'draft', icon: <FolderOpen className="w-4 h-4 text-amber-400" />, label: 'Rascunhos', count: stats.draft },
-                    { key: 'archived', icon: <Archive className="w-4 h-4 text-slate-400" />, label: 'Arquivados', count: stats.archived },
-                  ].map((item) => (
-                    <button
-                      key={item.key}
-                      onClick={() => { setFilter(item.key as any); setSelectedFolder(null); }}
-                      className={cn(
-                        'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all',
-                        filter === item.key && !selectedFolder
-                          ? 'bg-cyan-500/20 text-cyan-400'
-                          : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
-                      )}
-                    >
-                      {item.icon}
-                      <span className="flex-1 text-left">{item.label}</span>
-                      <span className="text-xs bg-slate-800 px-2 py-0.5 rounded-full">
-                        {item.count}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-
-                {/* Folders */}
-                <div className="flex-1">
-                  <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-2 mb-2">
-                    Pastas
-                  </h3>
-                  <div className="space-y-1">
-                    {MOCK_FOLDERS.map((folder) => (
-                      <button
-                        key={folder.id}
-                        onClick={() => { setSelectedFolder(folder.name); setFilter('all'); }}
-                        className={cn(
-                          'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all',
-                          selectedFolder === folder.name
-                            ? 'bg-cyan-500/20 text-cyan-400'
-                            : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
-                        )}
-                      >
-                        <div 
-                          className="w-4 h-4 rounded"
-                          style={{ backgroundColor: folder.color + '40', border: `1px solid ${folder.color}` }}
-                        />
-                        <span className="flex-1 text-left">{folder.name}</span>
-                        <span className="text-xs bg-slate-800 px-2 py-0.5 rounded-full">
-                          {folder.count}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* AI Generate */}
-                <div className="pt-4 border-t border-slate-800">
-                  <button className="w-full flex items-center gap-3 px-3 py-3 rounded-lg bg-gradient-to-r from-purple-900/30 to-pink-900/30 border border-purple-500/20 text-purple-300 hover:border-purple-500/40 transition-all">
-                    <Sparkles className="w-5 h-5" />
-                    <div className="text-left">
-                      <p className="text-sm font-medium">Gerar com IA</p>
-                      <p className="text-xs text-purple-400/60">Crie mapas automaticamente</p>
-                    </div>
-                  </button>
-                </div>
-              </div>
-            </motion.aside>
-          )}
-        </AnimatePresence>
-
-        {/* Main Content */}
-        <main className="flex-1 p-6">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-2xl font-bold text-white mb-1">
-                {selectedFolder || (filter === 'all' ? 'Meus Mapas' : filter === 'starred' ? 'Favoritos' : filter === 'active' ? 'Mapas Ativos' : filter === 'draft' ? 'Rascunhos' : 'Arquivados')}
-              </h1>
-              <p className="text-slate-500 text-sm">
-                {filteredMaps.length} mapa{filteredMaps.length !== 1 ? 's' : ''} encontrado{filteredMaps.length !== 1 ? 's' : ''}
-              </p>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              {/* Search */}
-              <div className="relative w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                <Input
-                  placeholder="Buscar mapas..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 bg-slate-900/50 border-slate-800 text-white placeholder:text-slate-600"
-                />
-              </div>
-
-              {/* Sort */}
-              <div className="flex items-center gap-1 bg-slate-900/50 rounded-lg border border-slate-800 p-1">
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                  className="bg-transparent text-sm text-slate-400 px-2 py-1 focus:outline-none"
-                >
-                  <option value="updated">Atualizado</option>
-                  <option value="created">Criado</option>
-                  <option value="name">Nome</option>
-                  <option value="nodes">Nós</option>
-                </select>
-                <button
-                  onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-                  className="p-1.5 text-slate-400 hover:text-white rounded transition-colors"
-                >
-                  {sortOrder === 'desc' ? <SortDesc className="w-4 h-4" /> : <SortAsc className="w-4 h-4" />}
-                </button>
-              </div>
-
-              {/* View Mode */}
-              <div className="flex items-center gap-1 bg-slate-900/50 rounded-lg border border-slate-800 p-1">
-                <button
-                  onClick={() => setViewMode('grid')}
-                  className={cn(
-                    'p-1.5 rounded transition-colors',
-                    viewMode === 'grid' ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-400 hover:text-white'
-                  )}
-                >
-                  <LayoutGrid className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={cn(
-                    'p-1.5 rounded transition-colors',
-                    viewMode === 'list' ? 'bg-cyan-500/20 text-cyan-400' : 'text-slate-400 hover:text-white'
-                  )}
-                >
-                  <List className="w-4 h-4" />
-                </button>
-              </div>
-
-              <Button onClick={handleCreateMap} className="bg-cyan-600 hover:bg-cyan-500 text-white">
-                <Plus className="w-4 h-4 mr-2" />
-                Novo Mapa
-              </Button>
-            </div>
+        {/* Toolbar */}
+        <motion.div
+          variants={fadeUp}
+          className="flex flex-col sm:flex-row items-start sm:items-center gap-3"
+        >
+          {/* Search */}
+          <div className="relative flex-1 w-full sm:max-w-sm">
+            <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar mapas..."
+              className="w-full h-10 pl-10 pr-4 rounded-xl bg-white/[0.03] border border-white/[0.06] text-[13px] text-white placeholder-slate-500 outline-none focus:border-cyan-500/30 focus:bg-white/[0.05] transition-all"
+            />
           </div>
 
-          {/* Maps Grid/List */}
-          {isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[...Array(6)].map((_, i) => (
-                <LoadingCard key={i} />
+          <div className="flex items-center gap-2 ml-auto">
+            {/* Sort */}
+            <div className="flex items-center gap-1 bg-white/[0.03] border border-white/[0.06] rounded-xl px-1 h-10">
+              <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 ml-2" />
+              {sortOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setSortBy(opt.value)}
+                  className={`px-2.5 py-1.5 rounded-lg text-[12px] font-medium transition-all ${
+                    sortBy === opt.value
+                      ? 'bg-cyan-500/15 text-cyan-400'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {opt.label}
+                </button>
               ))}
             </div>
-          ) : filteredMaps.length === 0 ? (
-            <GlassCard gradient="none" className="p-12 text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-slate-800 flex items-center justify-center">
-                <Network className="w-8 h-8 text-slate-600" />
-              </div>
-              <h3 className="text-lg font-medium text-white mb-2">Nenhum mapa encontrado</h3>
-              <p className="text-sm text-slate-500 mb-4">
-                {searchQuery ? 'Tente outro termo de busca' : 'Crie seu primeiro mapa mental'}
-              </p>
-              <Button onClick={handleCreateMap} className="bg-cyan-600 hover:bg-cyan-500">
-                <Plus className="w-4 h-4 mr-2" />
-                Criar Mapa
-              </Button>
-            </GlassCard>
-          ) : viewMode === 'grid' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <AnimatePresence mode="popLayout">
-                {filteredMaps.map((map, index) => (
-                  <motion.div
-                    key={map.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    transition={{ delay: index * 0.05 }}
-                    className="group relative"
-                  >
-                    <MapCard
-                      id={map.id}
-                      title={map.title}
-                      description={map.description || undefined}
-                      nodes={map.nodes_count}
-                      lastEdited={formatDate(map.updated_at)}
-                      collaborators={map.collaborators}
-                      status={map.status}
-                      onClick={() => navigate(`/map/${map.id}`)}
-                    />
-                    
-                    {/* Quick Actions Overlay */}
-                    <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={(e) => handleToggleStar(map.id, e)}
-                        className={cn(
-                          'p-1.5 rounded-lg backdrop-blur-sm transition-colors',
-                          map.starred 
-                            ? 'bg-yellow-500/20 text-yellow-400' 
-                            : 'bg-slate-900/80 text-slate-400 hover:text-yellow-400'
-                        )}
-                      >
-                        <Star className={cn('w-4 h-4', map.starred && 'fill-current')} />
-                      </button>
-                      <button
-                        onClick={(e) => handleArchiveMap(map.id, e)}
-                        className="p-1.5 rounded-lg bg-slate-900/80 text-slate-400 hover:text-white backdrop-blur-sm transition-colors"
-                      >
-                        <Archive className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={(e) => handleDeleteMap(map.id, e)}
-                        className="p-1.5 rounded-lg bg-slate-900/80 text-slate-400 hover:text-red-400 backdrop-blur-sm transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
+
+            {/* View Toggle */}
+            <div className="flex bg-white/[0.03] border border-white/[0.06] rounded-xl p-1 h-10">
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`px-2.5 rounded-lg transition-all ${
+                  viewMode === 'grid' ? 'bg-cyan-500/15 text-cyan-400' : 'text-slate-500 hover:text-white'
+                }`}
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`px-2.5 rounded-lg transition-all ${
+                  viewMode === 'list' ? 'bg-cyan-500/15 text-cyan-400' : 'text-slate-500 hover:text-white'
+                }`}
+              >
+                <List className="w-4 h-4" />
+              </button>
             </div>
-          ) : (
-            <div className="space-y-2">
-              <AnimatePresence mode="popLayout">
-                {filteredMaps.map((map, index) => (
-                  <motion.div
-                    key={map.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                    transition={{ delay: index * 0.03 }}
+          </div>
+        </motion.div>
+
+        {/* Content */}
+        {isLoading ? (
+          <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3' : 'space-y-2'}>
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className={`rounded-xl bg-white/[0.02] animate-pulse ${viewMode === 'grid' ? 'h-[130px]' : 'h-[72px]'}`} />
+            ))}
+          </div>
+        ) : filteredMaps.length === 0 ? (
+          <motion.div variants={fadeUp} className="text-center py-16 rounded-2xl border border-dashed border-white/[0.06] bg-white/[0.01]">
+            <Network className="w-10 h-10 text-slate-700 mx-auto mb-3" />
+            <p className="text-[14px] text-slate-400 mb-1">
+              {query ? 'Nenhum mapa encontrado' : 'Nenhum mapa ainda'}
+            </p>
+            <p className="text-[12px] text-slate-600 mb-4">
+              {query ? 'Tente uma busca diferente' : 'Crie seu primeiro mapa mental'}
+            </p>
+            {!query && (
+              <button
+                onClick={handleCreateMap}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-[13px] font-medium hover:from-cyan-500 hover:to-blue-500 transition-all"
+              >
+                <Plus className="w-4 h-4" />
+                Criar mapa
+              </button>
+            )}
+          </motion.div>
+        ) : viewMode === 'grid' ? (
+          <motion.div
+            variants={container}
+            initial="hidden"
+            animate="show"
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 relative"
+          >
+            <AnimatePresence>
+              {filteredMaps.map((map, i) => (
+                <motion.div
+                  key={map.id}
+                  variants={fadeUp}
+                  layout
+                  className="relative group"
+                >
+                  <button
                     onClick={() => navigate(`/map/${map.id}`)}
-                    className="group flex items-center gap-4 p-4 rounded-xl bg-slate-900/30 border border-slate-800/50 hover:border-cyan-500/30 hover:bg-slate-800/30 cursor-pointer transition-all"
+                    className="w-full text-left p-4 rounded-xl border border-white/[0.04] bg-white/[0.02] hover:bg-white/[0.04] hover:border-cyan-500/15 transition-all duration-200"
                   >
-                    {/* Icon */}
-                    <div className={cn(
-                      'w-12 h-12 rounded-xl flex items-center justify-center',
-                      map.status === 'draft' ? 'bg-amber-500/20' : map.status === 'archived' ? 'bg-slate-500/20' : 'bg-cyan-500/20'
-                    )}>
-                      <Network className={cn(
-                        'w-6 h-6',
-                        map.status === 'draft' ? 'text-amber-400' : map.status === 'archived' ? 'text-slate-400' : 'text-cyan-400'
-                      )} />
-                    </div>
-
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-medium text-white truncate">{map.title}</h3>
-                        {map.starred && <Star className="w-4 h-4 text-yellow-400 fill-current flex-shrink-0" />}
+                    <div className="flex items-start gap-3">
+                      <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${iconColors[i % iconColors.length]} flex items-center justify-center flex-shrink-0`}>
+                        <Network className="w-5 h-5" />
                       </div>
-                      <p className="text-sm text-slate-500 truncate">{map.description}</p>
-                    </div>
-
-                    {/* Tags */}
-                    {map.tags && (
-                      <div className="hidden lg:flex items-center gap-1">
-                        {map.tags.slice(0, 2).map(tag => (
-                          <span key={tag} className="px-2 py-0.5 text-xs bg-slate-800 text-slate-400 rounded">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Collaborators */}
-                    <div className="flex items-center -space-x-1">
-                      {map.collaborators.slice(0, 3).map((collab, i) => (
-                        <div
-                          key={i}
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold border-2 border-[#0A0E18]"
-                          style={{ backgroundColor: collab.color + '20', color: collab.color }}
-                        >
-                          {collab.name[0]}
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Meta */}
-                    <div className="text-right text-sm text-slate-500 min-w-[100px]">
-                      <p>{map.nodes_count} nós</p>
-                      <p className="text-xs">{formatDate(map.updated_at)}</p>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={(e) => handleToggleStar(map.id, e)}
-                        className={cn(
-                          'p-1.5 rounded-lg transition-colors',
-                          map.starred ? 'text-yellow-400' : 'text-slate-400 hover:text-yellow-400'
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-[14px] font-medium text-white truncate group-hover:text-cyan-300 transition-colors">
+                          {map.title}
+                        </h3>
+                        {map.description && (
+                          <p className="text-[12px] text-slate-500 mt-1 line-clamp-1">{map.description}</p>
                         )}
-                      >
-                        <Star className={cn('w-4 h-4', map.starred && 'fill-current')} />
-                      </button>
-                      <button
-                        onClick={(e) => handleDeleteMap(map.id, e)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                      <ChevronRight className="w-5 h-5 text-slate-600" />
+                        <div className="flex items-center gap-3 mt-3">
+                          <span className="text-[11px] text-slate-500 flex items-center gap-1">
+                            <Layers className="w-3 h-3" />
+                            {map.nodes_count} nós
+                          </span>
+                          <span className="text-[11px] text-slate-500 flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {safeDate(map.updated_at)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
-          )}
-        </main>
-      </div>
+                  </button>
+
+                  {/* Context Menu Button */}
+                  <div className="absolute top-3 right-3 z-50">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setContextMenu(contextMenu === map.id ? null : map.id);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] flex items-center justify-center transition-all"
+                    >
+                      <MoreHorizontal className="w-4 h-4 text-slate-400" />
+                    </button>
+
+                    {contextMenu === map.id && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.95, y: -8 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: -8 }}
+                        transition={{ duration: 0.15 }}
+                        className="absolute right-0 top-full mt-2 w-44 bg-slate-900 border border-white/[0.12] rounded-xl shadow-2xl shadow-black/50 p-1.5 z-50"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDuplicateMap(map.id);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 text-[12px] text-slate-300 hover:text-white hover:bg-white/[0.08] rounded-lg transition-all"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                          Duplicar
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteMap(map.id);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 text-[12px] text-red-400 hover:text-red-300 hover:bg-red-500/[0.1] rounded-lg transition-all"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Excluir
+                        </button>
+                      </motion.div>
+                    )}
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </motion.div>
+        ) : (
+          /* List View */
+          <motion.div
+            variants={container}
+            initial="hidden"
+            animate="show"
+            className="space-y-1"
+          >
+            {filteredMaps.map((map, i) => (
+              <motion.div key={map.id} variants={fadeUp} className="relative group">
+                <button
+                  onClick={() => navigate(`/map/${map.id}`)}
+                  className="w-full flex items-center gap-4 px-4 py-3 rounded-xl border border-transparent hover:border-white/[0.04] bg-transparent hover:bg-white/[0.02] transition-all duration-200"
+                >
+                  <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${iconColors[i % iconColors.length]} flex items-center justify-center flex-shrink-0`}>
+                    <Network className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0 text-left">
+                    <h3 className="text-[13px] font-medium text-white truncate group-hover:text-cyan-300 transition-colors">
+                      {map.title}
+                    </h3>
+                  </div>
+                  <span className="text-[11px] text-slate-500 flex items-center gap-1 flex-shrink-0">
+                    <Layers className="w-3 h-3" />
+                    {map.nodes_count}
+                  </span>
+                  <span className="text-[11px] text-slate-500 flex-shrink-0 w-20 text-right">
+                    {safeDate(map.updated_at)}
+                  </span>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDuplicateMap(map.id);
+                      }}
+                      className="w-7 h-7 rounded-lg hover:bg-white/[0.06] flex items-center justify-center"
+                      title="Duplicar"
+                    >
+                      <Copy className="w-3.5 h-3.5 text-slate-400" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteMap(map.id);
+                      }}
+                      className="w-7 h-7 rounded-lg hover:bg-red-500/[0.06] flex items-center justify-center"
+                      title="Excluir"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-slate-400 hover:text-red-400" />
+                    </button>
+                  </div>
+                </button>
+              </motion.div>
+            ))}
+          </motion.div>
+        )}
+      </motion.div>
+
+      {/* Click outside to close context menu */}
+      {contextMenu && (
+        <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} />
+      )}
     </div>
   );
 }
-
-export default MapsPage;

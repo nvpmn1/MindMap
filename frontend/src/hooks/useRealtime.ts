@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useMapStore } from '@/stores/mapStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -14,12 +14,14 @@ interface UseRealtimeOptions {
  */
 export function useRealtime({ mapId, enabled = true }: UseRealtimeOptions) {
   const { profile } = useAuthStore();
-  const { setActiveUsers, updateUserCursor, nodes, edges, setNodes, setEdges } = useMapStore();
+  const setActiveUsers = useMapStore((state) => state.setActiveUsers);
+  const channelRef = useRef<RealtimeChannel | null>(null);
 
   // Handle node changes from other users
   const handleNodeChange = useCallback(
     (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
       const { eventType, new: newRecord, old: oldRecord } = payload;
+      const { nodes, setNodes } = useMapStore.getState();
 
       switch (eventType) {
         case 'INSERT': {
@@ -39,13 +41,14 @@ export function useRealtime({ mapId, enabled = true }: UseRealtimeOptions) {
         }
       }
     },
-    [nodes, setNodes]
+    []
   );
 
   // Handle edge changes from other users
   const handleEdgeChange = useCallback(
     (payload: RealtimePostgresChangesPayload<{ [key: string]: unknown }>) => {
       const { eventType, new: newRecord, old: oldRecord } = payload;
+      const { edges, setEdges } = useMapStore.getState();
 
       switch (eventType) {
         case 'INSERT': {
@@ -65,7 +68,7 @@ export function useRealtime({ mapId, enabled = true }: UseRealtimeOptions) {
         }
       }
     },
-    [edges, setEdges]
+    []
   );
 
   // Handle presence (user cursors, who's online)
@@ -100,6 +103,7 @@ export function useRealtime({ mapId, enabled = true }: UseRealtimeOptions) {
           },
         },
       });
+      channelRef.current = channel;
 
       // Subscribe to node changes
       channel.on(
@@ -148,8 +152,9 @@ export function useRealtime({ mapId, enabled = true }: UseRealtimeOptions) {
     setupRealtime();
 
     return () => {
-      if (channel) {
-        supabase.removeChannel(channel);
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
       }
     };
   }, [enabled, mapId, profile, handleNodeChange, handleEdgeChange, handlePresenceSync]);
@@ -159,7 +164,9 @@ export function useRealtime({ mapId, enabled = true }: UseRealtimeOptions) {
     async (cursor: { x: number; y: number } | null) => {
       if (!profile || !mapId) return;
 
-      const channel = supabase.channel(`map:${mapId}`);
+      const channel = channelRef.current;
+      if (!channel) return;
+
       await channel.track({
         user_id: profile.id,
         display_name: profile.display_name || profile.email,

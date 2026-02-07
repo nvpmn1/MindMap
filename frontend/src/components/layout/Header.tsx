@@ -1,233 +1,394 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { cn } from '@/lib/utils';
-import { useAuthStore, useUIStore } from '@/stores';
-import { 
-  UserAvatar, 
-  AvatarGroup,
-  SimpleTooltip, 
-  Button,
-} from '@/components/ui';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { useAuthStore } from '@/stores/authStore';
+import { mapsApi, nodesApi } from '@/lib/api';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
-  Bell,
-  Search,
+  Home,
+  Map as MapIcon,
   Settings,
-  LogOut,
+  ChevronRight,
+  Search,
   User,
-  HelpCircle,
-  MessageSquare,
-  ChevronDown,
+  Network,
+  CircleDot,
+  Loader2,
+  X,
 } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { cn, formatRelativeTime } from '@/lib/utils';
 
-interface HeaderProps {
-  title?: string;
-  subtitle?: string;
-  showSearch?: boolean;
-  showCollaborators?: boolean;
-  collaborators?: Array<{
-    id: string;
-    name: string;
-    avatar_url?: string;
-    isOnline?: boolean;
-  }>;
-  actions?: React.ReactNode;
-  breadcrumbs?: Array<{ label: string; href?: string }>;
+interface SearchMapResult {
+  id: string;
+  title: string;
+  description?: string | null;
+  updated_at?: string | null;
 }
 
-export function Header({
-  title,
-  subtitle,
-  showSearch = true,
-  showCollaborators = false,
-  collaborators = [],
-  actions,
-  breadcrumbs,
-}: HeaderProps) {
-  const { user, signOut } = useAuthStore();
-  const { setCommandPaletteOpen } = useUIStore();
-  const [notifications] = React.useState([
-    { id: '1', title: 'Novo comentário', message: 'Helen comentou no mapa Projeto Alpha', time: '5min' },
-    { id: '2', title: 'Tarefa atribuída', message: 'Pablo atribuiu uma tarefa para você', time: '1h' },
-  ]);
+interface SearchNodeResult {
+  id: string;
+  label: string;
+  content?: string | null;
+  mapId: string;
+  mapTitle: string;
+}
+
+// Header component for the app layout
+export function Header() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { user, workspaces } = useAuthStore();
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [results, setResults] = useState<{ maps: SearchMapResult[]; nodes: SearchNodeResult[] }>(
+    { maps: [], nodes: [] }
+  );
+  const searchRef = useRef<HTMLDivElement>(null);
+  const nodesCacheRef = useRef(new Map<string, any[]>());
+  const lastQueryRef = useRef('');
+
+  // Page config
+  const getPageConfig = useCallback(() => {
+    const path = location.pathname;
+    if (path === '/maps') return { title: 'Meus Mapas', icon: MapIcon, crumbs: ['Dashboard', 'Meus Mapas'] };
+    if (path.includes('/map/')) return { title: 'Editor', icon: MapIcon, crumbs: ['Dashboard', 'Mapas', 'Editor'] };
+    if (path === '/settings') return { title: 'Configurações', icon: Settings, crumbs: ['Dashboard', 'Configurações'] };
+    return { title: 'Dashboard', icon: Home, crumbs: ['Dashboard'] };
+  }, [location.pathname]);
+
+  const config = getPageConfig();
+
+  const runSearch = useCallback(async (query: string) => {
+    const q = query.trim().toLowerCase();
+    if (!q) {
+      setResults({ maps: [], nodes: [] });
+      setIsSearching(false);
+      return;
+    }
+
+    lastQueryRef.current = q;
+    setIsSearching(true);
+    const workspaceId = workspaces[0]?.id;
+
+    let maps: Array<any> = [];
+
+    if (workspaceId) {
+      try {
+        const response = await mapsApi.list({ workspace_id: workspaceId, limit: 200, offset: 0 });
+        maps = (response.data as any[]) || [];
+      } catch {
+        maps = [];
+      }
+    } else {
+      maps = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
+    }
+
+    const mapResults: SearchMapResult[] = maps
+      .filter((m) => {
+        const title = (m.title || '').toString().toLowerCase();
+        const desc = (m.description || '').toString().toLowerCase();
+        return title.includes(q) || desc.includes(q);
+      })
+      .map((m) => ({
+        id: m.id,
+        title: m.title || 'Mapa',
+        description: m.description || null,
+        updated_at: m.updated_at || m.created_at || null,
+      }));
+
+    const nodeResults: SearchNodeResult[] = [];
+
+    if (workspaceId) {
+      const nodesByMap = await Promise.all(
+        maps.map(async (m) => {
+          if (nodesCacheRef.current.has(m.id)) {
+            return { map: m, nodes: nodesCacheRef.current.get(m.id) || [] };
+          }
+          try {
+            const response = await nodesApi.listByMap(m.id);
+            const nodes = (response.data as any[]) || [];
+            nodesCacheRef.current.set(m.id, nodes);
+            return { map: m, nodes };
+          } catch {
+            return { map: m, nodes: [] };
+          }
+        })
+      );
+
+      nodesByMap.forEach(({ map, nodes }) => {
+        nodes.forEach((node: any) => {
+          const label = (node.label ?? node.data?.label ?? 'Nó').toString();
+          const content = (node.content ?? node.data?.content ?? node.data?.description ?? '').toString();
+          const hay = `${label} ${content}`.toLowerCase();
+          if (hay.includes(q)) {
+            nodeResults.push({
+              id: node.id,
+              label,
+              content,
+              mapId: map.id,
+              mapTitle: map.title || 'Mapa',
+            });
+          }
+        });
+      });
+    } else {
+      maps.forEach((m) => {
+        const raw = localStorage.getItem(`mindmap_nodes_${m.id}`);
+        if (!raw) return;
+        try {
+          const data = JSON.parse(raw);
+          const nodes = data.nodes || [];
+          nodes.forEach((node: any) => {
+            const label = (node.data?.label ?? node.label ?? 'Nó').toString();
+            const content = (node.data?.content ?? node.content ?? node.data?.description ?? '').toString();
+            const hay = `${label} ${content}`.toLowerCase();
+            if (hay.includes(q)) {
+              nodeResults.push({
+                id: node.id,
+                label,
+                content,
+                mapId: m.id,
+                mapTitle: m.title || 'Mapa',
+              });
+            }
+          });
+        } catch {
+          return;
+        }
+      });
+    }
+
+    if (lastQueryRef.current !== q) return;
+    setResults({ maps: mapResults, nodes: nodeResults });
+    setIsSearching(false);
+  }, [workspaces]);
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) {
+      setResults({ maps: [], nodes: [] });
+      setIsSearching(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      runSearch(q);
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, runSearch]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
-    <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-background/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      {/* Left Section */}
-      <div className="flex items-center gap-4">
-        {/* Breadcrumbs */}
-        {breadcrumbs && breadcrumbs.length > 0 && (
-          <nav className="flex items-center gap-1 text-sm">
-            {breadcrumbs.map((crumb, index) => (
-              <React.Fragment key={crumb.label}>
-                {index > 0 && (
-                  <span className="text-muted-foreground">/</span>
-                )}
-                {crumb.href ? (
-                  <Link
-                    to={crumb.href}
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {crumb.label}
-                  </Link>
-                ) : (
-                  <span className="text-foreground font-medium">{crumb.label}</span>
-                )}
-              </React.Fragment>
-            ))}
-          </nav>
-        )}
-
-        {/* Title */}
-        {title && !breadcrumbs && (
-          <div>
-            <h1 className="text-lg font-semibold">{title}</h1>
-            {subtitle && (
-              <p className="text-sm text-muted-foreground">{subtitle}</p>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Center Section - Search */}
-      {showSearch && (
-        <div className="hidden md:flex flex-1 max-w-md mx-4">
-          <button
-            onClick={() => setCommandPaletteOpen(true)}
-            className="flex w-full items-center gap-2 rounded-lg border bg-background px-4 py-2 text-sm text-muted-foreground hover:bg-accent transition-colors"
-          >
-            <Search className="h-4 w-4" />
-            <span>Buscar mapas, tarefas, pessoas...</span>
-            <kbd className="ml-auto hidden rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium sm:inline">
-              ⌘K
-            </kbd>
-          </button>
-        </div>
-      )}
-
-      {/* Right Section */}
-      <div className="flex items-center gap-3">
-        {/* Custom Actions */}
-        {actions}
-
-        {/* Collaborators */}
-        {showCollaborators && collaborators.length > 0 && (
-          <div className="hidden md:flex items-center gap-2 border-r pr-3 mr-1">
-            <AvatarGroup users={collaborators} max={3} size="sm" />
-            <span className="text-xs text-muted-foreground">
-              {collaborators.filter(c => c.isOnline).length} online
+    <header className="h-[60px] border-b border-white/[0.04] bg-[#0A0E18]/60 backdrop-blur-xl flex items-center px-6 gap-4">
+      {/* Breadcrumbs */}
+      <motion.div
+        initial={{ opacity: 0, x: -10 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.2 }}
+        className="flex items-center gap-1.5 min-w-0"
+      >
+        {config.crumbs.map((crumb, i) => (
+          <div key={crumb} className="flex items-center gap-1.5">
+            {i > 0 && <ChevronRight className="w-3 h-3 text-slate-600 flex-shrink-0" />}
+            <span
+              className={cn(
+                'text-[13px] whitespace-nowrap',
+                i === config.crumbs.length - 1
+                  ? 'text-white font-medium'
+                  : 'text-slate-500'
+              )}
+            >
+              {crumb}
             </span>
           </div>
-        )}
+        ))}
+      </motion.div>
 
-        {/* AI Chat Toggle */}
-        <SimpleTooltip content="Chat IA" side="bottom">
-          <Button variant="ghost" size="icon">
-            <MessageSquare className="h-5 w-5" />
-          </Button>
-        </SimpleTooltip>
+      {/* Spacer */}
+      <div className="flex-1" />
 
-        {/* Notifications */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="h-5 w-5" />
-              {notifications.length > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
-                  {notifications.length}
-                </span>
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80">
-            <DropdownMenuLabel className="flex items-center justify-between">
-              <span>Notificações</span>
-              <button className="text-xs text-primary hover:underline">
-                Marcar todas como lidas
-              </button>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {notifications.length === 0 ? (
-              <div className="p-4 text-center text-sm text-muted-foreground">
-                Nenhuma notificação
-              </div>
-            ) : (
-              notifications.map((notification) => (
-                <DropdownMenuItem key={notification.id} className="flex flex-col items-start gap-1 p-3">
-                  <div className="flex w-full items-center justify-between">
-                    <span className="font-medium text-sm">{notification.title}</span>
-                    <span className="text-xs text-muted-foreground">{notification.time}</span>
-                  </div>
-                  <span className="text-xs text-muted-foreground">{notification.message}</span>
-                </DropdownMenuItem>
-              ))
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="justify-center text-primary">
-              Ver todas as notificações
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {/* Help */}
-        <SimpleTooltip content="Ajuda" side="bottom">
-          <Button variant="ghost" size="icon">
-            <HelpCircle className="h-5 w-5" />
-          </Button>
-        </SimpleTooltip>
-
-        {/* User Menu */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 rounded-full p-1 hover:bg-accent transition-colors">
-              <UserAvatar
-                name={user?.name || 'Usuário'}
-                src={user?.avatar_url}
-                size="sm"
-              />
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+      {/* Search */}
+      <div ref={searchRef} className="relative hidden md:block">
+        <motion.div
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={cn(
+            'flex items-center gap-2 px-3 h-9 rounded-xl border transition-all duration-200',
+            searchFocused
+              ? 'bg-white/[0.06] border-cyan-500/30 w-64'
+              : 'bg-white/[0.02] border-white/[0.06] w-52 hover:bg-white/[0.04]'
+          )}
+        >
+          <Search className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+          <input
+            type="text"
+            placeholder="Buscar em mapas e nós..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => {
+              setSearchFocused(true);
+              setSearchOpen(true);
+            }}
+            onBlur={() => setSearchFocused(false)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setSearchOpen(false);
+              }
+              if (e.key === 'Enter' && results.maps[0]) {
+                navigate(`/map/${results.maps[0].id}`);
+                setSearchOpen(false);
+              }
+            }}
+            className="flex-1 bg-transparent text-[13px] text-white placeholder-slate-500 outline-none"
+          />
+          {searchQuery ? (
+            <button
+              onClick={() => {
+                setSearchQuery('');
+                setResults({ maps: [], nodes: [] });
+              }}
+              className="text-slate-500 hover:text-slate-300"
+            >
+              <X className="w-3.5 h-3.5" />
             </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>
-              <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium leading-none">{user?.name}</p>
-                <p className="text-xs leading-none text-muted-foreground">
-                  {user?.email}
+          ) : (
+            <kbd className="hidden lg:inline text-[10px] text-slate-600 bg-white/[0.04] px-1.5 py-0.5 rounded">
+              ⌘K
+            </kbd>
+          )}
+        </motion.div>
+
+        {searchOpen && (
+          <div className="absolute right-0 top-11 w-[520px] rounded-2xl border border-white/[0.06] bg-[#0D1323]/95 backdrop-blur-xl shadow-2xl shadow-black/40 overflow-hidden z-50">
+            <div className="px-4 py-3 border-b border-white/[0.04] flex items-center justify-between">
+              <div>
+                <p className="text-[12px] text-slate-500">Busca avançada</p>
+                <p className="text-[13px] text-white">
+                  {searchQuery ? `Resultados para “${searchQuery}”` : 'Digite para buscar'}
                 </p>
               </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link to="/profile" className="flex items-center gap-2">
-                <User className="h-4 w-4" />
-                Perfil
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link to="/settings" className="flex items-center gap-2">
-                <Settings className="h-4 w-4" />
-                Configurações
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => signOut()}
-              className="text-destructive focus:text-destructive"
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Sair
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              {isSearching && (
+                <div className="flex items-center gap-2 text-[12px] text-slate-400">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Buscando...
+                </div>
+              )}
+            </div>
+
+            <div className="max-h-[420px] overflow-auto">
+              {!searchQuery && (
+                <div className="px-4 py-6 text-[13px] text-slate-500">
+                  Busque por nomes de mapas, nós, conteúdos e palavras-chave.
+                </div>
+              )}
+
+              {searchQuery && !isSearching && results.maps.length === 0 && results.nodes.length === 0 && (
+                <div className="px-4 py-6 text-[13px] text-slate-500">
+                  Nenhum resultado encontrado.
+                </div>
+              )}
+
+              {results.maps.length > 0 && (
+                <div className="px-4 pt-4">
+                  <div className="flex items-center gap-2 text-[12px] text-slate-500 mb-2">
+                    <Network className="w-3.5 h-3.5" />
+                    Mapas ({results.maps.length})
+                  </div>
+                  <div className="space-y-1">
+                    {results.maps.map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => {
+                          navigate(`/map/${m.id}`);
+                          setSearchOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-white/[0.04] transition-all"
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="text-[13px] text-white truncate">{m.title || 'Mapa'}</p>
+                          <span className="text-[11px] text-slate-500">
+                            {m.updated_at ? formatRelativeTime(m.updated_at) : 'Recente'}
+                          </span>
+                        </div>
+                        {m.description && (
+                          <p className="text-[12px] text-slate-500 line-clamp-1">{m.description}</p>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {results.nodes.length > 0 && (
+                <div className="px-4 py-4">
+                  <div className="flex items-center gap-2 text-[12px] text-slate-500 mb-2">
+                    <CircleDot className="w-3.5 h-3.5" />
+                    Nós ({results.nodes.length})
+                  </div>
+                  <div className="space-y-1">
+                    {results.nodes.map((n) => (
+                      <button
+                        key={n.id}
+                        onClick={() => {
+                          navigate(`/map/${n.mapId}?node=${n.id}&q=${encodeURIComponent(searchQuery)}`);
+                          setSearchOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-white/[0.04] transition-all"
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="text-[13px] text-white truncate">{n.label || 'Nó'}</p>
+                          <span className="text-[11px] text-slate-500 truncate max-w-[180px]">
+                            {n.mapTitle}
+                          </span>
+                        </div>
+                        {n.content && (
+                          <p className="text-[12px] text-slate-500 line-clamp-1">{n.content}</p>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Status Dot */}
+      <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.04]">
+        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
+        <span className="text-[11px] text-slate-400 font-medium">Online</span>
+      </div>
+
+      {/* User */}
+      <button
+        onClick={() => navigate('/settings')}
+        className="flex items-center gap-2.5 pl-3 border-l border-white/[0.04] hover:opacity-80 transition-opacity"
+      >
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500/20 to-purple-500/20 flex items-center justify-center overflow-hidden border border-white/10">
+          {user?.avatar_url ? (
+            <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <User className="w-4 h-4 text-slate-400" />
+          )}
+        </div>
+        <div className="hidden lg:block text-left">
+          <p className="text-[12px] font-medium text-white leading-tight truncate max-w-[100px]">
+            {user?.display_name || 'Usuário'}
+          </p>
+        </div>
+      </button>
     </header>
   );
 }

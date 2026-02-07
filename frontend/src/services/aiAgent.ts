@@ -6,8 +6,8 @@
 
 import { aiApi } from '@/lib/api';
 
-// Configuration - set to true to use local AI simulation for demo
-const USE_LOCAL_AI = true;
+// Configuration - always uses backend API (no local simulation)
+// const USE_LOCAL_AI = false; // REMOVED - not used anymore
 
 // Types for AI Agent
 export interface AIMessage {
@@ -318,35 +318,35 @@ class AIAgentService {
     this.isProcessing = true;
     
     try {
-      if (USE_LOCAL_AI) {
-        const suggestions = await this.localAI.generate(prompt, options.count || 5);
+      try {
+        const response = await aiApi.generate({
+          map_id: mapId,
+          prompt,
+          parent_node_id: parentNodeId,
+          options: {
+            count: options.count || 5,
+            style: options.style || 'creative',
+          },
+        });
+
+        if (!response.success || !response.data) {
+          throw new Error('Failed to generate ideas');
+        }
+
+        const data = response.data as any;
+        const suggestions = this.parseSuggestions(data.suggestions || []);
+
         return {
           suggestions,
           message: `Gerado ${suggestions.length} ideias baseadas em "${prompt}"`,
         };
+      } catch {
+        const suggestions = await this.localAI.generate(prompt, options.count || 5);
+        return {
+          suggestions,
+          message: `Gerado ${suggestions.length} ideias (fallback local) para "${prompt}"`,
+        };
       }
-
-      const response = await aiApi.generate({
-        map_id: mapId,
-        prompt,
-        parent_node_id: parentNodeId,
-        options: {
-          count: options.count || 5,
-          style: options.style || 'creative',
-        },
-      });
-
-      if (!response.success || !response.data) {
-        throw new Error('Failed to generate ideas');
-      }
-
-      const data = response.data as any;
-      const suggestions = this.parseSuggestions(data.suggestions || []);
-
-      return {
-        suggestions,
-        message: `Gerado ${suggestions.length} ideias baseadas em "${prompt}"`,
-      };
     } finally {
       this.isProcessing = false;
     }
@@ -363,35 +363,35 @@ class AIAgentService {
     this.isProcessing = true;
     
     try {
-      if (USE_LOCAL_AI) {
-        const suggestions = await this.localAI.expand(node, options.count || 4);
+      try {
+        const response = await aiApi.expand({
+          map_id: mapId,
+          node_id: node.id,
+          context: { node },
+          options: {
+            count: options.count || 4,
+            direction: options.direction || 'children',
+          },
+        });
+
+        if (!response.success || !response.data) {
+          throw new Error('Failed to expand node');
+        }
+
+        const data = response.data as any;
+        const suggestions = this.parseSuggestions(data.suggestions || []);
+
         return {
           suggestions,
           message: `Expandido "${node.label}" com ${suggestions.length} sub-ideias`,
         };
+      } catch {
+        const suggestions = await this.localAI.expand(node, options.count || 4);
+        return {
+          suggestions,
+          message: `Expandido "${node.label}" (fallback local) com ${suggestions.length} sub-ideias`,
+        };
       }
-
-      const response = await aiApi.expand({
-        map_id: mapId,
-        node_id: node.id,
-        context: { node },
-        options: {
-          count: options.count || 4,
-          direction: options.direction || 'children',
-        },
-      });
-
-      if (!response.success || !response.data) {
-        throw new Error('Failed to expand node');
-      }
-
-      const data = response.data as any;
-      const suggestions = this.parseSuggestions(data.suggestions || []);
-
-      return {
-        suggestions,
-        message: `Expandido "${node.label}" com ${suggestions.length} sub-ideias`,
-      };
     } finally {
       this.isProcessing = false;
     }
@@ -408,26 +408,26 @@ class AIAgentService {
     this.isProcessing = true;
     
     try {
-      if (USE_LOCAL_AI) {
+      try {
+        const response = await aiApi.summarize({
+          map_id: mapId,
+          context: { nodes },
+          options: { format, length: format === 'brief' ? 'short' : 'medium' },
+        });
+
+        if (!response.success || !response.data) {
+          throw new Error('Failed to summarize');
+        }
+
+        const data = response.data as any;
+
+        return {
+          summary: data.summary || 'Não foi possível gerar um resumo.',
+          insights: this.extractInsights(data.summary || ''),
+        };
+      } catch {
         return await this.localAI.summarize(nodes);
       }
-
-      const response = await aiApi.summarize({
-        map_id: mapId,
-        context: { nodes },
-        options: { format, length: format === 'brief' ? 'short' : 'medium' },
-      });
-
-      if (!response.success || !response.data) {
-        throw new Error('Failed to summarize');
-      }
-
-      const data = response.data as any;
-
-      return {
-        summary: data.summary || 'Não foi possível gerar um resumo.',
-        insights: this.extractInsights(data.summary || ''),
-      };
     } finally {
       this.isProcessing = false;
     }
@@ -444,32 +444,32 @@ class AIAgentService {
     this.isProcessing = true;
     
     try {
-      if (USE_LOCAL_AI) {
-        const tasks = await this.localAI.toTasks(nodes);
+      try {
+        const response = await aiApi.toTasks({
+          map_id: mapId,
+          node_ids: nodes.map(n => n.id),
+          context: { nodes },
+          options: { include_subtasks: includeSubtasks },
+        });
+
+        if (!response.success || !response.data) {
+          throw new Error('Failed to convert to tasks');
+        }
+
+        const data = response.data as any;
+        const tasks = this.parseTaskSuggestions(data.suggestions || []);
+
         return {
           tasks,
           message: `Criadas ${tasks.length} tarefas a partir de ${nodes.length} nós`,
         };
+      } catch {
+        const tasks = await this.localAI.toTasks(nodes);
+        return {
+          tasks,
+          message: `Criadas ${tasks.length} tarefas (fallback local) a partir de ${nodes.length} nós`,
+        };
       }
-
-      const response = await aiApi.toTasks({
-        map_id: mapId,
-        node_ids: nodes.map(n => n.id),
-        context: { nodes },
-        options: { include_subtasks: includeSubtasks },
-      });
-
-      if (!response.success || !response.data) {
-        throw new Error('Failed to convert to tasks');
-      }
-
-      const data = response.data as any;
-      const tasks = this.parseTaskSuggestions(data.suggestions || []);
-
-      return {
-        tasks,
-        message: `Criadas ${tasks.length} tarefas a partir de ${nodes.length} nós`,
-      };
     } finally {
       this.isProcessing = false;
     }
@@ -495,7 +495,39 @@ class AIAgentService {
     this.conversationHistory.push(userMessage);
 
     try {
-      if (USE_LOCAL_AI) {
+      try {
+        const response = await aiApi.chat({
+          map_id: mapId,
+          message,
+          context: {
+            nodes,
+            conversation_history: this.conversationHistory
+              .slice(-10) // Last 10 messages
+              .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+          },
+        });
+
+        if (!response.success || !response.data) {
+          throw new Error('Failed to chat');
+        }
+
+        const data = response.data as any;
+        
+        const assistantMessage: AIMessage = {
+          id: `msg-${Date.now()}-assistant`,
+          role: 'assistant',
+          content: data.response || 'Desculpe, não consegui processar sua mensagem.',
+          timestamp: new Date(),
+          metadata: {
+            tokensUsed: data.tokensOutput,
+            agentType: 'chat',
+          },
+        };
+        
+        this.conversationHistory.push(assistantMessage);
+        
+        return assistantMessage;
+      } catch {
         const responseText = await this.localAI.chat(message, nodes);
         const assistantMessage: AIMessage = {
           id: `msg-${Date.now()}-assistant`,
@@ -507,38 +539,6 @@ class AIAgentService {
         this.conversationHistory.push(assistantMessage);
         return assistantMessage;
       }
-
-      const response = await aiApi.chat({
-        map_id: mapId,
-        message,
-        context: {
-          nodes,
-          conversation_history: this.conversationHistory
-            .slice(-10) // Last 10 messages
-            .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-        },
-      });
-
-      if (!response.success || !response.data) {
-        throw new Error('Failed to chat');
-      }
-
-      const data = response.data as any;
-      
-      const assistantMessage: AIMessage = {
-        id: `msg-${Date.now()}-assistant`,
-        role: 'assistant',
-        content: data.response || 'Desculpe, não consegui processar sua mensagem.',
-        timestamp: new Date(),
-        metadata: {
-          tokensUsed: data.tokensOutput,
-          agentType: 'chat',
-        },
-      };
-      
-      this.conversationHistory.push(assistantMessage);
-      
-      return assistantMessage;
     } finally {
       this.isProcessing = false;
     }
@@ -558,14 +558,11 @@ class AIAgentService {
     this.isProcessing = true;
     
     try {
-      if (USE_LOCAL_AI) {
-        return await this.localAI.analyze(nodes);
-      }
-
-      // Use chat endpoint with analysis prompt
-      const response = await aiApi.chat({
-        map_id: mapId,
-        message: `Analise este mapa mental e identifique:
+      try {
+        // Use chat endpoint with analysis prompt
+        const response = await aiApi.chat({
+          map_id: mapId,
+          message: `Analise este mapa mental e identifique:
 1. Padrões principais (liste 3-5)
 2. Conexões potenciais entre conceitos
 3. Recomendações de melhoria
@@ -573,35 +570,38 @@ class AIAgentService {
 Nós do mapa: ${nodes.map(n => n.label).join(', ')}
 
 Responda em JSON com as chaves: patterns, connections, recommendations`,
-        context: { nodes },
-      });
+          context: { nodes },
+        });
 
-      if (!response.success || !response.data) {
-        throw new Error('Failed to analyze');
-      }
-
-      const data = response.data as any;
-      
-      // Try to parse JSON from response
-      try {
-        const jsonMatch = data.response?.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          return {
-            patterns: parsed.patterns || [],
-            connections: parsed.connections || [],
-            recommendations: parsed.recommendations || [],
-          };
+        if (!response.success || !response.data) {
+          throw new Error('Failed to analyze');
         }
-      } catch {
-        // If parsing fails, return structured defaults
-      }
 
-      return {
-        patterns: ['Análise não disponível'],
-        connections: [],
-        recommendations: ['Continue expandindo seu mapa para melhores insights'],
-      };
+        const data = response.data as any;
+        
+        // Try to parse JSON from response
+        try {
+          const jsonMatch = data.response?.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            return {
+              patterns: parsed.patterns || [],
+              connections: parsed.connections || [],
+              recommendations: parsed.recommendations || [],
+            };
+          }
+        } catch {
+          // If parsing fails, return structured defaults
+        }
+
+        return {
+          patterns: ['Análise não disponível'],
+          connections: [],
+          recommendations: ['Continue expandindo seu mapa para melhores insights'],
+        };
+      } catch {
+        return await this.localAI.analyze(nodes);
+      }
     } finally {
       this.isProcessing = false;
     }

@@ -7,28 +7,60 @@ Uma aplicação web moderna para visualizar, organizar e colaborar em mapas ment
 ```
 MindMap/
 ├── frontend/          # React + Vite + TypeScript (Vercel)
+│   └── src/           # Código fonte
 ├── backend/           # Node.js + Express + TypeScript (Render)
+│   └── src/           # Código fonte
 ├── database/          # Scripts SQL para Supabase
 ├── docs/              # Documentação completa
+├── _trash/            # Arquivos removidos (backup)
+├── package.json       # Scripts de orquestração
 ├── vercel.json        # Configuração Vercel
 └── README.md
 ```
 
 ## 🚀 Quick Start
 
-### 1. Frontend (Local)
+### Pré-requisitos
+- Node.js >= 20.0.0
+- npm >= 9.0.0
+
+### 1. Instalar dependências (raiz)
 ```bash
-cd frontend
-npm install
-npm run dev
+npm install                    # Instala concurrently
+npm run install:all            # Instala deps do backend e frontend
 ```
 
-### 2. Backend (Local)
+### 2. Configurar variáveis de ambiente
 ```bash
-cd backend
-npm install
-npm run dev
+# Backend
+cp backend/.env.example backend/.env
+# Edite backend/.env com suas credenciais
+
+# Frontend
+cp frontend/.env.example frontend/.env.local
+# Edite frontend/.env.local com suas credenciais
 ```
+
+### 3. Rodar em desenvolvimento
+```bash
+npm run dev                    # Inicia backend e frontend juntos
+```
+
+Ou separadamente:
+```bash
+npm run dev:backend            # Backend em http://localhost:3001
+npm run dev:frontend           # Frontend em http://localhost:5173
+```
+
+### Scripts disponíveis
+| Script | Descrição |
+|--------|-----------|
+| `npm run install:all` | Instala dependências do backend e frontend |
+| `npm run dev` | Inicia backend e frontend em paralelo |
+| `npm run build` | Compila backend e frontend |
+| `npm run typecheck` | Verifica tipos TypeScript |
+| `npm run lint` | Executa linter em todo o projeto |
+| `npm run clean` | Remove node_modules e dist |
 
 ## 🌐 Deploy
 

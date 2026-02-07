@@ -48,7 +48,9 @@ const priorityColors = {
   urgent: '#ef4444',
 };
 
-const TaskNode = memo(({ id, data, selected }: NodeProps<TaskNodeData>) => {
+const TaskNode = memo((props: NodeProps) => {
+  const { id, selected } = props;
+  const data = props.data as unknown as TaskNodeData;
   const { setNodes, getNode, addNodes } = useReactFlow();
   const [isEditing, setIsEditing] = React.useState(false);
   const [editValue, setEditValue] = React.useState(data.label);

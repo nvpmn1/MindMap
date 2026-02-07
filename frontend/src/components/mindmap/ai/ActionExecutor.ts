@@ -1,0 +1,462 @@
+// ============================================================================
+// NeuralMap - AI Action Executor
+// Converts AI tool_use calls into concrete map mutations
+// ============================================================================
+
+import type { PowerNode, PowerEdge, NeuralNodeData, NeuralNodeType, AIAgentAction, ChartData, TableData } from '../editor/types';
+import type { AgentToolName } from './tools';
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+export interface ExecutionResult {
+  success: boolean;
+  toolName: AgentToolName;
+  description: string;
+  nodesCreated?: string[];
+  nodesUpdated?: string[];
+  nodesDeleted?: string[];
+  edgesCreated?: Array<{ source: string; target: string }>;
+  edgesDeleted?: Array<{ source: string; target: string }>;
+  data?: any;
+  error?: string;
+}
+
+export interface ExecutionContext {
+  nodes: PowerNode[];
+  edges: PowerEdge[];
+  createNode: (type: NeuralNodeType, label: string, parentId?: string) => PowerNode;
+  updateNode: (nodeId: string, data: Partial<NeuralNodeData>) => void;
+  deleteNode: (nodeId: string) => void;
+  createEdge: (sourceId: string, targetId: string, label?: string) => PowerEdge | null;
+  deleteEdge: (sourceId: string, targetId: string) => void;
+}
+
+// ─── Action Executor ────────────────────────────────────────────────────────
+
+export class ActionExecutor {
+
+  /**
+   * Execute a single tool call from the AI
+   */
+  execute(toolName: AgentToolName, input: any, ctx: ExecutionContext): ExecutionResult {
+    try {
+      switch (toolName) {
+        case 'create_node':
+          return this.execCreateNode(input, ctx);
+        case 'update_node':
+          return this.execUpdateNode(input, ctx);
+        case 'delete_node':
+          return this.execDeleteNode(input, ctx);
+        case 'create_edge':
+          return this.execCreateEdge(input, ctx);
+        case 'delete_edge':
+          return this.execDeleteEdge(input, ctx);
+        case 'batch_create_nodes':
+          return this.execBatchCreate(input, ctx);
+        case 'batch_update_nodes':
+          return this.execBatchUpdate(input, ctx);
+        case 'analyze_map':
+          return this.execAnalyzeMap(input, ctx);
+        case 'reorganize_map':
+          return this.execReorganizeMap(input, ctx);
+        case 'find_nodes':
+          return this.execFindNodes(input, ctx);
+        default:
+          return { success: false, toolName, description: `Ferramenta desconhecida: ${toolName}`, error: 'Unknown tool' };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        toolName,
+        description: `Erro ao executar ${toolName}`,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Execute all tool calls from an AI response, in order
+   */
+  executeAll(
+    toolCalls: Array<{ name: AgentToolName; input: any }>,
+    ctx: ExecutionContext,
+  ): ExecutionResult[] {
+    const results: ExecutionResult[] = [];
+    // tempId → real ID mapping for batch operations
+    const idMap = new Map<string, string>();
+
+    for (const call of toolCalls) {
+      // Resolve tempIds in input
+      const resolvedInput = this.resolveIds(call.input, idMap);
+      const result = this.execute(call.name, resolvedInput, ctx);
+      
+      // If batch_create returned id mappings, record them
+      if (result.data?.idMap) {
+        for (const [tempId, realId] of Object.entries(result.data.idMap)) {
+          idMap.set(tempId, realId as string);
+        }
+      }
+      
+      results.push(result);
+    }
+
+    return results;
+  }
+
+  // ─── Individual Executors ──────────────────────────────────────────────
+
+  private execCreateNode(input: any, ctx: ExecutionContext): ExecutionResult {
+    const { type = 'idea', label, description, parentId, status, priority, tags, progress, dueDate, checklist, chart, table } = input;
+    
+    const node = ctx.createNode(type as NeuralNodeType, label, parentId);
+    
+    // Apply additional data
+    const updates: Partial<NeuralNodeData> = {};
+    if (description) updates.description = description;
+    if (status) updates.status = status;
+    if (priority) updates.priority = priority;
+    if (tags) updates.tags = tags;
+    if (progress !== undefined) updates.progress = progress;
+    if (dueDate) updates.dueDate = dueDate;
+    if (chart) updates.chart = chart as ChartData;
+    if (table) updates.table = table as TableData;
+    if (checklist) {
+      updates.checklist = checklist.map((item: any, i: number) => ({
+        id: `check_${Date.now()}_${i}`,
+        text: item.text,
+        completed: item.completed || false,
+      }));
+    }
+    updates.ai = { generated: true, model: 'claude-haiku', confidence: 0.9 };
+    
+    if (Object.keys(updates).length > 0) {
+      ctx.updateNode(node.id, updates);
+    }
+
+    return {
+      success: true,
+      toolName: 'create_node',
+      description: `Criado nó "${label}" (${type})`,
+      nodesCreated: [node.id],
+    };
+  }
+
+  private execUpdateNode(input: any, ctx: ExecutionContext): ExecutionResult {
+    const { nodeId, ...updates } = input;
+    
+    const node = ctx.nodes.find(n => n.id === nodeId);
+    if (!node) {
+      return { success: false, toolName: 'update_node', description: `Nó ${nodeId} não encontrado`, error: 'Node not found' };
+    }
+
+    // Build the data update
+    const dataUpdates: Partial<NeuralNodeData> = {};
+    if (updates.label !== undefined) dataUpdates.label = updates.label;
+    if (updates.description !== undefined) dataUpdates.description = updates.description;
+    if (updates.type !== undefined) dataUpdates.type = updates.type;
+    if (updates.status !== undefined) dataUpdates.status = updates.status;
+    if (updates.priority !== undefined) dataUpdates.priority = updates.priority;
+    if (updates.progress !== undefined) dataUpdates.progress = updates.progress;
+    if (updates.tags !== undefined) dataUpdates.tags = updates.tags;
+    if (updates.dueDate !== undefined) dataUpdates.dueDate = updates.dueDate;
+    if (updates.impact !== undefined) dataUpdates.impact = updates.impact;
+    if (updates.effort !== undefined) dataUpdates.effort = updates.effort;
+    if (updates.confidence !== undefined) dataUpdates.confidence = updates.confidence;
+    if (updates.chart !== undefined) dataUpdates.chart = updates.chart;
+    if (updates.table !== undefined) dataUpdates.table = updates.table;
+    if (updates.checklist) {
+      dataUpdates.checklist = updates.checklist.map((item: any, i: number) => ({
+        id: item.id || `check_${Date.now()}_${i}`,
+        text: item.text,
+        completed: item.completed || false,
+      }));
+    }
+
+    ctx.updateNode(nodeId, dataUpdates);
+
+    const changedFields = Object.keys(dataUpdates).join(', ');
+    return {
+      success: true,
+      toolName: 'update_node',
+      description: `Atualizado "${node.data.label}": ${changedFields}`,
+      nodesUpdated: [nodeId],
+    };
+  }
+
+  private execDeleteNode(input: any, ctx: ExecutionContext): ExecutionResult {
+    const { nodeId, reason } = input;
+    
+    const node = ctx.nodes.find(n => n.id === nodeId);
+    if (!node) {
+      return { success: false, toolName: 'delete_node', description: `Nó ${nodeId} não encontrado`, error: 'Node not found' };
+    }
+
+    const label = node.data.label;
+    ctx.deleteNode(nodeId);
+
+    return {
+      success: true,
+      toolName: 'delete_node',
+      description: `Removido "${label}"${reason ? ` (motivo: ${reason})` : ''}`,
+      nodesDeleted: [nodeId],
+    };
+  }
+
+  private execCreateEdge(input: any, ctx: ExecutionContext): ExecutionResult {
+    const { sourceId, targetId, label } = input;
+    
+    const edge = ctx.createEdge(sourceId, targetId, label);
+    if (!edge) {
+      return { success: false, toolName: 'create_edge', description: 'Falha ao criar conexão', error: 'Edge creation failed' };
+    }
+
+    return {
+      success: true,
+      toolName: 'create_edge',
+      description: `Conexão criada: ${sourceId} → ${targetId}`,
+      edgesCreated: [{ source: sourceId, target: targetId }],
+    };
+  }
+
+  private execDeleteEdge(input: any, ctx: ExecutionContext): ExecutionResult {
+    const { sourceId, targetId } = input;
+    ctx.deleteEdge(sourceId, targetId);
+
+    return {
+      success: true,
+      toolName: 'delete_edge',
+      description: `Conexão removida: ${sourceId} → ${targetId}`,
+      edgesDeleted: [{ source: sourceId, target: targetId }],
+    };
+  }
+
+  private execBatchCreate(input: any, ctx: ExecutionContext): ExecutionResult {
+    const { nodes: nodeSpecs } = input;
+    if (!Array.isArray(nodeSpecs) || nodeSpecs.length === 0) {
+      return { success: false, toolName: 'batch_create_nodes', description: 'Nenhum nó para criar', error: 'Empty nodes array' };
+    }
+
+    const idMap: Record<string, string> = {};
+    const createdIds: string[] = [];
+
+    for (const spec of nodeSpecs) {
+      // Resolve parentId: could be a tempId or real ID
+      let resolvedParentId = spec.parentId;
+      if (resolvedParentId && idMap[resolvedParentId]) {
+        resolvedParentId = idMap[resolvedParentId];
+      }
+
+      const node = ctx.createNode(
+        (spec.type || 'idea') as NeuralNodeType,
+        spec.label,
+        resolvedParentId,
+      );
+
+      // Map tempId → real ID
+      if (spec.tempId) {
+        idMap[spec.tempId] = node.id;
+      }
+
+      // Apply extra data
+      const updates: Partial<NeuralNodeData> = {};
+      if (spec.description) updates.description = spec.description;
+      if (spec.status) updates.status = spec.status;
+      if (spec.priority) updates.priority = spec.priority;
+      if (spec.tags) updates.tags = spec.tags;
+      if (spec.progress !== undefined) updates.progress = spec.progress;
+      if (spec.dueDate) updates.dueDate = spec.dueDate;
+      if (spec.checklist) {
+        updates.checklist = spec.checklist.map((item: any, i: number) => ({
+          id: `check_${Date.now()}_${i}`,
+          text: item.text,
+          completed: item.completed || false,
+        }));
+      }
+      if (spec.chart) updates.chart = spec.chart;
+      if (spec.table) updates.table = spec.table;
+      updates.ai = { generated: true, model: 'claude-haiku', confidence: 0.9 };
+
+      if (Object.keys(updates).length > 0) {
+        ctx.updateNode(node.id, updates);
+      }
+
+      createdIds.push(node.id);
+    }
+
+    return {
+      success: true,
+      toolName: 'batch_create_nodes',
+      description: `${createdIds.length} nós criados em lote`,
+      nodesCreated: createdIds,
+      data: { idMap },
+    };
+  }
+
+  private execBatchUpdate(input: any, ctx: ExecutionContext): ExecutionResult {
+    const { updates } = input;
+    if (!Array.isArray(updates) || updates.length === 0) {
+      return { success: false, toolName: 'batch_update_nodes', description: 'Nenhuma atualização', error: 'Empty updates array' };
+    }
+
+    const updatedIds: string[] = [];
+    for (const upd of updates) {
+      const { nodeId, ...fields } = upd;
+      const node = ctx.nodes.find(n => n.id === nodeId);
+      if (!node) continue;
+      
+      ctx.updateNode(nodeId, fields);
+      updatedIds.push(nodeId);
+    }
+
+    return {
+      success: true,
+      toolName: 'batch_update_nodes',
+      description: `${updatedIds.length} nós atualizados em lote`,
+      nodesUpdated: updatedIds,
+    };
+  }
+
+  private execAnalyzeMap(input: any, ctx: ExecutionContext): ExecutionResult {
+    const { nodes, edges } = ctx;
+    const focus = input.focus || 'all';
+
+    // Compute analytics
+    const typeCount = nodes.reduce((acc, n) => { acc[n.data.type] = (acc[n.data.type] || 0) + 1; return acc; }, {} as Record<string, number>);
+    const statusCount = nodes.reduce((acc, n) => { acc[n.data.status] = (acc[n.data.status] || 0) + 1; return acc; }, {} as Record<string, number>);
+    const priorityCount = nodes.reduce((acc, n) => { acc[n.data.priority] = (acc[n.data.priority] || 0) + 1; return acc; }, {} as Record<string, number>);
+    
+    const totalProgress = nodes.reduce((s, n) => s + (n.data.progress || 0), 0);
+    const avgProgress = nodes.length > 0 ? Math.round(totalProgress / nodes.length) : 0;
+    
+    const tasks = nodes.filter(n => n.data.type === 'task');
+    const completedTasks = tasks.filter(n => n.data.status === 'completed').length;
+    
+    const orphans = nodes.filter(n => !edges.some(e => e.source === n.id || e.target === n.id));
+    const aiNodes = nodes.filter(n => n.data.ai?.generated);
+
+    // Connection density
+    const maxEdges = nodes.length * (nodes.length - 1) / 2;
+    const density = maxEdges > 0 ? edges.length / maxEdges : 0;
+
+    // Most connected nodes
+    const connectionCount = nodes.map(n => ({
+      id: n.id,
+      label: n.data.label,
+      connections: edges.filter(e => e.source === n.id || e.target === n.id).length,
+    })).sort((a, b) => b.connections - a.connections);
+
+    const analysis = {
+      summary: {
+        totalNodes: nodes.length,
+        totalEdges: edges.length,
+        avgProgress,
+        tasks: tasks.length,
+        completedTasks,
+        orphanNodes: orphans.length,
+        aiGeneratedNodes: aiNodes.length,
+        connectionDensity: Math.round(density * 100),
+      },
+      byType: typeCount,
+      byStatus: statusCount,
+      byPriority: priorityCount,
+      topConnected: connectionCount.slice(0, 5),
+      issues: [] as string[],
+      suggestions: [] as string[],
+    };
+
+    // Identify issues
+    if (orphans.length > 0) analysis.issues.push(`${orphans.length} nós desconectados`);
+    if (avgProgress < 20 && tasks.length > 0) analysis.issues.push('Progresso geral muito baixo');
+    if (nodes.filter(n => !n.data.description).length > nodes.length * 0.5) {
+      analysis.issues.push('Mais de 50% dos nós sem descrição');
+    }
+
+    // Suggestions
+    if (tasks.length === 0) analysis.suggestions.push('Converter ideias principais em tarefas acionáveis');
+    if (density < 0.1) analysis.suggestions.push('Adicionar mais conexões entre nós relacionados');
+    if (nodes.filter(n => n.data.type === 'research').length === 0) {
+      analysis.suggestions.push('Adicionar nós de pesquisa para aprofundar o tema');
+    }
+
+    return {
+      success: true,
+      toolName: 'analyze_map',
+      description: `Análise completa: ${nodes.length} nós, ${edges.length} conexões, ${avgProgress}% progresso`,
+      data: analysis,
+    };
+  }
+
+  private execReorganizeMap(input: any, ctx: ExecutionContext): ExecutionResult {
+    // Note: actual repositioning happens in the UI layer via ReactFlow
+    // Here we return the reorganization plan
+    const { strategy } = input;
+    
+    return {
+      success: true,
+      toolName: 'reorganize_map',
+      description: `Reorganização planejada: estratégia ${strategy}`,
+      data: { strategy, applied: true },
+    };
+  }
+
+  private execFindNodes(input: any, ctx: ExecutionContext): ExecutionResult {
+    const { query, type, status, priority, tags } = input;
+    
+    let results = [...ctx.nodes];
+    
+    if (query) {
+      const q = query.toLowerCase();
+      results = results.filter(n => 
+        n.data.label.toLowerCase().includes(q) || 
+        (n.data.description || '').toLowerCase().includes(q)
+      );
+    }
+    if (type) results = results.filter(n => n.data.type === type);
+    if (status) results = results.filter(n => n.data.status === status);
+    if (priority) results = results.filter(n => n.data.priority === priority);
+    if (tags?.length) {
+      results = results.filter(n => tags.some((t: string) => n.data.tags?.includes(t)));
+    }
+
+    const found = results.map(n => ({
+      id: n.id,
+      type: n.data.type,
+      label: n.data.label,
+      status: n.data.status,
+      priority: n.data.priority,
+    }));
+
+    return {
+      success: true,
+      toolName: 'find_nodes',
+      description: `${found.length} nós encontrados`,
+      data: { nodes: found },
+    };
+  }
+
+  // ─── Helper: Resolve tempIds in inputs ────────────────────────────────
+
+  private resolveIds(input: any, idMap: Map<string, string>): any {
+    if (!input || typeof input !== 'object') return input;
+    
+    const resolved = { ...input };
+    for (const key of ['parentId', 'nodeId', 'sourceId', 'targetId', 'centerNodeId']) {
+      if (resolved[key] && idMap.has(resolved[key])) {
+        resolved[key] = idMap.get(resolved[key]);
+      }
+    }
+    
+    // Resolve arrays of node specs (for batch operations)
+    if (Array.isArray(resolved.nodes)) {
+      resolved.nodes = resolved.nodes.map((n: any) => this.resolveIds(n, idMap));
+    }
+    if (Array.isArray(resolved.updates)) {
+      resolved.updates = resolved.updates.map((u: any) => this.resolveIds(u, idMap));
+    }
+    
+    return resolved;
+  }
+}
+
+// Singleton
+export const actionExecutor = new ActionExecutor();

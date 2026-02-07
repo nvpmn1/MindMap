@@ -1,2 +1,3 @@
+# Frontend specific ignores (root .gitignore handles most)
 .vercel
 .env*.local

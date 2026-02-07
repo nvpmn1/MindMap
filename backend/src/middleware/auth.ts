@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { supabaseAdmin, supabaseClient } from '../services/supabase';
+import { env } from '../utils/env';
 import { AuthenticationError, AuthorizationError } from '../utils/errors';
 import { logger } from '../utils/logger';
 
@@ -30,6 +31,27 @@ export const authenticate = async (
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      if (env.ALLOW_PROFILE_AUTH) {
+        const profileId = req.headers['x-profile-id'] as string | undefined;
+        const profileEmail = (req.headers['x-profile-email'] as string | undefined) || '';
+        const profileName = (req.headers['x-profile-name'] as string | undefined) || 'Guest';
+        const profileColor = (req.headers['x-profile-color'] as string | undefined) || '#00D9FF';
+
+        if (profileId) {
+          await ensureProfileAndMembership(profileId, profileEmail, profileName, profileColor);
+
+          req.user = {
+            id: profileId,
+            email: profileEmail,
+            role: 'profile',
+          };
+
+          req.supabase = supabaseAdmin;
+          logger.debug({ userId: profileId }, 'Authenticated via profile header');
+          return next();
+        }
+      }
+
       throw new AuthenticationError('Missing or invalid authorization header');
     }
 
@@ -63,6 +85,58 @@ export const authenticate = async (
     next(error);
   }
 };
+
+async function ensureProfileAndMembership(
+  profileId: string,
+  email: string,
+  name: string,
+  color: string
+): Promise<void> {
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('id')
+    .eq('id', profileId)
+    .single();
+
+  if (!profile) {
+    await supabaseAdmin.from('profiles').insert({
+      id: profileId,
+      email: email || `${profileId}@profile.local`,
+      display_name: name,
+      color,
+    });
+  }
+
+  const { data: membership } = await supabaseAdmin
+    .from('workspace_members')
+    .select('workspace_id')
+    .eq('workspace_id', env.DEFAULT_WORKSPACE_ID)
+    .eq('user_id', profileId)
+    .single();
+
+  if (!membership) {
+    const { data: workspace } = await supabaseAdmin
+      .from('workspaces')
+      .select('id')
+      .eq('id', env.DEFAULT_WORKSPACE_ID)
+      .single();
+
+    if (!workspace) {
+      await supabaseAdmin.from('workspaces').insert({
+        id: env.DEFAULT_WORKSPACE_ID,
+        name: 'MindLab',
+        slug: 'mindlab',
+        description: 'Workspace padrão',
+      });
+    }
+
+    await supabaseAdmin.from('workspace_members').insert({
+      workspace_id: env.DEFAULT_WORKSPACE_ID,
+      user_id: profileId,
+      role: 'admin',
+    });
+  }
+}
 
 /**
  * Middleware to optionally authenticate user

@@ -544,4 +544,118 @@ router.get(
   })
 );
 
+// ─────────────────────────────────────────────────────────────────────────
+// POST /agent — Claude Tool-Use Agent Mode (Haiku-powered)
+// ─────────────────────────────────────────────────────────────────────────
+
+const agentSchema = z.object({
+  model: z.string().optional(),
+  mode: z.string().optional().default('agent'),
+  systemPrompt: z.string().min(1),
+  messages: z.array(z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string(),
+  })),
+  tools: z.array(z.object({
+    name: z.string(),
+    description: z.string(),
+    input_schema: z.any(),
+  })),
+  maxTokens: z.number().optional().default(4096),
+  temperature: z.number().optional().default(0.7),
+});
+
+router.post(
+  '/agent',
+  asyncHandler(async (req: Request, res: Response) => {
+    const parsed = agentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError(parsed.error.errors.map(e => e.message).join(', '));
+    }
+
+    const { model, mode, systemPrompt, messages, tools, maxTokens, temperature } = parsed.data;
+    const startTime = Date.now();
+
+    // Use Haiku as default for cost efficiency, allow override
+    const selectedModel = model || 'claude-haiku-4-5-20250201';
+
+    logger.info({
+      mode,
+      model: selectedModel,
+      messageCount: messages.length,
+      toolCount: tools.length,
+    }, 'AI Agent request received');
+
+    try {
+      // Call Claude with tool-use support
+      const response = await (aiOrchestrator as any).callAgentRaw({
+        model: selectedModel,
+        systemPrompt,
+        messages: messages.map(m => ({
+          role: m.role,
+          content: m.content,
+        })),
+        tools: tools.map(t => ({
+          name: t.name,
+          description: t.description,
+          input_schema: t.input_schema,
+        })),
+        maxTokens,
+        temperature,
+      });
+
+      const durationMs = Date.now() - startTime;
+
+      logger.info({
+        model: selectedModel,
+        durationMs,
+        inputTokens: response.usage?.input_tokens,
+        outputTokens: response.usage?.output_tokens,
+        stopReason: response.stop_reason,
+      }, 'AI Agent response completed');
+
+      // Return raw Claude response
+      res.json({
+        success: true,
+        content: response.content,
+        stop_reason: response.stop_reason,
+        model: response.model,
+        usage: response.usage,
+        durationMs,
+      });
+    } catch (error) {
+      const durationMs = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      logger.error({
+        model: selectedModel,
+        error: errorMessage,
+        durationMs,
+      }, 'AI Agent error');
+
+      // Detect rate limit
+      if (errorMessage.includes('rate_limit') || errorMessage.includes('429')) {
+        return res.status(429).json({
+          success: false,
+          error: 'Rate limit exceeded. Aguarde um momento.',
+          retryAfter: 30,
+        });
+      }
+
+      // Detect invalid API key
+      if (errorMessage.includes('authentication') || errorMessage.includes('401') || errorMessage.includes('api_key')) {
+        return res.status(401).json({
+          success: false,
+          error: 'API key inválida. Configure CLAUDE_API_KEY.',
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        error: `Agent error: ${errorMessage}`,
+      });
+    }
+  })
+);
+
 export default router;

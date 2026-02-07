@@ -25,8 +25,8 @@ interface UIState {
     targetId: string | null;
   };
   
-  // Theme
-  theme: 'light' | 'dark' | 'system';
+  // Theme (always dark)
+  theme: 'dark';
   
   // Search
   searchOpen: boolean;
@@ -44,17 +44,17 @@ interface UIState {
   setSidebarCollapsed: (collapsed: boolean) => void;
   setSidebarTab: (tab: UIState['sidebarTab']) => void;
   
-  openRightPanel: (content: UIState['rightPanelContent'], data?: Record<string, unknown>) => void;
+  openRightPanel: (content: UIState['rightPanelContent'], data?: Record<string, unknown> | null) => void;
   closeRightPanel: () => void;
   setAIChatOpen: (open: boolean) => void;
   
-  openModal: (modalId: string, data?: Record<string, unknown>) => void;
+  openModal: (modalId: string, data?: Record<string, unknown> | null) => void;
   closeModal: () => void;
   
-  openContextMenu: (x: number, y: number, type: 'node' | 'edge' | 'canvas', targetId?: string) => void;
+  openContextMenu: (x: number, y: number, type: 'node' | 'edge' | 'canvas', targetId?: string | null) => void;
   closeContextMenu: () => void;
   
-  setTheme: (theme: UIState['theme']) => void;
+  setTheme: (_theme: 'dark') => void;
   
   setSearchOpen: (open: boolean) => void;
   setSearchQuery: (query: string) => void;
@@ -84,7 +84,7 @@ export const useUIStore = create<UIState>((set) => ({
     type: null,
     targetId: null,
   },
-  theme: 'system',
+  theme: 'dark',
   searchOpen: false,
   searchQuery: '',
   shortcutsModalOpen: false,
@@ -120,21 +120,11 @@ export const useUIStore = create<UIState>((set) => ({
       contextMenu: { open: false, x: 0, y: 0, type: null, targetId: null },
     }),
 
-  setTheme: (theme) => {
-    set({ theme });
-    
-    // Apply theme to document
+  setTheme: () => {
+    // Always dark mode
     const root = document.documentElement;
-    root.classList.remove('light', 'dark');
-    
-    if (theme === 'system') {
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
-        ? 'dark'
-        : 'light';
-      root.classList.add(systemTheme);
-    } else {
-      root.classList.add(theme);
-    }
+    root.classList.remove('light');
+    root.classList.add('dark');
   },
 
   setSearchOpen: (searchOpen) => set({ searchOpen }),
@@ -150,18 +140,7 @@ export const useUIStore = create<UIState>((set) => ({
   endTour: () => set({ tourActive: false, tourStep: 0 }),
 }));
 
-// Initialize theme on load
+// Initialize dark theme on load
 if (typeof window !== 'undefined') {
-  const savedTheme = localStorage.getItem('theme') as UIState['theme'] | null;
-  if (savedTheme) {
-    useUIStore.getState().setTheme(savedTheme);
-  }
-
-  // Listen for system theme changes
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    const { theme, setTheme } = useUIStore.getState();
-    if (theme === 'system') {
-      setTheme('system'); // Re-apply to update
-    }
-  });
+  document.documentElement.classList.add('dark');
 }

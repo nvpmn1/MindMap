@@ -3,6 +3,10 @@
 @tailwind utilities;
 
 @layer base {
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
   :root {
     /* Tema Profissional - Neural Dark */
     --background: 220 20% 4%;
