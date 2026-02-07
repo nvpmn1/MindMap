@@ -10,6 +10,8 @@ services:
     startCommand: npm start
     
     envVars:
+      - key: BUILD_ID
+        value: "2025-02-07-postinstall-fix"
       - key: NODE_ENV
         value: production
       - key: PORT
