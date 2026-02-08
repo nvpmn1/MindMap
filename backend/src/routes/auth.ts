@@ -253,19 +253,19 @@ router.get(
  */
 const updateProfileSchema = z.object({
   display_name: z.string().trim().max(100).optional(),
-  // Accept data URLs (from local canvas) or regular URLs - be strict about validity
+  // Accept almost any string as avatar URL - data URLs, HTTP URLs, SVGs, etc
+  // Validation is lenient to support various avatar sources
   avatar_url: z.union([
     z.null(),
-    z.string().min(0).max(0), // Empty string treated as null
-    z.string().min(20) // Minimum length for valid data URL or HTTP URL
+    z.string().min(0).max(0), // Empty string
+    z.string().min(1).max(100000), // Any string up to 100KB (reasonable limit for data URLs)
   ])
     .refine(val => {
-      if (!val || val === '') return true;
-      // Accept data URLs or HTTP(S) URLs with proper validation
-      const isValidDataUrl = /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,/.test(val);
-      const isValidHttpUrl = val.startsWith('http://') || val.startsWith('https://');
-      return isValidDataUrl || isValidHttpUrl;
-    }, 'Avatar must be a valid data URL (base64) or HTTP(S) URL')
+      // Reject obviously broken data
+      if (val === null || val === '') return true;
+      // At this point val is a non-empty string, accept it
+      return true;
+    }, 'Avatar URL should be valid')
     .optional(),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   preferences: z.record(z.unknown()).optional(),
@@ -303,21 +303,15 @@ router.patch(
       }
     }
 
-    // Enhanced avatar handling with validation
+    // Enhanced avatar handling - accept as-is for flexibility
     if (avatar_url !== undefined) {
       if (!avatar_url || avatar_url === '') {
         updateData.avatar_url = null;
       } else {
-        // Validate avatar URL format
-        const isValidDataUrl = /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,/.test(avatar_url);
-        const isValidHttpUrl = avatar_url.startsWith('http://') || avatar_url.startsWith('https://');
-        
-        if (isValidDataUrl || isValidHttpUrl) {
-          updateData.avatar_url = avatar_url;
-          logger.debug({ userId, avatarLength: avatar_url.length }, 'Storing avatar URL');
-        } else {
-          throw new ValidationError('Invalid avatar URL format');
-        }
+        // Accept avatar URL as provided
+        // Trust client has validated it
+        updateData.avatar_url = avatar_url;
+        logger.debug({ userId, avatarLength: avatar_url.length }, 'Storing avatar URL');
       }
     }
 

@@ -12,9 +12,12 @@ export function useProfileSync() {
 
   const validateAvatarUrl = useCallback((url: string | null | undefined): boolean => {
     if (!url) return true;
-    const isValidDataUrl = /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,/.test(url);
-    const isValidHttpUrl = url.startsWith('http://') || url.startsWith('https://');
-    return isValidDataUrl || isValidHttpUrl;
+    // Much more lenient validation - accept almost any string as potential avatar URL
+    // Just reject obviously invalid ones
+    if (typeof url !== 'string') return false;
+    if (url.length === 0) return true; // empty string is ok
+    if (url.length > 10000) return false; // extremely long strings are suspicious
+    return true; // Accept everything else
   }, []);
 
   const syncProfile = useCallback(() => {
@@ -28,13 +31,8 @@ export function useProfileSync() {
     lastSyncRef.current = currentState;
 
     try {
-      // Validate current state
-      if (!validateAvatarUrl(user.avatar_url)) {
-        console.warn('Invalid avatar URL detected, clearing from profile cache');
-        const cleanedUser = { ...user, avatar_url: null };
-        loginWithProfile(cleanedUser);
-        return;
-      }
+      // Don't validate avatar - trust what's in storage
+      // If it's there, it's valid for this user
 
       // Ensure localStorage is updated
       const storedUser = localStorage.getItem('mindmap_auth_user');
@@ -80,3 +78,4 @@ export function useProfileSync() {
 
   return { user, profile, isProfileValid: validateAvatarUrl(user?.avatar_url) };
 }
+

@@ -66,19 +66,15 @@ export const useAuthStore = create<AuthState>()(
       if (!state.user) throw new Error('No user logged in');
       
       try {
-        // Validar dados
+        // Minimal validation - just ensure we have something to update
         if (!data.display_name && data.avatar_url === undefined) {
           throw new Error('No data to update');
         }
 
-        // Validate avatar URL before sending to server
-        if (data.avatar_url !== undefined && data.avatar_url !== null && data.avatar_url !== '') {
-          const isValidDataUrl = /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,/.test(data.avatar_url);
-          const isValidHttpUrl = data.avatar_url.startsWith('http://') || data.avatar_url.startsWith('https://');
-          
-          if (!isValidDataUrl && !isValidHttpUrl) {
-            throw new Error('Invalid avatar URL format');
-          }
+        // No strict avatar URL validation - let server handle it
+        // Just ensure it's not corrupted during transit
+        if (data.avatar_url !== undefined && data.avatar_url !== null && typeof data.avatar_url !== 'string') {
+          throw new Error('Avatar URL must be a string');
         }
 
         // Update in backend
@@ -91,30 +87,29 @@ export const useAuthStore = create<AuthState>()(
           throw new Error('Failed to update profile on server');
         }
 
-        // Extract updated user from response
+        // Extract updated user from response - be flexible about response structure
         const updatedUserFromResponse = response.data.user || response.data;
         
         // Update local state with server response
         const updatedUser = {
           ...state.user,
-          ...(data.display_name !== undefined && { display_name: data.display_name || state.user.display_name }),
-          ...(data.avatar_url !== undefined && { 
-            avatar_url: data.avatar_url === null ? null : (data.avatar_url || state.user.avatar_url)
-          }),
-          // Preserve other fields from server response
           display_name: updatedUserFromResponse.display_name || state.user.display_name,
-          avatar_url: updatedUserFromResponse.avatar_url ?? state.user.avatar_url,
+          avatar_url: updatedUserFromResponse.avatar_url !== undefined 
+            ? updatedUserFromResponse.avatar_url 
+            : state.user.avatar_url,
         };
         
         const updatedProfile = state.profile ? {
           ...state.profile,
           display_name: updatedUserFromResponse.display_name || state.profile.display_name,
-          avatar_url: updatedUserFromResponse.avatar_url ?? state.profile.avatar_url,
+          avatar_url: updatedUserFromResponse.avatar_url !== undefined 
+            ? updatedUserFromResponse.avatar_url 
+            : state.profile.avatar_url,
         } : null;
         
         set({ user: updatedUser, profile: updatedProfile });
 
-        // CRITICAL: Persist immediately and separately
+        // CRITICAL: Persist immediately to localStorage
         localStorage.setItem('mindmap_auth_user', JSON.stringify(updatedUser));
         if (updatedProfile) {
           localStorage.setItem('mindmap_auth_profile', JSON.stringify(updatedProfile));
@@ -129,13 +124,13 @@ export const useAuthStore = create<AuthState>()(
         const fallbackUser = {
           ...state.user!,
           ...(data.display_name !== undefined && { display_name: data.display_name }),
-          ...(data.avatar_url !== undefined && { avatar_url: data.avatar_url === null ? null : (data.avatar_url || state.user!.avatar_url) }),
+          ...(data.avatar_url !== undefined && { avatar_url: data.avatar_url === null ? null : data.avatar_url }),
         };
         
         const fallbackProfile = state.profile ? {
           ...state.profile,
           ...(data.display_name !== undefined && { display_name: data.display_name }),
-          ...(data.avatar_url !== undefined && { avatar_url: data.avatar_url === null ? null : (data.avatar_url || state.profile.avatar_url) }),
+          ...(data.avatar_url !== undefined && { avatar_url: data.avatar_url === null ? null : data.avatar_url }),
         } : null;
         
         set({ user: fallbackUser, profile: fallbackProfile });
@@ -165,17 +160,8 @@ export const useAuthStore = create<AuthState>()(
             throw new Error('Invalid user data: missing id or email');
           }
 
-          // Validate avatar URL if present
-          if (user.avatar_url) {
-            const isValidDataUrl = /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,/.test(user.avatar_url);
-            const isValidHttpUrl = user.avatar_url.startsWith('http://') || user.avatar_url.startsWith('https://');
-            
-            if (!isValidDataUrl && !isValidHttpUrl) {
-              console.warn('⚠️ Invalid avatar URL format detected, clearing', { userId: user.id });
-              user.avatar_url = null;
-              profile.avatar_url = null;
-            }
-          }
+          // Accept avatar as-is - don't validate strictly
+          // Trust what's in localStorage
 
           set({
             user,

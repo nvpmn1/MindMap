@@ -39,15 +39,10 @@ export function SettingsPage() {
       return;
     }
 
-    // Validate avatar if present
-    if (avatarUrl && avatarUrl !== '') {
-      const isValidDataUrl = /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,/.test(avatarUrl);
-      const isValidHttpUrl = avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://');
-      
-      if (!isValidDataUrl && !isValidHttpUrl) {
-        toast.error('Avatar inválido. Use a câmera para enviar uma nova imagem.', { duration: 3500 });
-        return;
-      }
+    // Accept avatar as-is, minimal validation
+    if (avatarUrl && typeof avatarUrl !== 'string') {
+      toast.error('Avatar inválido.', { duration: 3500 });
+      return;
     }
 
     setIsSaving(true);
