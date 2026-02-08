@@ -189,85 +189,100 @@ export function LoginPage() {
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={selectedProfile || 'empty'}
-                    initial={{ opacity: 0, scale: 0.5, y: 20 }}
+                    initial={{ opacity: 0, scale: 0.3, y: 30 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.5, y: -20 }}
-                    transition={{ duration: 0.4, type: 'spring', stiffness: 300 }}
-                    className="flex flex-col items-center justify-center space-y-6 min-h-[280px]"
+                    exit={{ opacity: 0, scale: 0.3, y: -30 }}
+                    transition={{ duration: 0.25, type: 'spring', stiffness: 400, damping: 25 }}
+                    className="flex flex-col items-center justify-center space-y-8 min-h-[420px]"
                   >
                     {selectedProfileData ? (
                       <>
                         {/* Large avatar with glow */}
                         <motion.div
-                          className="relative"
+                          className="relative flex items-center justify-center"
                           animate={{ 
-                            scale: [1, 1.05, 1],
-                            y: [0, -5, 0],
+                            scale: [1, 1.04, 1],
+                            y: [0, -4, 0],
                           }}
                           transition={{ 
-                            duration: 2.5, 
+                            duration: 3, 
                             repeat: Infinity,
                             ease: 'easeInOut'
                           }}
                         >
-                          <div className="w-40 h-40 rounded-3xl overflow-hidden border-2 border-white/10 shadow-2xl relative">
+                          <div className="w-60 h-60 rounded-3xl overflow-hidden border-2 border-white/10 shadow-2xl relative flex-shrink-0">
                             <img
                               src={selectedProfileData.avatarUrl}
                               alt={selectedProfileData.name}
                               className="w-full h-full object-cover"
                             />
                             <motion.div
-                              className="absolute inset-0 rounded-3xl"
+                              className="absolute inset-0 rounded-3xl pointer-events-none"
                               style={{
                                 border: `2px solid ${selectedProfileData.color}`,
-                                boxShadow: `inset 0 0 30px ${selectedProfileData.color}40, 0 0 30px ${selectedProfileData.color}60`,
+                                boxShadow: `inset 0 0 20px ${selectedProfileData.color}30, 0 0 40px ${selectedProfileData.color}50`,
                               }}
                               animate={{
                                 boxShadow: [
-                                  `inset 0 0 30px ${selectedProfileData.color}40, 0 0 30px ${selectedProfileData.color}60`,
-                                  `inset 0 0 50px ${selectedProfileData.color}60, 0 0 50px ${selectedProfileData.color}80`,
-                                  `inset 0 0 30px ${selectedProfileData.color}40, 0 0 30px ${selectedProfileData.color}60`,
+                                  `inset 0 0 20px ${selectedProfileData.color}30, 0 0 40px ${selectedProfileData.color}50`,
+                                  `inset 0 0 35px ${selectedProfileData.color}50, 0 0 60px ${selectedProfileData.color}70`,
+                                  `inset 0 0 20px ${selectedProfileData.color}30, 0 0 40px ${selectedProfileData.color}50`,
                                 ],
                               }}
-                              transition={{ duration: 2, repeat: Infinity }}
+                              transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
                             />
                           </div>
 
                           {/* Pulsing rings around avatar */}
                           <motion.div
-                            className="absolute inset-0 rounded-full"
+                            className="absolute rounded-full pointer-events-none"
                             style={{
-                              border: `1px solid ${selectedProfileData.color}40`,
-                              width: '176px',
-                              height: '176px',
-                              top: '-8px',
-                              left: '-8px',
+                              border: `2px solid ${selectedProfileData.color}40`,
+                              width: '264px',
+                              height: '264px',
                             }}
                             animate={{
-                              scale: [1, 1.2, 1],
-                              opacity: [0.6, 0, 0],
+                              scale: [1, 1.15, 1],
+                              opacity: [0.8, 0.2, 0],
                             }}
-                            transition={{ duration: 2, repeat: Infinity }}
+                            transition={{ duration: 2.5, repeat: Infinity, ease: 'easeOut' }}
+                          />
+                          <motion.div
+                            className="absolute rounded-full pointer-events-none"
+                            style={{
+                              border: `1px solid ${selectedProfileData.color}25`,
+                              width: '308px',
+                              height: '308px',
+                            }}
+                            animate={{
+                              scale: [1, 1.1, 1],
+                              opacity: [0.4, 0, 0],
+                            }}
+                            transition={{ duration: 3, repeat: Infinity, ease: 'easeOut', delay: 0.2 }}
                           />
                         </motion.div>
 
                         {/* Profile info */}
                         <motion.div
-                          className="text-center space-y-2"
-                          variants={itemVariants}
+                          className="text-center space-y-2 w-full"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.4, delay: 0.15 }}
                         >
-                          <h2 className="text-2xl font-semibold text-white">
+                          <h2 className="text-3xl font-semibold text-white tracking-tight">
                             {selectedProfileData.name}
                           </h2>
-                          <p className="text-sm text-slate-400">
+                          <p className="text-sm text-slate-400 font-medium">
                             {selectedProfileData.description}
                           </p>
                           <motion.div
-                            className="h-1 w-16 rounded-full mx-auto"
+                            className="h-1 w-20 rounded-full mx-auto mt-3"
                             style={{
                               background: `linear-gradient(90deg, ${selectedProfileData.color}, transparent)`,
                             }}
-                            animate={{ width: ['64px', '64px', '64px'] }}
+                            initial={{ width: 0 }}
+                            animate={{ width: '80px' }}
+                            transition={{ duration: 0.5, delay: 0.25 }}
                           />
                         </motion.div>
 
@@ -292,18 +307,37 @@ export function LoginPage() {
                       </>
                     ) : (
                       <motion.div
-                        className="flex flex-col items-center justify-center space-y-6 text-center"
-                        variants={itemVariants}
+                        className="flex flex-col items-center justify-center space-y-8 text-center"
+                        initial={{ opacity: 0, scale: 0.3 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.3 }}
+                        transition={{ duration: 0.25, type: 'spring', stiffness: 400 }}
                       >
-                        <div className="w-32 h-32 rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 flex items-center justify-center">
-                          <div className="w-20 h-20 rounded-2xl bg-slate-700/30 flex items-center justify-center">
-                            <Sparkles className="w-8 h-8 text-slate-600" />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <p className="text-slate-400 font-medium">Select your profile</p>
-                          <p className="text-xs text-slate-500">Choose an account below to continue</p>
-                        </div>
+                        <motion.div 
+                          className="w-48 h-48 rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-slate-700/50 flex items-center justify-center"
+                          animate={{ 
+                            scale: [1, 1.03, 1],
+                            y: [0, -3, 0],
+                          }}
+                          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                        >
+                          <motion.div 
+                            className="w-28 h-28 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-teal-500/10 flex items-center justify-center border border-cyan-500/20"
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
+                          >
+                            <Sparkles className="w-10 h-10 text-cyan-400" strokeWidth={1.5} />
+                          </motion.div>
+                        </motion.div>
+                        <motion.div
+                          className="space-y-3"
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.4, delay: 0.1 }}
+                        >
+                          <p className="text-slate-300 font-semibold text-lg">Select your profile</p>
+                          <p className="text-sm text-slate-500">Choose an account below to enter the workspace</p>
+                        </motion.div>
                       </motion.div>
                     )}
                   </motion.div>
