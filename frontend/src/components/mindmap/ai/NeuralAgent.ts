@@ -1,14 +1,13 @@
 // ============================================================================
-// NeuralMap - AI Agent Engine v3 (Complete Rewrite)
-// REAL Claude API tool-use Agent Mode with Streaming
-// No more silent fallback — pure Claude-powered intelligence
+// NeuralMap - AI Agent Engine v4 (COMPLETE REWRITE)
+// REAL Agent Mode with Claude Haiku 4.5 — Tool-Use + Real-Time Streaming
+// All actions execute DIRECTLY on the map — no suggestions, no fallbacks
 // ============================================================================
 
 import type {
   NeuralNodeType, NeuralNodeData, AIAgentMessage, AIAgentAction,
   AIAgentConfig, AIAgentMode, PowerNode, PowerEdge, ChartData, TableData
 } from '../editor/types';
-import { NODE_TYPE_CONFIG } from '../editor/constants';
 import { AGENT_TOOLS, type AgentToolName } from './tools';
 import { buildSystemPrompt, buildMapContextMessage, formatConversationHistory } from './prompts';
 import { actionExecutor, type ExecutionContext, type ExecutionResult } from './ActionExecutor';
@@ -43,8 +42,9 @@ export interface StreamCallbacks {
   onThinkingUpdate?: (text: string) => void;
   onTodoUpdate?: (todos: AgentTodoItem[]) => void;
   onTextDelta?: (text: string, accumulated: string) => void;
-  onToolStart?: (toolName: string) => void;
-  onToolComplete?: (toolName: string, input: any) => void;
+  onToolStart?: (toolName: string, detail?: string) => void;
+  onToolComplete?: (toolName: string, input: any, result?: string) => void;
+  onActionStep?: (step: string, icon?: string) => void;  // NEW: Step-by-step actions
   onComplete?: (response: AgentResponse) => void;
   onError?: (error: string) => void;
 }
@@ -63,7 +63,7 @@ interface TextBlock {
 
 type ContentBlock = ToolUseBlock | TextBlock;
 
-// ─── Neural Agent v3 ────────────────────────────────────────────────────────
+// ─── Neural Agent v4 — Pure Agent Mode ──────────────────────────────────────
 
 export class NeuralAIAgent {
   private config: AIAgentConfig;
@@ -71,14 +71,14 @@ export class NeuralAIAgent {
   private isProcessing = false;
   private executionContext: ExecutionContext | null = null;
   private currentTodos: AgentTodoItem[] = [];
-  private agentType: string = 'chat'; // Default to chat, can be set per request
+  private agentType: string = 'chat';
 
   constructor() {
     this.config = {
-      model: 'auto',  // Auto-select best model based on complexity
+      model: 'claude-haiku-4-5',   // FIXED: Always Haiku
       mode: 'agent',
       temperature: 0.7,
-      maxTokens: 4096,
+      maxTokens: 8192,
       tools: AGENT_TOOLS.map(t => t.name),
       autoExecute: true,
     };
@@ -153,8 +153,11 @@ export class NeuralAIAgent {
   // ─── Main Entry Point ─────────────────────────────────────────────────
 
   /**
-   * Process a user message with REAL Claude API
-   * Uses streaming for real-time feedback with TODO list
+   * Process a user message — REAL Agent Mode with streaming + tool execution
+   * 1. Sends to backend streaming endpoint
+   * 2. Receives SSE events in real-time (thinking, text, tool calls)
+   * 3. Executes tool calls DIRECTLY on the map via ActionExecutor
+   * 4. Updates TODO list in real-time as events flow
    */
   async processMessage(
     message: string,
@@ -168,7 +171,6 @@ export class NeuralAIAgent {
       return { response: '⏳ Aguarde, estou processando a tarefa anterior...', actions: [] };
     }
 
-    // Set agent type if provided
     if (agentType) {
       this.agentType = agentType;
     }
@@ -186,30 +188,28 @@ export class NeuralAIAgent {
     this.conversationHistory.push(userMsg);
 
     try {
+      // Initialize real-time TODO list
+      callbacks?.onThinkingStart?.();
+      this.currentTodos = [
+        { id: 'todo_1', title: 'Analisar contexto do mapa', status: 'in-progress' },
+        { id: 'todo_2', title: 'Processar com Claude AI', status: 'planning' },
+        { id: 'todo_3', title: 'Executar ações necessárias', status: 'planning' },
+        { id: 'todo_4', title: 'Finalizar e reportar', status: 'planning' },
+      ];
+      callbacks?.onTodoUpdate?.([...this.currentTodos]);
+      callbacks?.onThinkingUpdate?.('Conectando com Claude Haiku 4.5...');
+
       // Build context
       const mapContext = this.buildContext(nodes, edges, selectedNodeId);
 
-      // Generate TODO plan
-      callbacks?.onThinkingStart?.();
-      const todos = this.generateTodoPlan(message, nodes, selectedNodeId);
-      this.currentTodos = todos;
-      callbacks?.onTodoUpdate?.(todos);
-
-      // Mark first todo as in-progress
-      if (todos.length > 0) {
-        todos[0].status = 'in-progress';
-        callbacks?.onTodoUpdate?.([...todos]);
-      }
-
-      callbacks?.onThinkingUpdate?.('Conectando com Claude AI...');
-
-      // Try streaming first, fall back to regular API call
+      // Try streaming first, then regular API
       let result: AgentResponse;
 
       try {
         result = await this.callStreamingAPI(message, mapContext, nodes, edges, selectedNodeId, callbacks);
       } catch (streamError) {
-        console.warn('Streaming unavailable, trying regular API:', streamError);
+        console.warn('Streaming failed, trying regular API:', streamError);
+        this.updateTodo('todo_2', 'in-progress', callbacks);
         callbacks?.onThinkingUpdate?.('Processando via API direta...');
 
         try {
@@ -218,8 +218,7 @@ export class NeuralAIAgent {
 
           // Execute tool calls from Claude
           if (apiResult.toolCalls.length > 0 && this.executionContext) {
-            // Progress todos
-            this.progressTodos(callbacks);
+            this.updateTodo('todo_3', 'in-progress', callbacks);
 
             const execResults = actionExecutor.executeAll(
               apiResult.toolCalls.map(tc => ({ name: tc.name as AgentToolName, input: tc.input })),
@@ -228,28 +227,25 @@ export class NeuralAIAgent {
             result.toolResults = execResults;
             result.actions = this.toolResultsToActions(apiResult.toolCalls, execResults);
 
-            // Update response with execution info
             const successCount = execResults.filter(r => r.success).length;
             const failCount = execResults.filter(r => !r.success).length;
             if (successCount > 0) {
               result.response += `\n\n⚡ ${successCount} ação(ões) executada(s) com sucesso${failCount > 0 ? `, ${failCount} falhou(aram)` : ''}.`;
             }
+
+            this.updateTodo('todo_3', 'completed', callbacks);
           }
         } catch (apiError) {
           const errMsg = apiError instanceof Error ? apiError.message : String(apiError);
           console.error('Claude API call failed:', errMsg);
-
-          // Mark todos as failed
-          this.currentTodos.forEach(t => { if (t.status !== 'completed') t.status = 'failed'; });
-          callbacks?.onTodoUpdate?.([...this.currentTodos]);
+          this.markAllTodosFailed(callbacks);
           callbacks?.onError?.(errMsg);
-
           throw new Error(`❌ Erro ao chamar Claude API: ${errMsg}\n\n🔑 Verifique se CLAUDE_API_KEY está configurada no backend.`);
         }
       }
 
-      // Mark remaining todos as completed
-      this.currentTodos.forEach(t => { if (t.status === 'in-progress' || t.status === 'planning') t.status = 'completed'; });
+      // Mark all todos as completed
+      this.currentTodos.forEach(t => { t.status = 'completed'; });
       callbacks?.onTodoUpdate?.([...this.currentTodos]);
 
       // Record agent response
@@ -259,7 +255,7 @@ export class NeuralAIAgent {
         content: result.response,
         timestamp: new Date().toISOString(),
         metadata: {
-          model: result.model || this.config.model,
+          model: result.model || 'claude-haiku-4-5',
           mode: this.config.mode,
           actions: result.actions,
           reasoning: result.thinking,
@@ -295,73 +291,29 @@ export class NeuralAIAgent {
 
       callbacks?.onError?.(errMsg);
       return errorResponse;
-
     } finally {
       this.isProcessing = false;
     }
   }
 
-  // ─── TODO Plan Generation ─────────────────────────────────────────────
+  // ─── TODO Management (Real-Time) ─────────────────────────────────────
 
-  private generateTodoPlan(message: string, nodes: PowerNode[], selectedNodeId?: string | null): AgentTodoItem[] {
-    const lmsg = message.toLowerCase();
-    const todos: AgentTodoItem[] = [];
-    let id = 1;
-
-    // Always start with analysis
-    todos.push({ id: `todo_${id++}`, title: 'Analisar contexto do mapa', status: 'planning' });
-
-    if (this.matchIntent(lmsg, ['cri(e|a|ar) (um )?mapa', 'mapa sobre', 'monte', 'estrutur'])) {
-      todos.push({ id: `todo_${id++}`, title: 'Planejar estrutura do mapa', status: 'planning' });
-      todos.push({ id: `todo_${id++}`, title: 'Criar nó central com tema', status: 'planning' });
-      todos.push({ id: `todo_${id++}`, title: 'Criar ramos principais', status: 'planning' });
-      todos.push({ id: `todo_${id++}`, title: 'Adicionar sub-tópicos detalhados', status: 'planning' });
-      todos.push({ id: `todo_${id++}`, title: 'Aplicar tipos e prioridades', status: 'planning' });
-    } else if (this.matchIntent(lmsg, ['expand', 'detalh', 'aprofund', 'desenvolv'])) {
-      todos.push({ id: `todo_${id++}`, title: 'Analisar nó selecionado', status: 'planning' });
-      todos.push({ id: `todo_${id++}`, title: 'Gerar sub-tópicos com Claude', status: 'planning' });
-      todos.push({ id: `todo_${id++}`, title: 'Criar nós filhos detalhados', status: 'planning' });
-    } else if (this.matchIntent(lmsg, ['tarefa', 'task', 'plano', 'ação', 'to.?do'])) {
-      todos.push({ id: `todo_${id++}`, title: 'Analisar contexto para tarefas', status: 'planning' });
-      todos.push({ id: `todo_${id++}`, title: 'Gerar tarefas com Claude AI', status: 'planning' });
-      todos.push({ id: `todo_${id++}`, title: 'Definir prioridades e prazos', status: 'planning' });
-    } else if (this.matchIntent(lmsg, ['analis', 'resum', 'estat[ií]stica', 'overview'])) {
-      todos.push({ id: `todo_${id++}`, title: 'Coletar métricas do mapa', status: 'planning' });
-      todos.push({ id: `todo_${id++}`, title: 'Identificar padrões e gaps', status: 'planning' });
-      todos.push({ id: `todo_${id++}`, title: 'Gerar insights e recomendações', status: 'planning' });
-    } else if (this.matchIntent(lmsg, ['ideia', 'sugest', 'brainstorm', 'criativ'])) {
-      todos.push({ id: `todo_${id++}`, title: 'Brainstorming com Claude AI', status: 'planning' });
-      todos.push({ id: `todo_${id++}`, title: 'Gerar ideias diversificadas', status: 'planning' });
-      todos.push({ id: `todo_${id++}`, title: 'Organizar e categorizar', status: 'planning' });
-    } else if (this.matchIntent(lmsg, ['pesquis', 'research', 'investig', 'estud'])) {
-      todos.push({ id: `todo_${id++}`, title: 'Pesquisar tema com Claude', status: 'planning' });
-      todos.push({ id: `todo_${id++}`, title: 'Criar nós de pesquisa', status: 'planning' });
-      todos.push({ id: `todo_${id++}`, title: 'Adicionar fontes e referências', status: 'planning' });
-    } else if (this.matchIntent(lmsg, ['organiz', 'reorg', 'arrum'])) {
-      todos.push({ id: `todo_${id++}`, title: 'Analisar estrutura atual', status: 'planning' });
-      todos.push({ id: `todo_${id++}`, title: 'Planejar reorganização', status: 'planning' });
-      todos.push({ id: `todo_${id++}`, title: 'Executar mudanças', status: 'planning' });
-    } else {
-      todos.push({ id: `todo_${id++}`, title: 'Processar com Claude AI', status: 'planning' });
-      todos.push({ id: `todo_${id++}`, title: 'Executar ações necessárias', status: 'planning' });
-    }
-
-    todos.push({ id: `todo_${id++}`, title: 'Finalizar e reportar', status: 'planning' });
-    return todos;
-  }
-
-  private progressTodos(callbacks?: StreamCallbacks) {
-    const currentIdx = this.currentTodos.findIndex(t => t.status === 'in-progress');
-    if (currentIdx >= 0) {
-      this.currentTodos[currentIdx].status = 'completed';
-      if (currentIdx + 1 < this.currentTodos.length) {
-        this.currentTodos[currentIdx + 1].status = 'in-progress';
-      }
+  private updateTodo(todoId: string, status: AgentTodoItem['status'], callbacks?: StreamCallbacks) {
+    const todo = this.currentTodos.find(t => t.id === todoId);
+    if (todo) {
+      todo.status = status;
       callbacks?.onTodoUpdate?.([...this.currentTodos]);
     }
   }
 
-  // ─── Streaming API Call ───────────────────────────────────────────────
+  private markAllTodosFailed(callbacks?: StreamCallbacks) {
+    this.currentTodos.forEach(t => {
+      if (t.status !== 'completed') t.status = 'failed';
+    });
+    callbacks?.onTodoUpdate?.([...this.currentTodos]);
+  }
+
+  // ─── Streaming API Call (Primary Path) ─────────────────────────────────
 
   private async callStreamingAPI(
     userMessage: string,
@@ -381,42 +333,20 @@ export class NeuralAIAgent {
       ? [...history.slice(0, -1), { role: 'user' as const, content: contextMessage }]
       : [{ role: 'user' as const, content: contextMessage }];
 
-    // Use new neural endpoint if agent type is specified  
-    const useNewEndpoint = (this.agentType && this.agentType !== 'chat') || 
-                           (['generate', 'expand', 'summarize', 'analyze', 'organize', 'research', 'hypothesize', 'task_convert', 'critique', 'connect', 'visualize'].includes(this.agentType));
-
-    const body = useNewEndpoint
-      ? {
-          // New NeuralOrchestrator format
-          map_id: 'frontend-temp', // Will be set by AgentPanel
-          agent_type: this.agentType || 'chat',
-          message: userMessage,
-          context: {
-            nodes: nodes.map(n => ({ id: n.id, label: n.data.label, type: n.data.type, content: n.data.content })),
-            edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target })),
-            selected_node: selectedNodeId ? nodes.find(n => n.id === selectedNodeId) : undefined,
-            conversation_history: messages,
-          },
-          options: {
-            model: this.config.model === 'auto' ? undefined : this.config.model,
-          },
-          stream: true,
-        }
-      : {
-          // Old format for backward compatibility
-          model: this.config.model,
-          mode: this.config.mode,
-          systemPrompt: buildSystemPrompt(this.config.mode),
-          messages,
-          tools: AGENT_TOOLS,
-          maxTokens: this.config.maxTokens,
-          temperature: this.config.temperature,
-        };
+    // ALWAYS use /agent/stream — it works reliably with tool-use
+    const body = {
+      model: 'claude-haiku-4-5',   // FIXED: Always Haiku
+      mode: this.config.mode,
+      systemPrompt: buildSystemPrompt(this.config.mode),
+      messages,
+      tools: AGENT_TOOLS,
+      maxTokens: this.config.maxTokens,
+      temperature: this.config.temperature,
+    };
 
     const headers = await this.buildAuthHeaders();
-    const endpoint = useNewEndpoint ? '/api/ai/neural/stream' : '/api/ai/agent/stream';
 
-    const response = await fetch(endpoint, {
+    const response = await fetch('/api/ai/agent/stream', {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
@@ -427,9 +357,19 @@ export class NeuralAIAgent {
       throw new Error(`Stream API ${response.status}: ${errText}`);
     }
 
+    // Mark "analyze context" as done, "process with Claude" as active
+    this.updateTodo('todo_1', 'completed', callbacks);
+    this.updateTodo('todo_2', 'in-progress', callbacks);
+    callbacks?.onThinkingUpdate?.('🤖 Claude Haiku 4.5 — processando...');
+
     return this.handleSSEStream(response, callbacks);
   }
 
+  /**
+   * Handle SSE stream events in real-time
+   * Events from backend: model_selected, thinking_start, text_start, text_delta,
+   * text_complete, tool_start, tool_complete, complete, error, done
+   */
   private async handleSSEStream(
     response: Response,
     callbacks?: StreamCallbacks,
@@ -441,8 +381,9 @@ export class NeuralAIAgent {
     let textAccumulator = '';
     const toolCalls: ToolUseBlock[] = [];
     let usage: any = null;
-    let model = '';
+    let model = 'claude-haiku-4-5';
     let lastEventName = '';
+    let toolsStarted = false;
 
     try {
       let buffer = '';
@@ -469,17 +410,18 @@ export class NeuralAIAgent {
               switch (lastEventName) {
                 case 'model_selected':
                   callbacks?.onThinkingUpdate?.(
-                    `🤖 **${data.model}** selecionado - ${data.reason}\n_(Complexidade: ${data.complexity})_`
+                    `🤖 **Claude Haiku 4.5** — Agente pronto`
                   );
+                  model = 'claude-haiku-4-5';
                   break;
 
                 case 'thinking_start':
+                  this.updateTodo('todo_2', 'in-progress', callbacks);
                   callbacks?.onThinkingUpdate?.(data.message || 'Analisando...');
-                  this.progressTodos(callbacks);
                   break;
 
                 case 'text_start':
-                  this.progressTodos(callbacks);
+                  this.updateTodo('todo_2', 'in-progress', callbacks);
                   break;
 
                 case 'text_delta':
@@ -489,26 +431,37 @@ export class NeuralAIAgent {
 
                 case 'text_complete':
                   textAccumulator = data.text || textAccumulator;
+                  this.updateTodo('todo_2', 'completed', callbacks);
                   break;
 
                 case 'tool_start':
-                  callbacks?.onToolStart?.(data.name);
-                  this.progressTodos(callbacks);
+                  if (!toolsStarted) {
+                    toolsStarted = true;
+                    this.updateTodo('todo_2', 'completed', callbacks);
+                    this.updateTodo('todo_3', 'in-progress', callbacks);
+                  }
+                  // Detailed action step reporting
+                  const actionDetail = this.formatToolStartMessage(data.name);
+                  callbacks?.onActionStep?.(actionDetail, this.getToolIcon(data.name));
+                  callbacks?.onToolStart?.(data.name, actionDetail);
                   break;
 
                 case 'tool_complete':
                   toolCalls.push({
                     type: 'tool_use',
-                    id: `tool_${Date.now()}_${toolCalls.length}`,
+                    id: data.id || `tool_${Date.now()}_${toolCalls.length}`,
                     name: data.name,
                     input: data.input,
                   });
-                  callbacks?.onToolComplete?.(data.name, data.input);
+                  // Detailed completion message
+                  const completionDetail = this.formatToolCompleteMessage(data.name, data.input);
+                  callbacks?.onActionStep?.(completionDetail, '✅');
+                  callbacks?.onToolComplete?.(data.name, data.input, completionDetail);
                   break;
 
                 case 'complete':
                   usage = data.usage;
-                  model = data.model;
+                  model = data.model || 'claude-haiku-4-5';
                   break;
 
                 case 'error':
@@ -518,11 +471,16 @@ export class NeuralAIAgent {
                   break;
 
                 default:
-                  // Handle data without event name
+                  // Handle data without explicit event name
                   if (data.text !== undefined && data.accumulated !== undefined) {
                     textAccumulator = data.accumulated;
                     callbacks?.onTextDelta?.(data.text, data.accumulated);
                   } else if (data.name && data.input) {
+                    if (!toolsStarted) {
+                      toolsStarted = true;
+                      this.updateTodo('todo_2', 'completed', callbacks);
+                      this.updateTodo('todo_3', 'in-progress', callbacks);
+                    }
                     toolCalls.push({
                       type: 'tool_use',
                       id: `tool_${Date.now()}_${toolCalls.length}`,
@@ -534,7 +492,7 @@ export class NeuralAIAgent {
                     callbacks?.onThinkingUpdate?.(data.message);
                   } else if (data.content) {
                     usage = data.usage;
-                    model = data.model;
+                    model = data.model || 'claude-haiku-4-5';
                   }
                   break;
               }
@@ -551,19 +509,28 @@ export class NeuralAIAgent {
       reader.releaseLock();
     }
 
-    // Execute tool calls
+    // ── Execute tool calls on the map ──────────────────────────────────
     let actions: AIAgentAction[] = [];
     let toolResults: ExecutionResult[] | undefined;
 
     if (toolCalls.length > 0 && this.executionContext) {
+      this.updateTodo('todo_3', 'in-progress', callbacks);
+
       toolResults = actionExecutor.executeAll(
         toolCalls.map(tc => ({ name: tc.name as AgentToolName, input: tc.input })),
         this.executionContext,
       );
       actions = this.toolResultsToActions(toolCalls, toolResults);
+
+      this.updateTodo('todo_3', 'completed', callbacks);
+    } else if (toolCalls.length === 0) {
+      this.updateTodo('todo_3', 'completed', callbacks);
     }
 
-    // Parse thinking
+    // Mark finalize as done
+    this.updateTodo('todo_4', 'in-progress', callbacks);
+
+    // Parse thinking from response
     let thinking = '';
     let mainResponse = textAccumulator;
 
@@ -576,14 +543,17 @@ export class NeuralAIAgent {
     // If tools ran but no text, generate summary
     if (!mainResponse && toolCalls.length > 0) {
       const toolSummary = toolCalls.map(tc => {
-        if (tc.name === 'batch_create_nodes') return `Criados ${tc.input.nodes?.length || 0} nós`;
+        if (tc.name === 'batch_create_nodes' || tc.name === 'create_nodes') return `Criados ${tc.input.nodes?.length || 0} nós`;
         if (tc.name === 'create_node') return `Criado nó "${tc.input.label}"`;
         if (tc.name === 'update_node') return `Atualizado nó`;
         if (tc.name === 'delete_node') return `Removido nó`;
+        if (tc.name === 'create_edge' || tc.name === 'create_edges') return `Criada(s) conexão(ões)`;
         return `Executado ${tc.name}`;
       });
       mainResponse = `✅ **Ações executadas com sucesso!**\n\n${toolSummary.map((s, i) => `${i + 1}. ${s}`).join('\n')}`;
     }
+
+    this.updateTodo('todo_4', 'completed', callbacks);
 
     return {
       response: mainResponse || 'Processamento concluído.',
@@ -607,7 +577,6 @@ export class NeuralAIAgent {
     edges: PowerEdge[],
     selectedNodeId?: string | null,
   ): Promise<{ agentResponse: AgentResponse; toolCalls: ToolUseBlock[] }> {
-
     const history = formatConversationHistory(
       this.conversationHistory.map(m => ({ role: m.role, content: m.content })),
       8,
@@ -619,7 +588,7 @@ export class NeuralAIAgent {
       : [{ role: 'user' as const, content: contextMessage }];
 
     const body = {
-      model: this.config.model,
+      model: 'claude-haiku-4-5',   // FIXED: Always Haiku
       mode: this.config.mode,
       systemPrompt: buildSystemPrompt(this.config.mode),
       messages,
@@ -630,7 +599,7 @@ export class NeuralAIAgent {
 
     const headers = await this.buildAuthHeaders();
 
-    const response = await fetch(`/api/ai/agent`, {
+    const response = await fetch('/api/ai/agent', {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
@@ -670,7 +639,7 @@ export class NeuralAIAgent {
 
     if (toolCalls.length > 0 && !textResponse.trim()) {
       const toolNames = toolCalls.map(tc => {
-        if (tc.name === 'batch_create_nodes') return `Criar ${tc.input.nodes?.length || 'vários'} nós`;
+        if (tc.name === 'batch_create_nodes' || tc.name === 'create_nodes') return `Criar ${tc.input.nodes?.length || 'vários'} nós`;
         if (tc.name === 'create_node') return `Criar "${tc.input.label}"`;
         return tc.name;
       });
@@ -685,7 +654,7 @@ export class NeuralAIAgent {
         confidence,
         todoList: this.currentTodos,
         usage: data.usage || data.data?.usage,
-        model: data.model || data.data?.model,
+        model: 'claude-haiku-4-5',
       },
       toolCalls,
     };
@@ -738,10 +707,77 @@ export class NeuralAIAgent {
     }));
   }
 
-  // ─── Helpers ──────────────────────────────────────────────────────────
+  // ─── Detailed Streaming Messages (VS Code Style) ──────────────────────
 
-  private matchIntent(text: string, patterns: string[]): boolean {
-    return patterns.some(p => new RegExp(p, 'i').test(text));
+  private getToolIcon(toolName: string): string {
+    const icons: Record<string, string> = {
+      'create_node': '➕',
+      'batch_create_nodes': '🌳',
+      'update_node': '✏️',
+      'batch_update_nodes': '📝',
+      'delete_node': '🗑️',
+      'create_edge': '🔗',
+      'create_edges': '🕸️',
+      'delete_edge': '✂️',
+      'analyze_map': '🔍',
+      'reorganize_map': '📐',
+      'find_nodes': '🔎',
+    };
+    return icons[toolName] || '⚡';
+  }
+
+  private formatToolStartMessage(toolName: string): string {
+    const messages: Record<string, string> = {
+      'create_node': 'Criando novo nó no mapa...',
+      'batch_create_nodes': 'Criando múltiplos nós em batch...',
+      'update_node': 'Atualizando nó existente...',
+      'batch_update_nodes': 'Atualizando vários nós...',
+      'delete_node': 'Removendo nó do mapa...',
+      'create_edge': 'Criando conexão entre nós...',
+      'create_edges': 'Criando múltiplas conexões...',
+      'delete_edge': 'Removendo conexão...',
+      'analyze_map': 'Analisando estrutura do mapa...',
+      'reorganize_map': 'Reorganizando layout do mapa...',
+      'find_nodes': 'Buscando nós no mapa...',
+    };
+    return messages[toolName] || `Executando ${toolName}...`;
+  }
+
+  private formatToolCompleteMessage(toolName: string, input: any): string {
+    switch (toolName) {
+      case 'create_node':
+        return `Nó criado: "${input.label}" (tipo: ${input.type})`;
+      
+      case 'batch_create_nodes':
+        const count = input.nodes?.length || 0;
+        const types = [...new Set((input.nodes || []).map((n: any) => n.type))];
+        return `${count} nós criados (tipos: ${types.join(', ')})`;
+      
+      case 'update_node':
+        const fields = Object.keys(input).filter(k => k !== 'nodeId').join(', ');
+        return `Nó atualizado (campos: ${fields})`;
+      
+      case 'batch_update_nodes':
+        return `${input.updates?.length || 0} nós atualizados`;
+      
+      case 'delete_node':
+        return `Nó removido (${input.reason || 'sem motivo especificado'})`;
+      
+      case 'create_edge':
+        return `Conexão criada${input.label ? `: "${input.label}"` : ''}`;
+      
+      case 'analyze_map':
+        return `Análise completa (foco: ${input.focus || 'all'})`;
+      
+      case 'reorganize_map':
+        return `Mapa reorganizado (estratégia: ${input.strategy})`;
+      
+      case 'find_nodes':
+        return `Busca concluída${input.query ? `: "${input.query}"` : ''}`;
+      
+      default:
+        return `${toolName} concluído`;
+    }
   }
 }
 

@@ -15,7 +15,8 @@ import {
 } from 'lucide-react';
 import { neuralAgent } from './NeuralAgent';
 import type { AgentTodoItem, StreamCallbacks } from './NeuralAgent';
-import type { AIAgentMode, AIAgentAction, AIAgentMessage, PowerNode, PowerEdge } from '../editor/types';
+import type { AIAgentMode, AIAgentAction, AIAgentMessage, PowerNode, PowerEdge, NeuralNodeData, NeuralNodeType } from '../editor/types';
+import type { ExecutionContext } from './ActionExecutor';
 
 interface AgentPanelProps {
   isOpen: boolean;
@@ -26,6 +27,13 @@ interface AgentPanelProps {
   onApplyActions: (actions: AIAgentAction[]) => void;
   pendingPrompt?: string;
   onPendingPromptConsumed?: () => void;
+  // Node operation functions for ExecutionContext (Agent Mode direct execution)
+  createNode?: (type: NeuralNodeType, position?: { x: number; y: number }, parentId?: string | null, data?: Partial<NeuralNodeData>) => PowerNode;
+  updateNodeData?: (nodeId: string, data: Partial<NeuralNodeData>) => void;
+  deleteNode?: (nodeId: string) => void;
+  setEdges?: React.Dispatch<React.SetStateAction<PowerEdge[]>>;
+  // Save callback to persist changes after AI actions
+  onSave?: () => void | Promise<void>;
 }
 
 // ─── Quick Actions ──────────────────────────────────────────────────────────
@@ -189,7 +197,9 @@ const ToolCallDisplay: React.FC<{ toolName: string; isComplete: boolean }> = ({ 
 
 export const AgentPanel: React.FC<AgentPanelProps> = ({
   isOpen, onClose, nodes, edges, selectedNodeId, onApplyActions,
-  pendingPrompt, onPendingPromptConsumed
+  pendingPrompt, onPendingPromptConsumed,
+  createNode: createNodeFn, updateNodeData: updateNodeDataFn,
+  deleteNode: deleteNodeFn, setEdges: setEdgesFn, onSave
 }) => {
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -204,6 +214,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   const [streamingText, setStreamingText] = useState('');
   const [currentTodos, setCurrentTodos] = useState<AgentTodoItem[]>([]);
   const [activeToolCalls, setActiveToolCalls] = useState<Array<{ name: string; complete: boolean }>>([]);
+  const [actionSteps, setActionSteps] = useState<Array<{ message: string; icon: string; timestamp: number }>>([]);
   const [thinkingText, setThinkingText] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
 
@@ -212,7 +223,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingText, currentTodos, activeToolCalls]);
+  }, [messages, streamingText, currentTodos, activeToolCalls, actionSteps]);
 
   useEffect(() => {
     if (isOpen) inputRef.current?.focus();
@@ -237,6 +248,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     setStreamingText('');
     setCurrentTodos([]);
     setActiveToolCalls([]);
+    setActionSteps([]);
     setThinkingText('');
     neuralAgent.setMode(mode);
 
@@ -263,13 +275,16 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
       onTextDelta: (_delta, accumulated) => {
         setStreamingText(accumulated);
       },
-      onToolStart: (toolName) => {
+      onToolStart: (toolName, detail) => {
         setActiveToolCalls(prev => [...prev, { name: toolName, complete: false }]);
       },
-      onToolComplete: (toolName) => {
+      onToolComplete: (toolName, _input, result) => {
         setActiveToolCalls(prev =>
           prev.map(tc => tc.name === toolName && !tc.complete ? { ...tc, complete: true } : tc)
         );
+      },
+      onActionStep: (step, icon) => {
+        setActionSteps(prev => [...prev, { message: step, icon: icon || '⚡', timestamp: Date.now() }]);
       },
       onComplete: (response) => {
         setIsStreaming(false);
@@ -295,6 +310,14 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
 
         if (response.actions.length > 0) {
           setPendingActions(response.actions);
+          
+          // Trigger save after streaming completes with actions
+          if (onSave) {
+            setTimeout(() => {
+              onSave();
+              console.log('[AgentPanel] Auto-save triggered after streaming complete');
+            }, 500);
+          }
         }
       },
       onError: (error) => {
@@ -305,7 +328,54 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     };
 
     try {
+      // ── Set up ExecutionContext so tool calls execute DIRECTLY on the map ──
+      if (createNodeFn && updateNodeDataFn && deleteNodeFn && setEdgesFn) {
+        const executionContext: ExecutionContext = {
+          nodes,
+          edges,
+          createNode: (type: NeuralNodeType, label: string, parentId?: string) => {
+            return createNodeFn(type, undefined, parentId || selectedNodeId, { label });
+          },
+          updateNode: (nodeId: string, data: Partial<NeuralNodeData>) => {
+            updateNodeDataFn(nodeId, data);
+          },
+          deleteNode: (nodeId: string) => {
+            deleteNodeFn(nodeId);
+          },
+          createEdge: (sourceId: string, targetId: string, label?: string) => {
+            const edgeId = `edge_${sourceId}_${targetId}_${Date.now()}`;
+            const newEdge: PowerEdge = {
+              id: edgeId,
+              source: sourceId,
+              target: targetId,
+              type: 'power',
+              animated: true,
+              data: { style: 'neural' as const, label },
+            };
+            setEdgesFn(prev => [...prev, newEdge]);
+            return newEdge;
+          },
+          deleteEdge: (sourceId: string, targetId: string) => {
+            setEdgesFn(prev => prev.filter(e => !(e.source === sourceId && e.target === targetId)));
+          },
+        };
+        neuralAgent.setExecutionContext(executionContext);
+      }
+
       const result = await neuralAgent.processMessage(msgText, nodes, edges, selectedNodeId, callbacks, agentType);
+
+      // Auto-apply actions to the map (Agent Mode = no manual "Apply" needed)
+      if (result.actions.length > 0) {
+        onApplyActions(result.actions);
+        
+        // Trigger save after AI actions complete
+        if (onSave) {
+          setTimeout(() => {
+            onSave();
+            console.log('[AgentPanel] Auto-save triggered after AI actions');
+          }, 500); // Small delay to let state updates settle
+        }
+      }
 
       // If streaming didn't fire onComplete (regular API fallback), handle it here
       if (!result.streaming) {
@@ -598,6 +668,28 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                       <ToolCallDisplay key={`${tc.name}_${i}`} toolName={tc.name} isComplete={tc.complete} />
                     ))}
                   </div>
+                )}
+
+                {/* Action Steps (Real-time VS Code style) */}
+                {actionSteps.length > 0 && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -5 }} 
+                    animate={{ opacity: 1, y: 0 }}
+                    className="space-y-0.5 max-h-40 overflow-y-auto custom-scrollbar"
+                  >
+                    {actionSteps.slice(-12).map((step, i) => (
+                      <motion.div
+                        key={`${step.timestamp}_${i}`}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.15 }}
+                        className="flex items-center gap-2 px-2.5 py-1 rounded-md bg-white/[0.02] text-[10px] font-mono"
+                      >
+                        <span className="text-base">{step.icon}</span>
+                        <span className="text-slate-400 truncate">{step.message}</span>
+                      </motion.div>
+                    ))}
+                  </motion.div>
                 )}
 
                 {/* Streaming text */}

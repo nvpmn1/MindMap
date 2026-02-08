@@ -198,11 +198,18 @@ export async function executeWithStreaming(
     writer.send('stream_start', { agent: agentType, timestamp: new Date().toISOString() });
     writer.sendProgress('Inicializando agente...', 0);
 
-    // 2) Analyze and select model
+    // 2) Analyze and select model — ALWAYS Haiku
     const complexity = analyzeComplexity(agentType, input);
     const selection = selectModel(agentType, input);
-    const model = modelOverride || selection.modelId;
-    writer.sendProgress('Preparando contexto...', 10);
+    // FIXED: Force Haiku regardless of selection
+    const model = 'claude-haiku-4-5' as any;
+
+    // Send model_selected event (frontend expects this)
+    writer.send('model_selected' as any, {
+      model: 'Claude Haiku 4.5',
+      reason: 'Claude Haiku 4.5 — modelo fixo para máxima economia e velocidade',
+      complexity: complexity.level,
+    });
 
     // 3) Build system prompt and tools
     const config = AGENT_REGISTRY[agentType] || AGENT_REGISTRY.chat;
@@ -215,6 +222,7 @@ export async function executeWithStreaming(
       : (systemPrompt as any[]).map((s: any) => s.text).join('\n\n');
 
     const tools = getToolsForAgent(config.requiredTools, config.optionalTools);
+    const toolChoice = getToolChoice(agentType, tools);
 
     // 4) Build messages with context management
     const userPrompt = buildUserPrompt(agentType, input, input.options || {});
@@ -232,7 +240,9 @@ export async function executeWithStreaming(
     }
 
     messages.push({ role: 'user', content: userPrompt });
-    writer.sendProgress('Gerando resposta...', 20);
+    
+    // Send thinking_start event (frontend expects this)
+    writer.send('thinking_start' as any, { message: 'Analisando e gerando resposta...' });
 
     // 5) Stream from Claude
     const stream = client.createStream({
@@ -240,6 +250,7 @@ export async function executeWithStreaming(
       system,
       messages,
       tools: tools.length > 0 ? tools : undefined,
+      tool_choice: toolChoice,
       max_tokens: config.maxTokens || 4096,
       temperature: config.temperature ?? 0.7,
     });
@@ -249,6 +260,10 @@ export async function executeWithStreaming(
     const toolCalls: any[] = [];
     let inputTokens = 0;
     let outputTokens = 0;
+    let textStarted = false;
+    let currentToolId: string | null = null;
+    let currentToolName: string | null = null;
+    let currentToolJson = '';
 
     // 6) Process stream events
     for await (const event of stream) {
@@ -257,11 +272,14 @@ export async function executeWithStreaming(
       switch (event.type) {
         case 'content_block_start': {
           if (event.content_block?.type === 'tool_use') {
-            writer.sendToolUse(
-              event.content_block.name,
-              event.content_block.id,
-              {},
-            );
+            currentToolId = event.content_block.id;
+            currentToolName = event.content_block.name;
+            currentToolJson = '';
+            // Send tool_start event (frontend expects this name)
+            writer.send('tool_start' as any, {
+              name: event.content_block.name,
+              id: event.content_block.id,
+            });
           }
           break;
         }
@@ -269,13 +287,49 @@ export async function executeWithStreaming(
         case 'content_block_delta': {
           const delta = event.delta;
           if (delta?.type === 'text_delta' && delta.text) {
+            // Send text_start on first text delta (frontend expects this)
+            if (!textStarted) {
+              writer.send('text_start' as any, {});
+              textStarted = true;
+            }
             fullText += delta.text;
-            writer.sendText(delta.text);
+            // Frontend expects {text, accumulated} in text_delta
+            writer.send('text_delta' as any, { text: delta.text, accumulated: fullText });
           } else if ((delta as any)?.type === 'thinking_delta' && (delta as any).thinking) {
             fullThinking += (delta as any).thinking;
             writer.sendThinking((delta as any).thinking);
           } else if (delta?.type === 'input_json_delta' && delta.partial_json) {
-            writer.send('tool_use_delta', { partial_json: delta.partial_json });
+            currentToolJson += delta.partial_json;
+            writer.send('tool_use_delta' as any, { partial_json: delta.partial_json });
+          }
+          break;
+        }
+
+        case 'content_block_stop': {
+          if (currentToolName) {
+            let parsedInput: any = {};
+            if (currentToolJson.trim().length > 0) {
+              try {
+                parsedInput = JSON.parse(currentToolJson);
+              } catch {
+                parsedInput = { _raw: currentToolJson };
+              }
+            }
+
+            toolCalls.push({
+              name: currentToolName,
+              id: currentToolId,
+              input: parsedInput,
+            });
+
+            writer.send('tool_complete' as any, {
+              name: currentToolName,
+              input: parsedInput,
+            });
+
+            currentToolId = null;
+            currentToolName = null;
+            currentToolJson = '';
           }
           break;
         }
@@ -294,30 +348,33 @@ export async function executeWithStreaming(
           break;
         }
 
-        case 'content_block_stop': {
-          break;
-        }
-
         case 'message_stop': {
           break;
         }
 
         default: {
-          // Handle 'error' and other event types
           if ((event as any).type === 'error') {
-            writer.sendError((event as any).error?.message || 'Erro no stream');
+            writer.send('error' as any, { error: (event as any).error?.message || 'Erro no stream' });
           }
           break;
         }
       }
     }
 
-    // 7) Send usage info
+    // Send text_complete event (frontend expects this)
+    if (fullText) {
+      writer.send('text_complete' as any, { text: fullText });
+    }
+
+    // 7) Send 'complete' event (frontend expects this instead of 'usage')
     const executionTimeMs = Date.now() - startTime;
-    writer.send('usage', {
-      input_tokens: inputTokens,
-      output_tokens: outputTokens,
+    writer.send('complete' as any, {
+      content: fullText,
       model,
+      usage: {
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+      },
       execution_time_ms: executionTimeMs,
     });
 
@@ -340,7 +397,27 @@ export async function executeWithStreaming(
 
   } catch (error: any) {
     logger.error({ err: error }, `Streaming agent ${agentType} failed`);
-    writer.sendError(error.message || 'Erro interno do servidor');
+    // Frontend expects { error: string } format 
+    writer.send('error' as any, { error: error.message || 'Erro interno do servidor' });
     writer.sendDone({ error: true });
   }
+}
+
+function getToolChoice(agentType: AgentType, tools: ToolDefinition[]): { type: 'auto' } | { type: 'any' } {
+  if (!tools.length) {
+    return { type: 'auto' };
+  }
+
+  const forceToolAgents: AgentType[] = [
+    'generate',
+    'expand',
+    'organize',
+    'connect',
+    'visualize',
+    'task_convert',
+    'research',
+    'hypothesize',
+  ];
+
+  return forceToolAgents.includes(agentType) ? { type: 'any' } : { type: 'auto' };
 }

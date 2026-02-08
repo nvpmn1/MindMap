@@ -248,3 +248,18 @@
 .drag-overlay {
   @apply fixed inset-0 bg-background/50 backdrop-blur-sm z-50;
 }
+
+/* Custom scrollbar for avatar picker */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.35);
+  border-radius: 999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.55);
+}

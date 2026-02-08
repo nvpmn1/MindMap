@@ -465,16 +465,39 @@ router.post(
       throw new ValidationError(parsed.error.errors[0].message);
     }
 
+    const { source_id, target_id, map_id } = parsed.data;
+
+    // Prevent self-loops
+    if (source_id === target_id) {
+      throw new ValidationError('Cannot create edge from node to itself');
+    }
+
+    // Validate both nodes exist in the map
+    const { data: nodes, error: nodesError } = await req.supabase!
+      .from('nodes')
+      .select('id')
+      .eq('map_id', map_id)
+      .in('id', [source_id, target_id]);
+
+    if (nodesError || !nodes || nodes.length !== 2) {
+      throw new ValidationError('One or both nodes do not exist in this map');
+    }
+
     // Check for existing edge
-    const { data: existing } = await req.supabase!
+    const { data: existing, error: existingError } = await req.supabase!
       .from('edges')
       .select('id')
-      .eq('source_id', parsed.data.source_id)
-      .eq('target_id', parsed.data.target_id)
-      .single();
+      .eq('source_id', source_id)
+      .eq('target_id', target_id)
+      .maybeSingle();
 
     if (existing) {
-      throw new ValidationError('Edge already exists');
+      // Return 409 Conflict instead of throwing an error for duplicates
+      logger.debug({ source_id, target_id, mapId: map_id }, 'Edge already exists');
+      return res.status(409).json({
+        success: false,
+        error: 'Edge already exists',
+      });
     }
 
     const { data: edge, error } = await req.supabase!
@@ -484,8 +507,8 @@ router.post(
       .single();
 
     if (error) {
-      logger.error({ error: error.message }, 'Failed to create edge');
-      throw new Error('Failed to create edge');
+      logger.error({ error: error.message, source_id, target_id }, 'Failed to create edge');
+      throw new Error(`Failed to create edge: ${error.message}`);
     }
 
     logger.debug({ edgeId: edge.id, mapId: edge.map_id }, 'Edge created');

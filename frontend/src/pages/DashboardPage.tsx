@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { useAuthStore } from '@/stores/authStore';
 import { mapsApi } from '@/lib/api';
 import { formatRelativeTime } from '@/lib/utils';
+import { MapCardCompact } from '@/components/MapCardCompact';
 import {
   Plus,
   Network,
@@ -50,11 +51,14 @@ export function DashboardPage() {
     const loadMaps = async () => {
       setIsLoading(true);
       const workspaceId = workspaces[0]?.id;
+      console.log('📍 Loading maps for workspace:', workspaceId);
 
       if (workspaceId) {
         try {
           const response = await mapsApi.list({ workspace_id: workspaceId, limit: 50, offset: 0 });
+          console.log('📡 API Response:', response);
           const data = (response.data as any[]) || [];
+          console.log('📊 Parsed maps data:', data);
           const normalized = data.map((map) => ({
             id: map.id,
             title: map.title,
@@ -63,15 +67,18 @@ export function DashboardPage() {
             updated_at: map.updated_at || map.created_at || new Date().toISOString(),
             nodes_count: map._count?.count || map.nodes_count || 0,
           })) as MapItem[];
+          console.log('✅ Normalized maps:', normalized);
           setMaps(normalized);
           setIsLoading(false);
           return;
-        } catch {
+        } catch (error) {
+          console.error('❌ Error loading maps:', error);
           // fallback
         }
       }
 
       const stored = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
+      console.log('💾 Fallback maps from localStorage:', stored);
       setMaps(stored);
       setIsLoading(false);
     };
@@ -255,11 +262,16 @@ export function DashboardPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {recentMaps.map((map, i) => (
-                <MapCard
+                <MapCardCompact
                   key={map.id}
-                  map={map}
-                  index={i}
+                  id={map.id}
+                  title={map.title}
+                  description={map.description}
+                  updated_at={map.updated_at}
+                  nodes_count={map.nodes_count}
+                  colorIndex={i % 6}
                   onClick={() => navigate(`/map/${map.id}`)}
+                  index={i}
                 />
               ))}
             </div>
@@ -330,76 +342,6 @@ function StatCard({
       </div>
       <p className={`text-xl font-bold ${textColor[color]}`}>{value}</p>
     </div>
-  );
-}
-
-// Map Card
-function MapCard({
-  map,
-  index,
-  onClick,
-}: {
-  map: MapItem;
-  index: number;
-  onClick: () => void;
-}) {
-  const colors = [
-    'from-cyan-500/8 to-blue-500/8 hover:border-cyan-500/20',
-    'from-purple-500/8 to-pink-500/8 hover:border-purple-500/20',
-    'from-emerald-500/8 to-teal-500/8 hover:border-emerald-500/20',
-    'from-amber-500/8 to-orange-500/8 hover:border-amber-500/20',
-    'from-rose-500/8 to-red-500/8 hover:border-rose-500/20',
-    'from-indigo-500/8 to-violet-500/8 hover:border-indigo-500/20',
-  ];
-
-  const iconColors = [
-    'from-cyan-500/20 to-blue-600/20 text-cyan-400',
-    'from-purple-500/20 to-pink-600/20 text-purple-400',
-    'from-emerald-500/20 to-teal-600/20 text-emerald-400',
-    'from-amber-500/20 to-orange-600/20 text-amber-400',
-    'from-rose-500/20 to-red-600/20 text-rose-400',
-    'from-indigo-500/20 to-violet-600/20 text-indigo-400',
-  ];
-
-  const colorIndex = index % colors.length;
-
-  const safeDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return isNaN(d.getTime()) ? 'Recente' : formatRelativeTime(d);
-  };
-
-  return (
-    <motion.button
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.04, duration: 0.3 }}
-      onClick={onClick}
-      className={`text-left p-4 rounded-xl border border-white/[0.04] bg-gradient-to-br ${colors[colorIndex]} transition-all duration-200 group w-full`}
-    >
-      <div className="flex items-start gap-3">
-        <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${iconColors[colorIndex]} flex items-center justify-center flex-shrink-0`}>
-          <Network className="w-5 h-5" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="text-[14px] font-medium text-white truncate group-hover:text-cyan-300 transition-colors">
-            {map.title}
-          </h3>
-          {map.description && (
-            <p className="text-[12px] text-slate-500 mt-1 line-clamp-1">{map.description}</p>
-          )}
-          <div className="flex items-center gap-3 mt-3">
-            <span className="text-[11px] text-slate-500 flex items-center gap-1">
-              <Layers className="w-3 h-3" />
-              {map.nodes_count} nós
-            </span>
-            <span className="text-[11px] text-slate-500 flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              {safeDate(map.updated_at)}
-            </span>
-          </div>
-        </div>
-      </div>
-    </motion.button>
   );
 }
 

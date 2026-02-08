@@ -124,7 +124,7 @@ function analyzeComplexity(
 }
 
 /**
- * Auto select best model based on complexity and cost efficiency
+ * Auto select best model — ALWAYS Haiku for cost control
  */
 export function autoSelectModel(
   agentType: AIAgentType,
@@ -138,18 +138,9 @@ export function autoSelectModel(
 } {
   const complexity = analyzeComplexity(agentType, input, contextLength);
 
-  let selectedModel = AVAILABLE_MODELS.sonnet45; // Default balanced choice
-  let reason = '';
-
-  if (complexity.level === 'simple') {
-    selectedModel = AVAILABLE_MODELS.haiku;
-    reason = `Modelo Haiku selecionado - tarefa simples, economiza ${((AVAILABLE_MODELS.sonnet45.costPer1kTokens / AVAILABLE_MODELS.haiku.costPer1kTokens).toFixed(0))}x no custo`;
-  } else if (complexity.level === 'complex') {
-    selectedModel = AVAILABLE_MODELS.opus46;
-    reason = 'Modelo Opus 4.6 selecionado - tarefa complexa requer raciocínio avançado';
-  } else {
-    reason = 'Modelo Sonnet 4.5 selecionado - balanceado para maioria das tarefas';
-  }
+  // FIXED: Always use Haiku — user requirement for cost control
+  const selectedModel = AVAILABLE_MODELS.haiku;
+  const reason = 'Claude Haiku 4.5 — modelo fixo para máxima economia e velocidade';
 
   logger.debug({
     complexityScore: complexity.score,
@@ -213,9 +204,8 @@ class AIOrchestrator {
   private maxTokens: number;
 
   constructor() {
-    const configuredModel = env.CLAUDE_MODEL || 'claude-sonnet-4-5';
-    // If 'auto', use sonnet as default; auto-selection happens per-request
-    this.model = configuredModel === 'auto' ? 'claude-sonnet-4-5' : configuredModel;
+    // FIXED: Always use Haiku for cost efficiency
+    this.model = 'claude-haiku-4-5';
     this.maxTokens = 4096;
   }
 

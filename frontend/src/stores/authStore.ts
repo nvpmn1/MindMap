@@ -6,6 +6,7 @@ interface User {
   email: string;
   display_name: string;
   avatar_url: string | null;
+  avatar_id?: string; // Track which avatar style was selected
   color: string;
 }
 
@@ -14,6 +15,7 @@ interface Profile {
   email: string;
   display_name: string | null;
   avatar_url: string | null;
+  avatar_id?: string; // Track which avatar style was selected
   color: string;
 }
 
@@ -42,7 +44,7 @@ interface AuthState {
   // Actions
   setProfile: (profile: Profile | null) => void;
   setLoading: (loading: boolean) => void;
-  updateProfile: (data: { display_name?: string; avatar_url?: string | null }) => Promise<void>;
+  updateProfile: (data: { display_name?: string; avatar_url?: string | null; avatar_id?: string }) => Promise<void>;
   
   // Auth operations
   initialize: () => void;
@@ -70,6 +72,8 @@ export const useAuthStore = create<AuthState>()(
         if (!data.display_name && data.avatar_url === undefined) {
           throw new Error('No data to update');
         }
+        
+        console.log('📤 Sending to updateProfile:', JSON.stringify(data));
 
         // No strict avatar URL validation - let server handle it
         // Just ensure it's not corrupted during transit
@@ -82,6 +86,8 @@ export const useAuthStore = create<AuthState>()(
           display_name: data.display_name,
           avatar_url: data.avatar_url,
         });
+        
+        console.log('✅ Backend response:', response);
 
         if (!response.success || !response.data) {
           throw new Error('Failed to update profile on server');
@@ -115,12 +121,13 @@ export const useAuthStore = create<AuthState>()(
           localStorage.setItem('mindmap_auth_profile', JSON.stringify(updatedProfile));
         }
 
-        console.log('✅ Profile persisted to localStorage:', { userId: updatedUser.id });
+        console.log('✅ Profile persisted to localStorage:', { userId: updatedUser.id, avatar: updatedUser.avatar_url?.substring(0, 50) });
 
       } catch (error) {
-        console.error('Profile update error:', error);
+        console.error('⚠️ Profile update error:', error);
         
-        // Fallback: update locally and persist to localStorage immediately
+        // CRITICAL: Even if backend fails, always persist to localStorage
+        // This ensures avatar changes are saved locally
         const fallbackUser = {
           ...state.user!,
           ...(data.display_name !== undefined && { display_name: data.display_name }),
@@ -139,9 +146,14 @@ export const useAuthStore = create<AuthState>()(
         localStorage.setItem('mindmap_auth_user', JSON.stringify(fallbackUser));
         localStorage.setItem('mindmap_auth_profile', JSON.stringify(fallbackProfile));
 
-        console.log('⚠️ Profile persisted to localStorage (fallback mode):', { userId: fallbackUser.id });
+        console.log('⚠️ Profile persisted to localStorage (fallback mode):', { userId: fallbackUser.id, avatar: fallbackUser.avatar_url?.substring(0, 50) });
 
-        throw error;
+        // Non-critical errors (like avatar save) should not break the flow
+        // Only throw if it's a connection error
+        if (error instanceof Error && error.message.includes('user logged in')) {
+          throw error;
+        }
+        // Otherwise silently fail for avatar updates
       }
     },
 

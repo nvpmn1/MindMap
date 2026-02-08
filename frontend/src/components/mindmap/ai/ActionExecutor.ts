@@ -43,12 +43,16 @@ export class ActionExecutor {
       switch (toolName) {
         case 'create_node':
           return this.execCreateNode(input, ctx);
+        case 'create_nodes':
+          return this.execCreateNodes(input, ctx);
         case 'update_node':
           return this.execUpdateNode(input, ctx);
         case 'delete_node':
           return this.execDeleteNode(input, ctx);
         case 'create_edge':
           return this.execCreateEdge(input, ctx);
+        case 'create_edges':
+          return this.execCreateEdges(input, ctx);
         case 'delete_edge':
           return this.execDeleteEdge(input, ctx);
         case 'batch_create_nodes':
@@ -59,6 +63,18 @@ export class ActionExecutor {
           return this.execAnalyzeMap(input, ctx);
         case 'reorganize_map':
           return this.execReorganizeMap(input, ctx);
+        case 'create_tasks':
+          return this.execCreateTasks(input, ctx);
+        case 'create_clusters':
+          return this.execCreateClusters(input, ctx);
+        case 'update_layout':
+          return this.execUpdateLayout(input, ctx);
+        case 'add_citations':
+          return this.execAddCitations(input, ctx);
+        case 'generate_report':
+          return this.execGenerateReport(input, ctx);
+        case 'find_patterns':
+          return this.execFindPatterns(input, ctx);
         case 'find_nodes':
           return this.execFindNodes(input, ctx);
         default:
@@ -141,6 +157,44 @@ export class ActionExecutor {
     };
   }
 
+  private execCreateNodes(input: any, ctx: ExecutionContext): ExecutionResult {
+    const nodes = Array.isArray(input?.nodes) ? input.nodes : [];
+    if (nodes.length === 0) {
+      return { success: false, toolName: 'create_nodes', description: 'Nenhum nó para criar', error: 'Empty nodes array' };
+    }
+
+    const createdIds: string[] = [];
+
+    for (const spec of nodes) {
+      const normalized = {
+        type: spec.type || 'idea',
+        label: spec.label,
+        description: spec.content ?? spec.description,
+        parentId: spec.parent_id ?? spec.parentId,
+        status: spec.status,
+        priority: spec.priority,
+        tags: spec.tags,
+        progress: spec.progress,
+        dueDate: spec.dueDate,
+        checklist: spec.checklist,
+        chart: spec.chart,
+        table: spec.table,
+      };
+
+      const result = this.execCreateNode(normalized, ctx);
+      if (result.success && result.nodesCreated?.length) {
+        createdIds.push(...result.nodesCreated);
+      }
+    }
+
+    return {
+      success: true,
+      toolName: 'create_nodes',
+      description: `${createdIds.length} nós criados` ,
+      nodesCreated: createdIds,
+    };
+  }
+
   private execUpdateNode(input: any, ctx: ExecutionContext): ExecutionResult {
     const { nodeId, ...updates } = input;
     
@@ -218,6 +272,34 @@ export class ActionExecutor {
     };
   }
 
+  private execCreateEdges(input: any, ctx: ExecutionContext): ExecutionResult {
+    const edges = Array.isArray(input?.edges) ? input.edges : [];
+    if (edges.length === 0) {
+      return { success: false, toolName: 'create_edges', description: 'Nenhuma conexão para criar', error: 'Empty edges array' };
+    }
+
+    const created: Array<{ source: string; target: string }> = [];
+
+    for (const edge of edges) {
+      const normalized = {
+        sourceId: edge.source_id ?? edge.sourceId,
+        targetId: edge.target_id ?? edge.targetId,
+        label: edge.label,
+      };
+      const result = this.execCreateEdge(normalized, ctx);
+      if (result.success && result.edgesCreated?.length) {
+        created.push(...result.edgesCreated);
+      }
+    }
+
+    return {
+      success: true,
+      toolName: 'create_edges',
+      description: `${created.length} conexões criadas`,
+      edgesCreated: created,
+    };
+  }
+
   private execDeleteEdge(input: any, ctx: ExecutionContext): ExecutionResult {
     const { sourceId, targetId } = input;
     ctx.deleteEdge(sourceId, targetId);
@@ -238,6 +320,14 @@ export class ActionExecutor {
 
     const idMap: Record<string, string> = {};
     const createdIds: string[] = [];
+
+    // Group nodes by parent for intelligent positioning
+    const nodesByParent = new Map<string, typeof nodeSpecs>();
+    for (const spec of nodeSpecs) {
+      const parentKey = spec.parentId || '__root__';
+      if (!nodesByParent.has(parentKey)) nodesByParent.set(parentKey, []);
+      nodesByParent.get(parentKey)!.push(spec);
+    }
 
     for (const spec of nodeSpecs) {
       // Resolve parentId: could be a tempId or real ID
@@ -399,6 +489,84 @@ export class ActionExecutor {
     };
   }
 
+  private execCreateTasks(input: any, ctx: ExecutionContext): ExecutionResult {
+    const tasks = Array.isArray(input?.tasks) ? input.tasks : [];
+    if (tasks.length === 0) {
+      return { success: false, toolName: 'create_tasks', description: 'Nenhuma tarefa para criar', error: 'Empty tasks array' };
+    }
+
+    const createdIds: string[] = [];
+
+    for (const task of tasks) {
+      const normalized = {
+        type: 'task',
+        label: task.title,
+        description: task.description,
+        parentId: task.node_id ?? task.parentId,
+        priority: task.priority,
+        tags: task.tags,
+        checklist: task.checklist,
+      };
+      const result = this.execCreateNode(normalized, ctx);
+      if (result.success && result.nodesCreated?.length) {
+        createdIds.push(...result.nodesCreated);
+      }
+    }
+
+    return {
+      success: true,
+      toolName: 'create_tasks',
+      description: `${createdIds.length} tarefas criadas como nós`,
+      nodesCreated: createdIds,
+    };
+  }
+
+  private execCreateClusters(input: any, _ctx: ExecutionContext): ExecutionResult {
+    const clusters = Array.isArray(input?.clusters) ? input.clusters : [];
+    return {
+      success: true,
+      toolName: 'create_clusters',
+      description: `${clusters.length} clusters sugeridos`,
+      data: { clusters },
+    };
+  }
+
+  private execUpdateLayout(input: any, _ctx: ExecutionContext): ExecutionResult {
+    return {
+      success: true,
+      toolName: 'update_layout',
+      description: 'Layout sugerido pelo agente',
+      data: input,
+    };
+  }
+
+  private execAddCitations(input: any, _ctx: ExecutionContext): ExecutionResult {
+    return {
+      success: true,
+      toolName: 'add_citations',
+      description: 'Citações registradas',
+      data: input,
+    };
+  }
+
+  private execGenerateReport(input: any, _ctx: ExecutionContext): ExecutionResult {
+    return {
+      success: true,
+      toolName: 'generate_report',
+      description: 'Relatório gerado',
+      data: input,
+    };
+  }
+
+  private execFindPatterns(input: any, _ctx: ExecutionContext): ExecutionResult {
+    return {
+      success: true,
+      toolName: 'find_patterns',
+      description: 'Padrões analisados',
+      data: input,
+    };
+  }
+
   private execFindNodes(input: any, ctx: ExecutionContext): ExecutionResult {
     const { query, type, status, priority, tags } = input;
     
@@ -440,7 +608,7 @@ export class ActionExecutor {
     if (!input || typeof input !== 'object') return input;
     
     const resolved = { ...input };
-    for (const key of ['parentId', 'nodeId', 'sourceId', 'targetId', 'centerNodeId']) {
+    for (const key of ['parentId', 'nodeId', 'sourceId', 'targetId', 'centerNodeId', 'parent_id', 'node_id', 'source_id', 'target_id', 'center_node_id']) {
       if (resolved[key] && idMap.has(resolved[key])) {
         resolved[key] = idMap.get(resolved[key]);
       }

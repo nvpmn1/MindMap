@@ -250,8 +250,16 @@ Sempre confirme com o usuário antes de deletar nós importantes.`,
 
   {
     name: 'batch_create_nodes',
-    description: `Cria múltiplos nós de uma vez com suas conexões. Ideal para gerar estruturas complexas como planos de ação, brainstorming, mapas de pesquisa.
-Use quando o usuário pedir para criar várias coisas ao mesmo tempo ou gerar uma estrutura completa.`,
+    description: `Cria múltiplos nós de uma vez com suas conexões e POSIÇÕES CALCULADAS. Ideal para gerar estruturas complexas como planos de ação, brainstorming, mapas de pesquisa.
+Use quando o usuário pedir para criar várias coisas ao mesmo tempo ou gerar uma estrutura completa.
+
+IMPORTANTE - POSICIONAMENTO INTELIGENTE:
+- Calcule posições para evitar sobreposição
+- Use layout radial (nós distribuídos em círculo ao redor do pai)
+- Raio padrão: 300px
+- Para N nós filhos: distribua em arco de 180° a 360° dependendo de N
+- Ângulos: -90° (topo), 0° (direita), 90° (baixo), 180° (esquerda)
+- Exemplo para 6 filhos: -90°, -30°, 30°, 90°, 150°, 210° (arco completo 360°)`,
     input_schema: {
       type: 'object',
       properties: {
@@ -262,21 +270,49 @@ Use quando o usuário pedir para criar várias coisas ao mesmo tempo ou gerar um
             properties: {
               tempId: { type: 'string', description: 'ID temporário para referência interna (ex: "temp_1")' },
               type: { type: 'string', enum: ['idea', 'task', 'note', 'research', 'data', 'question', 'decision', 'milestone', 'reference', 'resource'] },
-              label: { type: 'string' },
-              description: { type: 'string' },
+              label: { type: 'string', description: 'Título do nó (max 80 chars)' },
+              description: { type: 'string', description: 'Descrição RICA (2-5 frases com insights)' },
               parentId: { type: 'string', description: 'ID real de um nó existente OU tempId de um nó neste batch.' },
+              position: { 
+                type: 'object', 
+                properties: { 
+                  x: { type: 'number' }, 
+                  y: { type: 'number' } 
+                },
+                description: 'Posição calculada do nó. SEMPRE calcule para evitar sobreposição. Use layout radial ao redor do pai.'
+              },
               status: { type: 'string', enum: ['active', 'completed', 'archived', 'blocked', 'review'] },
               priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] },
-              tags: { type: 'array', items: { type: 'string' } },
-              progress: { type: 'number' },
+              tags: { type: 'array', items: { type: 'string' }, description: '3-6 tags estratégicas' },
+              progress: { type: 'number', description: '0-100 para tasks/milestones' },
+              dueDate: { type: 'string', description: 'YYYY-MM-DD para tasks/milestones' },
               checklist: {
                 type: 'array',
                 items: { type: 'object', properties: { text: { type: 'string' }, completed: { type: 'boolean' } } },
+                description: '3-7 subtarefas para nós tipo task'
               },
+              chart: {
+                type: 'object',
+                properties: {
+                  type: { type: 'string', enum: ['bar', 'line', 'pie', 'area', 'radar'] },
+                  title: { type: 'string' },
+                  labels: { type: 'array', items: { type: 'string' } },
+                  datasets: { type: 'array', items: { type: 'object' } }
+                },
+                description: 'Gráfico para nós tipo data'
+              },
+              table: {
+                type: 'object',
+                properties: {
+                  columns: { type: 'array' },
+                  rows: { type: 'array' }
+                },
+                description: 'Tabela para nós tipo data'
+              }
             },
-            required: ['tempId', 'type', 'label'],
+            required: ['tempId', 'type', 'label', 'description'],
           },
-          description: 'Array de nós para criar. Cada nó pode referenciar outro nó do batch via tempId.',
+          description: 'Array de nós para criar. Cada nó DEVE ter description rica, tags, e position calculada se tiver parentId.',
         },
       },
       required: ['nodes'],
@@ -381,6 +417,14 @@ export type AgentToolName =
   | 'batch_update_nodes'
   | 'analyze_map'
   | 'reorganize_map'
-  | 'find_nodes';
+  | 'find_nodes'
+  | 'create_nodes'
+  | 'create_edges'
+  | 'create_tasks'
+  | 'create_clusters'
+  | 'update_layout'
+  | 'add_citations'
+  | 'generate_report'
+  | 'find_patterns';
 
 export default AGENT_TOOLS;

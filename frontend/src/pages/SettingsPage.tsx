@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '@/stores/authStore';
+import { resetApi } from '@/lib/api';
+import { FactoryResetModal } from '@/components/FactoryResetModal';
 import {
   User,
   LogOut,
@@ -11,7 +13,7 @@ import {
   Zap,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { AvatarEditor } from '@/components/profile/AvatarEditor';
+import { AvatarPicker } from '@/components/profile/AvatarPicker';
 import { downloadDataUrl } from '@/components/profile/avatarUtils';
 
 const container = {
@@ -32,6 +34,7 @@ export function SettingsPage() {
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '');
   const [isSaving, setIsSaving] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
   const handleSave = async () => {
     if (!displayName.trim()) {
@@ -76,40 +79,33 @@ export function SettingsPage() {
     toast.success('Até logo!', { duration: 2500 });
   };
 
-  const handleFactoryReset = () => {
-    // Confirm before resetting
-    if (!window.confirm('Tem certeza? Isso vai deletar TUDO: todos os mapas, nós e dados. Esta ação não pode ser desfeita!')) {
-      return;
-    }
-
-    if (!window.confirm('Esta é a última chance! Ao confirmar, perderá todos os dados. Continuar?')) {
-      return;
-    }
-
+  const handleFactoryReset = async () => {
+    console.log('🔥 Starting factory reset...');
+    
     try {
-      // Clear all localStorage keys related to maps and nodes
-      const keysToRemove = Object.keys(localStorage).filter(key => 
-        key.startsWith('mindmap_') || key.includes('nodes')
-      );
+      // Call backend API to delete all data
+      const response = await resetApi.factoryReset();
       
-      keysToRemove.forEach(key => {
-        localStorage.removeItem(key);
-      });
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Failed to reset');
+      }
 
-      // Sign out and reset auth state
+      console.log('🔥 Factory reset completed, clearing local state...');
+
+      // Clear ALL localStorage
+      localStorage.clear();
+
+      // Sign out and redirect
       signOut();
-
-      // Clear persisted auth state
-      localStorage.removeItem('authStore');
-
-      toast.success('Plataforma resetada completamente! Redirecionando para login...', { duration: 4000 });
       
-      // Redirect to login after brief delay
-      setTimeout(() => {
-        navigate('/login');
-      }, 1000);
-    } catch {
+      // Navigate to login
+      navigate('/login');
+
+      toast.success('Plataforma resetada! Redirecionando...', { duration: 4000 });
+    } catch (error) {
+      console.error('❌ Factory reset error:', error);
       toast.error('Erro ao resetar plataforma', { duration: 3500 });
+      setIsResetModalOpen(false);
     }
   };
 
@@ -139,57 +135,24 @@ export function SettingsPage() {
           <p className="text-sm text-slate-400 mt-1">Gerencie seu perfil.</p>
         </motion.div>
         <motion.div variants={container} initial="hidden" animate="show" className="space-y-5">
-          {/* Avatar Section */}
+          {/* Avatar Selection Section */}
           <motion.div
             variants={fadeUp}
-            className="rounded-2xl border border-white/[0.04] bg-white/[0.02] p-6"
+            className="rounded-2xl border border-white/[0.04] bg-white/[0.02] p-8"
           >
-            <div className="flex items-center gap-2 mb-5">
+            <div className="flex items-center gap-2 mb-6">
               <Camera className="w-4 h-4 text-cyan-400" />
-              <h2 className="text-[15px] font-semibold text-white">Avatar</h2>
+              <h2 className="text-[15px] font-semibold text-white">Selecione seu Avatar</h2>
             </div>
 
-            <div className="flex flex-col md:flex-row items-start gap-6">
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-cyan-500/15 to-purple-500/15 flex items-center justify-center overflow-hidden border-2 border-white/[0.06]">
-                  {avatarUrl ? (
-                    <img 
-                      src={avatarUrl} 
-                      alt="Avatar" 
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        console.error('Avatar preview failed to load');
-                        (e.currentTarget as HTMLImageElement).style.display = 'none';
-                        const parent = (e.currentTarget as HTMLImageElement).parentElement;
-                        if (parent) {
-                          parent.textContent = '❌';
-                          parent.style.fontSize = '32px';
-                        }
-                      }}
-                    />
-                  ) : (
-                    <User className="w-10 h-10 text-slate-600" />
-                  )}
-                </div>
-                {avatarUrl && (
-                  <button
-                    onClick={handleExportAvatar}
-                    className="flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-cyan-400 transition-colors"
-                  >
-                    <Download className="w-3 h-3" />
-                    Exportar PNG
-                  </button>
-                )}
-              </div>
-
-              <div className="flex-1 w-full">
-                <AvatarEditor
-                  value={avatarUrl}
-                  displayName={displayName}
-                  onChange={setAvatarUrl}
-                />
-              </div>
-            </div>
+            {/* Avatar Picker Component */}
+            <AvatarPicker 
+              selectedAvatarId={user?.avatar_id}
+              onSelect={(avatar) => {
+                setAvatarUrl(avatar.url);
+                toast.success(`Avatar selecionado: ${avatar.name}`, { duration: 2000 });
+              }}
+            />
           </motion.div>
 
           {/* Profile Info */}
@@ -255,7 +218,7 @@ export function SettingsPage() {
                 </div>
               </div>
               <button
-                onClick={handleFactoryReset}
+                onClick={() => setIsResetModalOpen(true)}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[13px] font-medium hover:bg-orange-500/20 hover:border-orange-500/30 transition-all"
               >
                 <Zap className="w-4 h-4" />
@@ -292,6 +255,13 @@ export function SettingsPage() {
           </motion.div>
         </motion.div>
       </motion.div>
+
+      {/* Factory Reset Modal */}
+      <FactoryResetModal
+        isOpen={isResetModalOpen}
+        onClose={() => setIsResetModalOpen(false)}
+        onConfirm={handleFactoryReset}
+      />
     </div>
   );
 }

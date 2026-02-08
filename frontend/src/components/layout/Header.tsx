@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/stores/authStore';
 import { mapsApi, nodesApi } from '@/lib/api';
 import {
@@ -14,7 +14,7 @@ import {
   Loader2,
   X,
 } from 'lucide-react';
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { cn, formatRelativeTime } from '@/lib/utils';
 
 interface SearchMapResult {
@@ -32,138 +32,203 @@ interface SearchNodeResult {
   mapTitle: string;
 }
 
-// Header component for the app layout
 export function Header() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, workspaces } = useAuthStore();
+  
+  // Search state
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
-  const [results, setResults] = useState<{ maps: SearchMapResult[]; nodes: SearchNodeResult[] }>(
-    { maps: [], nodes: [] }
-  );
+  const [results, setResults] = useState<{ maps: SearchMapResult[]; nodes: SearchNodeResult[] }>({
+    maps: [],
+    nodes: [],
+  });
+  
   const searchRef = useRef<HTMLDivElement>(null);
   const nodesCacheRef = useRef(new Map<string, any[]>());
   const lastQueryRef = useRef('');
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Page config
   const getPageConfig = useCallback(() => {
     const path = location.pathname;
-    if (path === '/maps') return { title: 'Meus Mapas', icon: MapIcon, crumbs: ['Dashboard', 'Meus Mapas'] };
-    if (path.includes('/map/')) return { title: 'Editor', icon: MapIcon, crumbs: ['Dashboard', 'Mapas', 'Editor'] };
-    if (path === '/settings') return { title: 'Configurações', icon: Settings, crumbs: ['Dashboard', 'Configurações'] };
+    if (path === '/maps')
+      return { title: 'Meus Mapas', icon: MapIcon, crumbs: ['Dashboard', 'Meus Mapas'] };
+    if (path.includes('/map/'))
+      return { title: 'Editor', icon: MapIcon, crumbs: ['Dashboard', 'Mapas', 'Editor'] };
+    if (path === '/settings')
+      return { title: 'Configurações', icon: Settings, crumbs: ['Dashboard', 'Configurações'] };
     return { title: 'Dashboard', icon: Home, crumbs: ['Dashboard'] };
   }, [location.pathname]);
 
   const config = getPageConfig();
 
-  const runSearch = useCallback(async (query: string) => {
-    const q = query.trim().toLowerCase();
-    if (!q) {
-      setResults({ maps: [], nodes: [] });
-      setIsSearching(false);
-      return;
-    }
-
-    lastQueryRef.current = q;
-    setIsSearching(true);
-    const workspaceId = workspaces[0]?.id;
-
-    let maps: Array<any> = [];
-
-    if (workspaceId) {
+  // Main search function with improved error handling
+  const runSearch = useCallback(
+    async (query: string) => {
       try {
-        const response = await mapsApi.list({ workspace_id: workspaceId, limit: 200, offset: 0 });
-        maps = (response.data as any[]) || [];
-      } catch {
-        maps = [];
-      }
-    } else {
-      maps = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
-    }
+        // Cancel previous request
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+        }
+        abortControllerRef.current = new AbortController();
 
-    const mapResults: SearchMapResult[] = maps
-      .filter((m) => {
-        const title = (m.title || '').toString().toLowerCase();
-        const desc = (m.description || '').toString().toLowerCase();
-        return title.includes(q) || desc.includes(q);
-      })
-      .map((m) => ({
-        id: m.id,
-        title: m.title || 'Mapa',
-        description: m.description || null,
-        updated_at: m.updated_at || m.created_at || null,
-      }));
-
-    const nodeResults: SearchNodeResult[] = [];
-
-    if (workspaceId) {
-      const nodesByMap = await Promise.all(
-        maps.map(async (m) => {
-          if (nodesCacheRef.current.has(m.id)) {
-            return { map: m, nodes: nodesCacheRef.current.get(m.id) || [] };
-          }
-          try {
-            const response = await nodesApi.listByMap(m.id);
-            const nodes = (response.data as any[]) || [];
-            nodesCacheRef.current.set(m.id, nodes);
-            return { map: m, nodes };
-          } catch {
-            return { map: m, nodes: [] };
-          }
-        })
-      );
-
-      nodesByMap.forEach(({ map, nodes }) => {
-        nodes.forEach((node: any) => {
-          const label = (node.label ?? node.data?.label ?? 'Nó').toString();
-          const content = (node.content ?? node.data?.content ?? node.data?.description ?? '').toString();
-          const hay = `${label} ${content}`.toLowerCase();
-          if (hay.includes(q)) {
-            nodeResults.push({
-              id: node.id,
-              label,
-              content,
-              mapId: map.id,
-              mapTitle: map.title || 'Mapa',
-            });
-          }
-        });
-      });
-    } else {
-      maps.forEach((m) => {
-        const raw = localStorage.getItem(`mindmap_nodes_${m.id}`);
-        if (!raw) return;
-        try {
-          const data = JSON.parse(raw);
-          const nodes = data.nodes || [];
-          nodes.forEach((node: any) => {
-            const label = (node.data?.label ?? node.label ?? 'Nó').toString();
-            const content = (node.data?.content ?? node.content ?? node.data?.description ?? '').toString();
-            const hay = `${label} ${content}`.toLowerCase();
-            if (hay.includes(q)) {
-              nodeResults.push({
-                id: node.id,
-                label,
-                content,
-                mapId: m.id,
-                mapTitle: m.title || 'Mapa',
-              });
-            }
-          });
-        } catch {
+        const q = query.trim().toLowerCase();
+        if (!q) {
+          setResults({ maps: [], nodes: [] });
+          setIsSearching(false);
           return;
         }
-      });
-    }
 
-    if (lastQueryRef.current !== q) return;
-    setResults({ maps: mapResults, nodes: nodeResults });
-    setIsSearching(false);
-  }, [workspaces]);
+        lastQueryRef.current = q;
+        setIsSearching(true);
+        const workspaceId = workspaces[0]?.id;
 
+        let maps: any[] = [];
+
+        // Fetch maps
+        try {
+          if (workspaceId) {
+            const response = await mapsApi.list({
+              workspace_id: workspaceId,
+              limit: 200,
+              offset: 0,
+            });
+            maps = Array.isArray(response.data) ? response.data : [];
+          } else {
+            maps = JSON.parse(localStorage.getItem('mindmap_maps') || '[]') as any[];
+          }
+        } catch (error) {
+          console.warn('Error fetching maps, trying localStorage fallback:', error);
+          try {
+            maps = JSON.parse(localStorage.getItem('mindmap_maps') || '[]') as any[];
+          } catch {
+            maps = [];
+          }
+        }
+
+        // Ensure maps is array
+        if (!Array.isArray(maps)) maps = [];
+
+        // Filter maps
+        const mapResults: SearchMapResult[] = maps
+          .filter((m) => {
+            if (!m || typeof m !== 'object') return false;
+            const title = String(m.title || '').toLowerCase();
+            const desc = String(m.description || '').toLowerCase();
+            return title.includes(q) || desc.includes(q);
+          })
+          .map((m) => ({
+            id: m.id,
+            title: m.title || 'Mapa Sem Título',
+            description: m.description || null,
+            updated_at: m.updated_at || m.created_at || null,
+          }))
+          .slice(0, 8); // Limit results
+
+        // Search nodes
+        const nodeResults: SearchNodeResult[] = [];
+
+        if (workspaceId && maps.length > 0) {
+          try {
+            const nodesByMap = await Promise.all(
+              maps.map(async (m) => {
+                if (!m?.id) return { map: m, nodes: [] };
+                if (nodesCacheRef.current.has(m.id)) {
+                  return { map: m, nodes: nodesCacheRef.current.get(m.id) || [] };
+                }
+                try {
+                  const response = await nodesApi.listByMap(m.id);
+                  const nodes = Array.isArray(response.data) ? response.data : [];
+                  nodesCacheRef.current.set(m.id, nodes);
+                  return { map: m, nodes };
+                } catch {
+                  return { map: m, nodes: [] };
+                }
+              })
+            );
+
+            nodesByMap.forEach(({ map, nodes }) => {
+              if (!map || !Array.isArray(nodes)) return;
+              nodes.forEach((node: any) => {
+                if (!node) return;
+                const label = String(node.label ?? node.data?.label ?? 'Nó').toLowerCase();
+                const content = String(
+                  node.content ?? node.data?.content ?? node.data?.description ?? ''
+                ).toLowerCase();
+                const searchText = `${label} ${content}`;
+
+                if (searchText.includes(q)) {
+                  nodeResults.push({
+                    id: node.id,
+                    label: node.label ?? node.data?.label ?? 'Nó',
+                    content: node.content ?? node.data?.content ?? node.data?.description ?? '',
+                    mapId: map.id,
+                    mapTitle: map.title || 'Mapa',
+                  });
+                }
+              });
+            });
+          } catch (error) {
+            console.warn('Error searching nodes:', error);
+          }
+        } else if (!workspaceId && maps.length > 0) {
+          // Search in localStorage
+          maps.forEach((m) => {
+            if (!m?.id) return;
+            try {
+              const raw = localStorage.getItem(`mindmap_nodes_${m.id}`);
+              if (!raw) return;
+              const data = JSON.parse(raw);
+              const nodes = data.nodes || [];
+              if (!Array.isArray(nodes)) return;
+
+              nodes.forEach((node: any) => {
+                if (!node) return;
+                const label = String(node.data?.label ?? node.label ?? 'Nó').toLowerCase();
+                const content = String(
+                  node.data?.content ?? node.content ?? node.data?.description ?? ''
+                ).toLowerCase();
+                const searchText = `${label} ${content}`;
+
+                if (searchText.includes(q)) {
+                  nodeResults.push({
+                    id: node.id,
+                    label: node.data?.label ?? node.label ?? 'Nó',
+                    content:
+                      node.data?.content ?? node.content ?? node.data?.description ?? '',
+                    mapId: m.id,
+                    mapTitle: m.title || 'Mapa',
+                  });
+                }
+              });
+            } catch (error) {
+              console.warn(`Error parsing nodes for map ${m.id}:`, error);
+            }
+          });
+        }
+
+        // Limit and deduplicate node results
+        const uniqueNodes = nodeResults.slice(0, 12);
+
+        if (lastQueryRef.current === q) {
+          setResults({ maps: mapResults, nodes: uniqueNodes });
+        }
+      } catch (error) {
+        console.error('Search error:', error);
+        if (lastQueryRef.current !== query.toLowerCase()) return;
+        setResults({ maps: [], nodes: [] });
+      } finally {
+        setIsSearching(false);
+      }
+    },
+    [workspaces]
+  );
+
+  // Debounced search effect
   useEffect(() => {
     const q = searchQuery.trim();
     if (!q) {
@@ -174,38 +239,70 @@ export function Header() {
 
     const timer = setTimeout(() => {
       runSearch(q);
-    }, 250);
+    }, 300);
 
     return () => clearTimeout(timer);
   }, [searchQuery, runSearch]);
 
+  // Keyboard shortcuts
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+K / Ctrl+K to open search
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen(true);
+        setTimeout(() => {
+          searchRef.current?.querySelector('input')?.focus();
+        }, 0);
+      }
+
+      // Escape to close search
+      if (e.key === 'Escape' && searchOpen) {
+        e.preventDefault();
         setSearchOpen(false);
+        setSearchFocused(false);
       }
     };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [searchOpen]);
+
+  // Click outside to close
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setSearchOpen(false);
+        setSearchFocused(false);
+      }
+    };
+
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const totalResults = useMemo(
+    () => results.maps.length + results.nodes.length,
+    [results]
+  );
+
   return (
-    <header className="h-[60px] border-b border-white/[0.04] bg-[#0A0E18]/60 backdrop-blur-xl flex items-center px-6 gap-4">
+    <header className="h-16 border-b border-white/[0.06] bg-gradient-to-r from-[#0A0E18] via-[#0D1323] to-[#0A0E18] backdrop-blur-xl flex items-center px-6 gap-6">
       {/* Breadcrumbs */}
       <motion.div
         initial={{ opacity: 0, x: -10 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ duration: 0.2 }}
-        className="flex items-center gap-1.5 min-w-0"
+        className="flex items-center gap-2 min-w-fit"
       >
         {config.crumbs.map((crumb, i) => (
-          <div key={crumb} className="flex items-center gap-1.5">
-            {i > 0 && <ChevronRight className="w-3 h-3 text-slate-600 flex-shrink-0" />}
+          <div key={i} className="flex items-center gap-2">
+            {i > 0 && <ChevronRight className="w-3.5 h-3.5 text-slate-600" />}
             <span
               className={cn(
-                'text-[13px] whitespace-nowrap',
+                'text-sm whitespace-nowrap',
                 i === config.crumbs.length - 1
-                  ? 'text-white font-medium'
+                  ? 'text-white font-semibold'
                   : 'text-slate-500'
               )}
             >
@@ -215,42 +312,59 @@ export function Header() {
         ))}
       </motion.div>
 
-      {/* Spacer */}
-      <div className="flex-1" />
-
-      {/* Search */}
-      <div ref={searchRef} className="relative hidden md:block">
+      {/* Search - Centered and Beautiful */}
+      <div ref={searchRef} className="flex-1 max-w-xl mx-auto hidden md:block">
         <motion.div
-          initial={{ opacity: 0, y: -4 }}
-          animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3 }}
           className={cn(
-            'flex items-center gap-2 px-3 h-9 rounded-xl border transition-all duration-200',
+            'relative flex items-center gap-3 px-4 py-2.5 rounded-full border-2 transition-all duration-200 group',
             searchFocused
-              ? 'bg-white/[0.06] border-cyan-500/30 w-64'
-              : 'bg-white/[0.02] border-white/[0.06] w-52 hover:bg-white/[0.04]'
+              ? 'bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border-cyan-500/70 shadow-xl shadow-cyan-500/20'
+              : 'bg-white/[0.05] border-white/[0.12] hover:bg-white/[0.07] hover:border-white/[0.18]'
           )}
         >
-          <Search className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
+          <Search
+            className={cn(
+              'w-4 h-4 flex-shrink-0 transition-colors duration-200',
+              searchFocused ? 'text-cyan-400' : 'text-slate-500 group-hover:text-slate-400'
+            )}
+          />
           <input
             type="text"
-            placeholder="Buscar em mapas e nós..."
+            placeholder="Procure mapas, nós, ideias..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              if (e.target.value.trim()) {
+                setSearchOpen(true);
+              }
+            }}
             onFocus={() => {
               setSearchFocused(true);
-              setSearchOpen(true);
+              if (searchQuery.trim()) {
+                setSearchOpen(true);
+              }
             }}
-            onBlur={() => setSearchFocused(false)}
+            onBlur={() => {
+              setSearchFocused(false);
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
+                e.currentTarget.blur();
                 setSearchOpen(false);
-              }
-              if (e.key === 'Enter' && results.maps[0]) {
+              } else if (
+                e.key === 'Enter' &&
+                results.maps.length > 0
+              ) {
+                e.preventDefault();
                 navigate(`/map/${results.maps[0].id}`);
                 setSearchOpen(false);
+                setSearchQuery('');
               }
             }}
-            className="flex-1 bg-transparent text-[13px] text-white placeholder-slate-500 outline-none"
+            className="flex-1 bg-transparent text-sm text-white placeholder-slate-600 outline-none"
           />
           {searchQuery ? (
             <button
@@ -258,144 +372,199 @@ export function Header() {
                 setSearchQuery('');
                 setResults({ maps: [], nodes: [] });
               }}
-              className="text-slate-500 hover:text-slate-300"
+              className="text-slate-500 hover:text-slate-300 transition-colors p-1 hover:bg-white/[0.08] rounded-md"
+              title="Limpar (Esc)"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-4 h-4" />
             </button>
           ) : (
-            <kbd className="hidden lg:inline text-[10px] text-slate-600 bg-white/[0.04] px-1.5 py-0.5 rounded">
+            <kbd className="hidden lg:inline text-xs text-slate-600 bg-white/[0.06] px-2 py-1 rounded border border-white/[0.1] font-mono">
               ⌘K
             </kbd>
           )}
         </motion.div>
 
-        {searchOpen && (
-          <div className="absolute right-0 top-11 w-[520px] rounded-2xl border border-white/[0.06] bg-[#0D1323]/95 backdrop-blur-xl shadow-2xl shadow-black/40 overflow-hidden z-50">
-            <div className="px-4 py-3 border-b border-white/[0.04] flex items-center justify-between">
-              <div>
-                <p className="text-[12px] text-slate-500">Busca avançada</p>
-                <p className="text-[13px] text-white">
-                  {searchQuery ? `Resultados para “${searchQuery}”` : 'Digite para buscar'}
-                </p>
+        {/* Search Results Dropdown */}
+        <AnimatePresence>
+          {searchOpen && (
+            <motion.div
+              initial={{ opacity: 0, y: -8, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.96 }}
+              transition={{ duration: 0.15 }}
+              className="absolute top-14 left-0 right-0 rounded-2xl border border-white/[0.1] bg-[#0D1323]/98 backdrop-blur-2xl shadow-2xl shadow-black/50 overflow-hidden z-50 max-h-[600px] flex flex-col"
+            >
+              {/* Header */}
+              <div className="px-5 py-4 border-b border-white/[0.05] flex items-center justify-between flex-shrink-0 bg-gradient-to-r from-white/[0.02] to-transparent">
+                <div>
+                  <p className="text-xs text-slate-600 font-bold uppercase tracking-wider">
+                    {isSearching ? '🔍 Buscando...' : totalResults > 0 ? `${totalResults} resultado(s)` : '✨ Pronto'}
+                  </p>
+                  {searchQuery && (
+                    <p className="text-xs text-slate-500 mt-1">
+                      para <span className="text-white font-medium">"{searchQuery}"</span>
+                    </p>
+                  )}
+                </div>
+                {isSearching && <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />}
               </div>
-              {isSearching && (
-                <div className="flex items-center gap-2 text-[12px] text-slate-400">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  Buscando...
-                </div>
-              )}
-            </div>
 
-            <div className="max-h-[420px] overflow-auto">
-              {!searchQuery && (
-                <div className="px-4 py-6 text-[13px] text-slate-500">
-                  Busque por nomes de mapas, nós, conteúdos e palavras-chave.
-                </div>
-              )}
+              {/* Results Container */}
+              <div className="overflow-y-auto flex-1">
+                {!searchQuery && (
+                  <div className="p-8 text-center">
+                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-cyan-500/15 to-purple-500/15 mb-3">
+                      <Search className="w-6 h-6 text-slate-600" />
+                    </div>
+                    <p className="text-sm text-slate-500 mt-2">
+                      Digite para buscar em seus <br />
+                      mapas, nós e ideias
+                    </p>
+                  </div>
+                )}
 
-              {searchQuery && !isSearching && results.maps.length === 0 && results.nodes.length === 0 && (
-                <div className="px-4 py-6 text-[13px] text-slate-500">
-                  Nenhum resultado encontrado.
-                </div>
-              )}
+                {searchQuery && !isSearching && totalResults === 0 && (
+                  <div className="p-8 text-center">
+                    <p className="text-sm text-slate-600">
+                      Nenhum resultado para{' '}
+                      <span className="text-white font-medium">"{searchQuery}"</span>
+                    </p>
+                    <p className="text-xs text-slate-700 mt-2">
+                      Tente outro termo de busca
+                    </p>
+                  </div>
+                )}
 
-              {results.maps.length > 0 && (
-                <div className="px-4 pt-4">
-                  <div className="flex items-center gap-2 text-[12px] text-slate-500 mb-2">
-                    <Network className="w-3.5 h-3.5" />
-                    Mapas ({results.maps.length})
+                {/* Maps Results */}
+                {results.maps.length > 0 && (
+                  <div className="border-b border-white/[0.05]">
+                    <div className="px-5 pt-4 pb-2">
+                      <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-600">
+                        <Network className="w-3.5 h-3.5 text-cyan-400" />
+                        Mapas <span className="text-slate-700 font-normal">({results.maps.length})</span>
+                      </p>
+                    </div>
+                    <div className="space-y-0.5 px-3 pb-3">
+                      {results.maps.map((map) => (
+                        <button
+                          key={map.id}
+                          onClick={() => {
+                            navigate(`/map/${map.id}`);
+                            setSearchOpen(false);
+                            setSearchQuery('');
+                          }}
+                          className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-white/[0.06] active:bg-white/[0.1] transition-colors group"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-white font-medium group-hover:text-cyan-300 transition-colors truncate">
+                                {map.title}
+                              </p>
+                              {map.description && (
+                                <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">
+                                  {map.description}
+                                </p>
+                              )}
+                            </div>
+                            {map.updated_at && (
+                              <span className="text-xs text-slate-600 flex-shrink-0">
+                                {formatRelativeTime(map.updated_at)}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    {results.maps.map((m) => (
-                      <button
-                        key={m.id}
-                        onClick={() => {
-                          navigate(`/map/${m.id}`);
-                          setSearchOpen(false);
-                        }}
-                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-white/[0.04] transition-all"
-                      >
-                        <div className="flex items-center justify-between">
-                          <p className="text-[13px] text-white truncate">{m.title || 'Mapa'}</p>
-                          <span className="text-[11px] text-slate-500">
-                            {m.updated_at ? formatRelativeTime(m.updated_at) : 'Recente'}
-                          </span>
-                        </div>
-                        {m.description && (
-                          <p className="text-[12px] text-slate-500 line-clamp-1">{m.description}</p>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+                )}
 
-              {results.nodes.length > 0 && (
-                <div className="px-4 py-4">
-                  <div className="flex items-center gap-2 text-[12px] text-slate-500 mb-2">
-                    <CircleDot className="w-3.5 h-3.5" />
-                    Nós ({results.nodes.length})
+                {/* Nodes Results */}
+                {results.nodes.length > 0 && (
+                  <div>
+                    <div className="px-5 py-3 border-t border-white/[0.05]">
+                      <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-600">
+                        <CircleDot className="w-3.5 h-3.5 text-purple-400" />
+                        Nós <span className="text-slate-700 font-normal">({results.nodes.length})</span>
+                      </p>
+                    </div>
+                    <div className="space-y-0.5 px-3 pb-3">
+                      {results.nodes.map((node) => (
+                        <button
+                          key={node.id}
+                          onClick={() => {
+                            navigate(
+                              `/map/${node.mapId}?node=${node.id}&q=${encodeURIComponent(
+                                searchQuery
+                              )}`
+                            );
+                            setSearchOpen(false);
+                            setSearchQuery('');
+                          }}
+                          className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-white/[0.06] active:bg-white/[0.1] transition-colors group"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-white font-medium group-hover:text-purple-300 transition-colors truncate">
+                                {node.label}
+                              </p>
+                              {node.content && (
+                                <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">
+                                  {node.content}
+                                </p>
+                              )}
+                              <p className="text-xs text-slate-700 mt-1">
+                                em <span className="text-slate-500">{node.mapTitle}</span>
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    {results.nodes.map((n) => (
-                      <button
-                        key={n.id}
-                        onClick={() => {
-                          navigate(`/map/${n.mapId}?node=${n.id}&q=${encodeURIComponent(searchQuery)}`);
-                          setSearchOpen(false);
-                        }}
-                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-white/[0.04] transition-all"
-                      >
-                        <div className="flex items-center justify-between">
-                          <p className="text-[13px] text-white truncate">{n.label || 'Nó'}</p>
-                          <span className="text-[11px] text-slate-500 truncate max-w-[180px]">
-                            {n.mapTitle}
-                          </span>
-                        </div>
-                        {n.content && (
-                          <p className="text-[12px] text-slate-500 line-clamp-1">{n.content}</p>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* Status Dot */}
-      <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.04]">
-        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
-        <span className="text-[11px] text-slate-400 font-medium">Online</span>
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Status Indicator */}
+      <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.06] ml-auto">
+        <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
+        <span className="text-xs text-slate-500 font-medium">Online</span>
       </div>
 
-      {/* User */}
+      {/* User Menu */}
       <button
         onClick={() => navigate('/settings')}
-        className="flex items-center gap-2.5 pl-3 border-l border-white/[0.04] hover:opacity-80 transition-opacity"
+        className="flex items-center gap-2.5 pl-3 pr-1 border-l border-white/[0.06] hover:opacity-80 transition-opacity"
       >
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500/20 to-purple-500/20 flex items-center justify-center overflow-hidden border border-white/10">
+        <div className="hidden lg:block text-right">
+          <p className="text-xs font-semibold text-white leading-tight truncate max-w-[100px]">
+            {user?.display_name || 'Usuário'}
+          </p>
+          <p className="text-[10px] text-slate-600">Perfil</p>
+        </div>
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500/25 to-purple-500/25 border border-white/[0.15] flex items-center justify-center flex-shrink-0 overflow-hidden">
           {user?.avatar_url ? (
-            <img 
-              src={user.avatar_url} 
-              alt="Avatar" 
+            <img
+              src={user.avatar_url}
+              alt="Avatar"
               className="w-full h-full object-cover"
               onError={(e) => {
-                console.error('Avatar failed to load in Header, using fallback');
                 (e.currentTarget as HTMLImageElement).style.display = 'none';
-                (e.currentTarget as HTMLImageElement).parentElement!.textContent = user?.display_name?.charAt(0)?.toUpperCase() || 'U';
+                const parent = (e.currentTarget as HTMLImageElement).parentElement;
+                if (parent) {
+                  parent.textContent = user?.display_name?.charAt(0)?.toUpperCase() || 'U';
+                }
               }}
             />
           ) : (
-            <User className="w-4 h-4 text-slate-400" />
+            <User className="w-4 h-4 text-slate-500" />
           )}
-        </div>
-        <div className="hidden lg:block text-left">
-          <p className="text-[12px] font-medium text-white leading-tight truncate max-w-[100px]">
-            {user?.display_name || 'Usuário'}
-          </p>
         </div>
       </button>
     </header>

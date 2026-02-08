@@ -6,6 +6,26 @@ import { Toaster } from 'react-hot-toast';
 import App from './App';
 import './index.css';
 
+// Suppress browser extension message channel errors
+window.addEventListener('error', (event) => {
+  if (
+    event.message &&
+    event.message.includes('A listener indicated an asynchronous response by returning true')
+  ) {
+    event.preventDefault();
+  }
+});
+
+// Also handle promise rejections from message channel
+window.addEventListener('unhandledrejection', (event) => {
+  if (
+    event.reason &&
+    (event.reason.message || '').includes('A listener indicated an asynchronous response by returning true')
+  ) {
+    event.preventDefault();
+  }
+});
+
 // Create React Query client
 const queryClient = new QueryClient({
   defaultOptions: {

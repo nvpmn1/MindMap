@@ -4,35 +4,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 import { OptimizedNeuralBackground } from '@/components/OptimizedNeuralBackground';
-import { generateAvatarSvg } from '@/lib/avatarFallback';
+import { getAllUserProfiles } from '@/lib/userProfiles';
 import { Sparkles, ArrowRight, Zap, Shield, Users } from 'lucide-react';
-
-const TEAM_PROFILES = [
-  {
-    id: 'f7a2d3b1-6b1f-4e0e-8a2b-1f3e2d4c5b6a',
-    name: 'Guilherme',
-    email: 'guilherme@mindmap.app',
-    color: '#06E5FF',
-    icon: Zap,
-    description: 'Research Lead',
-  },
-  {
-    id: '3b9c1f8a-2a1f-4c4f-9d3b-7c6a5e4d3f2b',
-    name: 'Helen',
-    email: 'helen@mindmap.app',
-    color: '#06FFD0',
-    icon: Users,
-    description: 'Team Coordinator',
-  },
-  {
-    id: '9c2b7d4a-1f3e-4b6a-8d2c-5e1f9a0b7c6d',
-    name: 'Pablo',
-    email: 'pablo@mindmap.app',
-    color: '#0D99FF',
-    icon: Shield,
-    description: 'Security Specialist',
-  },
-];
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -40,11 +13,17 @@ export function LoginPage() {
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Pre-generate avatars for each profile
+  // Load saved user profiles with their chosen avatars
   const profilesWithAvatars = useMemo(() => {
-    return TEAM_PROFILES.map(profile => ({
-      ...profile,
-      avatarUrl: generateAvatarSvg(profile.name, profile.color, 200),
+    const users = getAllUserProfiles();
+    return users.map(user => ({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      color: user.color,
+      description: user.description || '',
+      icon: user.name === 'Guilherme' ? Zap : user.name === 'Helen' ? Users : Shield,
+      avatarUrl: user.avatar_url || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + user.name,
     }));
   }, []);
 
@@ -159,39 +138,58 @@ export function LoginPage() {
                   >
                     {selectedProfileData ? (
                       <>
-                        {/* Avatar with glow */}
+                        {/* Avatar with realistic animations */}
+                        <motion.div
+                          className="relative flex items-center justify-center"
+                          animate={{ 
+                            scale: [1, 1.015, 1],
+                            y: [0, -1.5, 0],
+                          }}
+                          transition={{ 
+                            duration: 3.5, 
+                            repeat: Infinity,
+                            ease: 'easeInOut'
+                          }}
+                        >
+                          {/* Breathing aura glow */}
                           <motion.div
-                            className="relative flex items-center justify-center"
-                            animate={{ 
-                              scale: [1, 1.02, 1],
-                              y: [0, -2, 0],
+                            className="absolute inset-0 rounded-2xl"
+                            style={{
+                              background: `radial-gradient(circle, ${selectedProfileData.color}20, transparent)`,
                             }}
-                            transition={{ 
-                              duration: 2.8, 
+                            animate={{
+                              opacity: [0.3, 0.6, 0.3],
+                              scale: [0.95, 1.05, 0.95],
+                            }}
+                            transition={{
+                              duration: 3.5,
                               repeat: Infinity,
-                              ease: 'easeInOut'
+                              ease: 'easeInOut',
                             }}
-                          >
-                          <div className="w-32 h-32 rounded-2xl overflow-hidden border-2 border-white/10 shadow-lg relative flex-shrink-0">
+                          />
+
+                          <div className="w-32 h-32 rounded-2xl overflow-hidden border-2 border-white/15 shadow-xl relative flex-shrink-0 bg-slate-900/50">
                             <img
                               src={selectedProfileData.avatarUrl}
                               alt={selectedProfileData.name}
                               className="w-full h-full object-cover"
                             />
+                            {/* Realistic gloss overlay */}
                             <motion.div
                               className="absolute inset-0 rounded-2xl pointer-events-none"
                               style={{
+                                background: `linear-gradient(135deg, ${selectedProfileData.color}15 0%, transparent 50%)`,
                                 border: `2px solid ${selectedProfileData.color}`,
-                                boxShadow: `inset 0 0 10px ${selectedProfileData.color}25, 0 0 20px ${selectedProfileData.color}40`,
+                                boxShadow: `inset 0 0 15px ${selectedProfileData.color}20, 0 0 25px ${selectedProfileData.color}35`,
                               }}
                               animate={{
                                 boxShadow: [
-                                  `inset 0 0 10px ${selectedProfileData.color}25, 0 0 20px ${selectedProfileData.color}40`,
-                                  `inset 0 0 20px ${selectedProfileData.color}40, 0 0 35px ${selectedProfileData.color}60`,
-                                  `inset 0 0 10px ${selectedProfileData.color}25, 0 0 20px ${selectedProfileData.color}40`,
+                                  `inset 0 0 15px ${selectedProfileData.color}20, 0 0 25px ${selectedProfileData.color}35`,
+                                  `inset 0 0 25px ${selectedProfileData.color}35, 0 0 40px ${selectedProfileData.color}50`,
+                                  `inset 0 0 15px ${selectedProfileData.color}20, 0 0 25px ${selectedProfileData.color}35`,
                                 ],
                               }}
-                              transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+                              transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
                             />
                           </div>
 

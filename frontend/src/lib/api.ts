@@ -151,6 +151,14 @@ class ApiClient {
       }
 
       if (!response.ok) {
+        // Handle 409 Conflict status specifically (e.g., duplicate edges)
+        if (response.status === 409) {
+          const apiResponse: ApiResponse<T> = typeof data === 'object' 
+            ? data 
+            : { success: false, error: data };
+          return apiResponse;
+        }
+
         const errorMessage =
           typeof data === 'object'
             ? data.error?.message || data.message || 'Request failed'
@@ -480,4 +488,9 @@ export const aiApi = {
 
   getUsage: (period = '30d') =>
     api.get(`/api/ai/usage?period=${period}`),
+};
+
+export const resetApi = {
+  factoryReset: () =>
+    api.post('/api/reset/factory-reset', {}),
 };

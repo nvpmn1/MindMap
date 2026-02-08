@@ -12,6 +12,7 @@
  */
 
 import { logger } from '../../utils/logger';
+import { env } from '../../utils/env';
 import {
   MODEL_REGISTRY,
   DEFAULT_MODEL_BY_TIER,
@@ -197,25 +198,42 @@ export function selectModel(
     return true;
   });
 
-  // Select based on complexity level
+  // Select based on strategy and complexity level
   let selectedModel: ModelConfig;
+  const strategy = env.CLAUDE_MODEL_STRATEGY || 'haiku-only';
 
-  switch (complexity.level) {
-    case 'trivial':
-    case 'simple':
-      selectedModel = candidates.find(m => m.tier === 'lightweight') || candidates[0];
-      break;
-    case 'moderate':
-      selectedModel = candidates.find(m => m.tier === 'balanced') || candidates[0];
-      break;
-    case 'complex':
-    case 'expert':
-      selectedModel = candidates.find(m => m.tier === 'advanced') 
-        || candidates.find(m => m.tier === 'balanced') 
+  if (strategy === 'haiku-only') {
+    // FIXED: Always use Haiku regardless of complexity
+    selectedModel = candidates.find(m => m.tier === 'lightweight') || candidates[0];
+  } else if (strategy === 'cheap') {
+    // Aggressively prefer the cheapest model unless complexity is high
+    if (complexity.level === 'expert') {
+      selectedModel = candidates.find(m => m.tier === 'advanced')
+        || candidates.find(m => m.tier === 'balanced')
         || candidates[0];
-      break;
-    default:
+    } else if (complexity.level === 'complex') {
       selectedModel = candidates.find(m => m.tier === 'balanced') || candidates[0];
+    } else {
+      selectedModel = candidates.find(m => m.tier === 'lightweight') || candidates[0];
+    }
+  } else {
+    switch (complexity.level) {
+      case 'trivial':
+      case 'simple':
+        selectedModel = candidates.find(m => m.tier === 'lightweight') || candidates[0];
+        break;
+      case 'moderate':
+        selectedModel = candidates.find(m => m.tier === 'balanced') || candidates[0];
+        break;
+      case 'complex':
+      case 'expert':
+        selectedModel = candidates.find(m => m.tier === 'advanced') 
+          || candidates.find(m => m.tier === 'balanced') 
+          || candidates[0];
+        break;
+      default:
+        selectedModel = candidates.find(m => m.tier === 'balanced') || candidates[0];
+    }
   }
 
   // Estimate cost for a typical request

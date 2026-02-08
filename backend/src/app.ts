@@ -15,6 +15,7 @@ import mapsRoutes from './routes/maps';
 import nodesRoutes from './routes/nodes';
 import tasksRoutes from './routes/tasks';
 import aiRoutes from './routes/ai';
+import resetRoutes from './routes/reset';
 
 const app: Express = express();
 
@@ -106,6 +107,7 @@ app.use('/api/maps', mapsRoutes);
 app.use('/api/nodes', nodesRoutes);
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/reset', resetRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {

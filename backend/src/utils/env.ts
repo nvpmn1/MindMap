@@ -14,9 +14,10 @@ const envSchema = z.object({
   // Claude
   CLAUDE_API_KEY: z.string().min(1).optional(),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
-  CLAUDE_MODEL: z.string().default('claude-sonnet-4-5'),
+  CLAUDE_MODEL: z.string().default('claude-haiku-4-5'),
   CLAUDE_MAX_TOKENS: z.string().default('4096').transform(Number),
   CLAUDE_TEMPERATURE: z.string().default('0.7').transform(Number),
+  CLAUDE_MODEL_STRATEGY: z.enum(['cheap', 'balanced', 'quality', 'haiku-only']).default('haiku-only'),
   
   // CORS
   FRONTEND_URL: z.string().url(),

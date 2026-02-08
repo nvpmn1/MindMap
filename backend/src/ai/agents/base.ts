@@ -153,7 +153,7 @@ export class BaseAgent {
       return {
         success: false,
         agent: this.agentType,
-        model: 'claude-haiku-4-5-20250514' as ModelId,
+        model: 'claude-haiku-4-5' as ModelId,
         content: `Erro ao executar agente ${this.agentType}: ${error.message || 'Erro desconhecido'}`,
         toolCalls: [],
         usage: { inputTokens: 0, outputTokens: 0, costUSD: 0 },
@@ -238,14 +238,39 @@ export class BaseAgent {
       systemWithCache = systemPrompt;
     }
 
+    const toolChoice = this.getToolChoice(tools);
+
     return this.client.sendMessage({
       model,
       system: system || (systemWithCache ? systemWithCache.map(s => s.text).join('\n\n') : undefined),
       messages,
       tools: tools.length > 0 ? tools : undefined,
+      tool_choice: toolChoice,
       max_tokens: this.config.maxTokens || 4096,
       temperature: this.config.temperature ?? 0.7,
     });
+  }
+
+  /**
+   * Decide when to force tool use for agentic actions.
+   */
+  protected getToolChoice(tools: ToolDefinition[]): { type: 'auto' } | { type: 'any' } {
+    if (!tools.length) {
+      return { type: 'auto' };
+    }
+
+    const forceToolAgents: AgentType[] = [
+      'generate',
+      'expand',
+      'organize',
+      'connect',
+      'visualize',
+      'task_convert',
+      'research',
+      'hypothesize',
+    ];
+
+    return forceToolAgents.includes(this.agentType) ? { type: 'any' } : { type: 'auto' };
   }
 
   /**

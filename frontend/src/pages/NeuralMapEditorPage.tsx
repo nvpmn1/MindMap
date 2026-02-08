@@ -18,8 +18,8 @@ import {
   type OnSelectionChangeFunc,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, Brain, Calendar, Search } from 'lucide-react';
+import { AnimatePresence } from 'framer-motion';
+import { Calendar, Search } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 // Editor core
@@ -43,6 +43,7 @@ import { NodeDetailPanel as PowerNodeDetail } from '../components/mindmap/panels
 import { AnalyticsPanel } from '../components/mindmap/panels/AnalyticsPanel';
 import { ResearchPanel } from '../components/mindmap/panels/ResearchPanel';
 import { NeuralContextMenu, type ContextMenuState, type ContextMenuAction } from '../components/mindmap/menus/NeuralContextMenu';
+import { NeuralLoadingScreen } from '../components/NeuralLoadingScreen';
 
 // ─── Node & Edge type registrations ────────────────────────────────────────
 
@@ -684,22 +685,7 @@ function NeuralMapEditorInner() {
 
   // Loading
   if (isLoading) {
-    return (
-      <div className="h-screen w-screen bg-[#060910] flex items-center justify-center">
-        <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center gap-4">
-          <div className="relative">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-purple-500/20 flex items-center justify-center border border-cyan-500/20 animate-pulse">
-              <Brain className="w-8 h-8 text-cyan-400" />
-            </div>
-            <Loader2 className="w-6 h-6 text-cyan-400 absolute -bottom-1 -right-1 animate-spin" />
-          </div>
-          <div className="text-center">
-            <p className="text-sm font-semibold text-white">Carregando Mapa Neural</p>
-            <p className="text-xs text-slate-500 mt-1">Preparando canvas inteligente...</p>
-          </div>
-        </motion.div>
-      </div>
-    );
+    return <NeuralLoadingScreen />;
   }
 
   return (
@@ -780,7 +766,9 @@ function NeuralMapEditorInner() {
         <AgentPanel isOpen={showAIPanel} onClose={() => setShowAIPanel(false)}
           nodes={nodes} edges={edges} selectedNodeId={selectedNodeId}
           onApplyActions={handleApplyAIActions} pendingPrompt={aiPendingPrompt || undefined}
-          onPendingPromptConsumed={() => setAiPendingPrompt(null)} />
+          onPendingPromptConsumed={() => setAiPendingPrompt(null)}
+          createNode={createNode} updateNodeData={updateNodeData}
+          deleteNode={deleteNode} setEdges={setEdges} onSave={saveMap} />
 
         <AnimatePresence>
           {showDetailPanel && selectedNode && (

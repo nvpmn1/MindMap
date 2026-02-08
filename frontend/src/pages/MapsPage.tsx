@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/stores/authStore';
-import { mapsApi } from '@/lib/api';
+import { robustMapsApi } from '@/lib/robustMapsApi';
 import { formatRelativeTime } from '@/lib/utils';
+import { mapPersistence } from '@/lib/mapPersistence';
+import { MapCard } from '@/components/MapCard';
 import {
   Network,
   Layers,
@@ -15,7 +17,7 @@ import {
   ArrowUpDown,
   Trash2,
   Copy,
-  MoreHorizontal,
+  Zap,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -47,13 +49,22 @@ export function MapsPage() {
   const [maps, setMaps] = useState<MapItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState('');
+  const [syncStatus, setSyncStatus] = useState<number>(0);
   const [sortBy, setSortBy] = useState<SortBy>('updated');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
-  const [contextMenu, setContextMenu] = useState<string | null>(null);
 
   useEffect(() => {
     loadMaps();
   }, [workspaces]);
+
+  // Monitor sync status
+  useEffect(() => {
+    const checkSync = setInterval(() => {
+      setSyncStatus(mapPersistence.getPendingCount());
+    }, 2000);
+    
+    return () => clearInterval(checkSync);
+  }, []);
 
   const loadMaps = async () => {
     setIsLoading(true);
@@ -61,7 +72,7 @@ export function MapsPage() {
 
     if (workspaceId) {
       try {
-        const response = await mapsApi.list({ workspace_id: workspaceId, limit: 100, offset: 0 });
+        const response = await robustMapsApi.list({ workspace_id: workspaceId, limit: 100, offset: 0 });
         const data = (response.data as any[]) || [];
         const normalized = data.map((map) => ({
           id: map.id,
@@ -75,7 +86,7 @@ export function MapsPage() {
         setIsLoading(false);
         return;
       } catch {
-        // fallback
+        console.warn('Failed to load from API, trying localStorage');
       }
     }
 
@@ -88,104 +99,57 @@ export function MapsPage() {
     const workspaceId = workspaces[0]?.id;
     if (workspaceId) {
       try {
-        const response = await mapsApi.create({
+        // Use robust persistence system
+        const newMap = await mapPersistence.saveMapCritical({
           workspace_id: workspaceId,
           title: 'Novo Mapa Mental',
           description: '',
         });
-        const map = response.data as any;
-        toast.success('Mapa criado!', { duration: 3500 });
-        navigate(`/map/${map.id}`);
+        
+        // Auto-reload maps list
+        loadMaps();
+        
+        toast.success('Mapa criado com sucesso!', { duration: 3500 });
+        navigate(`/map/${newMap.id}`);
         return;
-      } catch {
-        // fallback
+      } catch (err) {
+        console.error('Failed to create map:', err);
+        toast.error('Erro ao criar mapa');
       }
     }
-
-    const newMap: MapItem = {
-      id: crypto.randomUUID(),
-      title: 'Novo Mapa Mental',
-      description: '',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      nodes_count: 1,
-    };
-
-    const existing = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
-    localStorage.setItem('mindmap_maps', JSON.stringify([newMap, ...existing]));
-    toast.success('Mapa criado!', { duration: 3500 });
-    navigate(`/map/${newMap.id}`);
   };
 
   const handleDeleteMap = async (mapId: string) => {
+    console.log('🗑️ Starting delete for map:', mapId);
+    
     try {
-      await mapsApi.delete(mapId);
-      setMaps((prev) => prev.filter((m) => m.id !== mapId));
-      toast.success('Mapa excluído');
-    } catch {
-      // Fallback: delete from localStorage
-      try {
-        const existing = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
-        const updated = existing.filter((m: MapItem) => m.id !== mapId);
-        localStorage.setItem('mindmap_maps', JSON.stringify(updated));
-        setMaps((prev) => prev.filter((m) => m.id !== mapId));
-        
-        // Also delete associated nodes
-        localStorage.removeItem(`mindmap_nodes_${mapId}`);
-        
-        toast.success('Mapa excluído');
-      } catch {
-        toast.error('Erro ao excluir');
-      }
+      // Call API with retry logic
+      const result = await robustMapsApi.delete(mapId);
+      console.log('🗑️ Delete API result:', result);
+
+      // IMPORTANT: Reload the list from API to verify deletion
+      await loadMaps();
+      
+      toast.success('Mapa excluído com sucesso!');
+    } catch (err) {
+      console.error('❌ Error deleting map:', err);
+      toast.error('Erro ao excluir mapa');
+      
+      // Reload to sync state
+      await loadMaps();
     }
-    setContextMenu(null);
   };
 
   const handleDuplicateMap = async (mapId: string) => {
     try {
-      const response = await mapsApi.duplicate(mapId);
+      const response = await robustMapsApi.duplicate(mapId);
       const map = response.data as any;
       toast.success('Mapa duplicado!');
       loadMaps();
-    } catch {
-      // Fallback: duplicate from localStorage
-      try {
-        const existing = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
-        const mapToDuplicate = existing.find((m: MapItem) => m.id === mapId);
-        
-        if (mapToDuplicate) {
-          const newMap: MapItem = {
-            ...mapToDuplicate,
-            id: crypto.randomUUID(),
-            title: `${mapToDuplicate.title} (Cópia)`,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-          
-          localStorage.setItem('mindmap_maps', JSON.stringify([newMap, ...existing]));
-          
-          // Also duplicate nodes
-          const nodesCacheKey = `mindmap_nodes_${mapId}`;
-          const nodes = JSON.parse(localStorage.getItem(nodesCacheKey) || '[]');
-          if (nodes.length > 0) {
-            localStorage.setItem(`mindmap_nodes_${newMap.id}`, JSON.stringify(nodes));
-          }
-          
-          toast.success('Mapa duplicado!');
-          loadMaps();
-        } else {
-          toast.error('Mapa não encontrado');
-        }
-      } catch {
-        toast.error('Erro ao duplicar');
-      }
+    } catch (err) {
+      console.error('Error duplicating map:', err);
+      toast.error('Erro ao duplicar mapa');
     }
-    setContextMenu(null);
-  };
-
-  const safeDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return isNaN(d.getTime()) ? 'Recente' : formatRelativeTime(d);
   };
 
   const filteredMaps = useMemo(() => {
@@ -222,15 +186,6 @@ export function MapsPage() {
     { value: 'nodes', label: 'Nós' },
   ];
 
-  const iconColors = [
-    'from-cyan-500/20 to-blue-600/20 text-cyan-400',
-    'from-purple-500/20 to-pink-600/20 text-purple-400',
-    'from-emerald-500/20 to-teal-600/20 text-emerald-400',
-    'from-amber-500/20 to-orange-600/20 text-amber-400',
-    'from-rose-500/20 to-red-600/20 text-rose-400',
-    'from-indigo-500/20 to-violet-600/20 text-indigo-400',
-  ];
-
   return (
     <div className="min-h-full bg-[#060910]">
       <motion.div
@@ -245,6 +200,12 @@ export function MapsPage() {
             <h1 className="text-2xl font-semibold text-white tracking-tight">Meus Mapas</h1>
             <p className="text-sm text-slate-400 mt-1">
               {maps.length} {maps.length === 1 ? 'mapa' : 'mapas'} no total
+              {syncStatus > 0 && (
+                <span className="ml-2 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500/20 text-amber-300 text-xs">
+                  <Zap className="w-3 h-3 animate-pulse" />
+                  {syncStatus} sincronizando...
+                </span>
+              )}
             </p>
           </div>
           <button
@@ -344,90 +305,22 @@ export function MapsPage() {
             variants={container}
             initial="hidden"
             animate="show"
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 relative"
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 relative"
           >
             <AnimatePresence>
               {filteredMaps.map((map, i) => (
-                <motion.div
+                <MapCard
                   key={map.id}
-                  variants={fadeUp}
-                  layout
-                  className="relative group"
-                >
-                  <button
-                    onClick={() => navigate(`/map/${map.id}`)}
-                    className="w-full text-left p-4 rounded-xl border border-white/[0.04] bg-white/[0.02] hover:bg-white/[0.04] hover:border-cyan-500/15 transition-all duration-200"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${iconColors[i % iconColors.length]} flex items-center justify-center flex-shrink-0`}>
-                        <Network className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-[14px] font-medium text-white truncate group-hover:text-cyan-300 transition-colors">
-                          {map.title}
-                        </h3>
-                        {map.description && (
-                          <p className="text-[12px] text-slate-500 mt-1 line-clamp-1">{map.description}</p>
-                        )}
-                        <div className="flex items-center gap-3 mt-3">
-                          <span className="text-[11px] text-slate-500 flex items-center gap-1">
-                            <Layers className="w-3 h-3" />
-                            {map.nodes_count} nós
-                          </span>
-                          <span className="text-[11px] text-slate-500 flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {safeDate(map.updated_at)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-
-                  {/* Context Menu Button */}
-                  <div className="absolute top-3 right-3 z-50">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setContextMenu(contextMenu === map.id ? null : map.id);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] flex items-center justify-center transition-all"
-                    >
-                      <MoreHorizontal className="w-4 h-4 text-slate-400" />
-                    </button>
-
-                    {contextMenu === map.id && (
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: -8 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: -8 }}
-                        transition={{ duration: 0.15 }}
-                        className="absolute right-0 top-full mt-2 w-44 bg-slate-900 border border-white/[0.12] rounded-xl shadow-2xl shadow-black/50 p-1.5 z-50"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDuplicateMap(map.id);
-                          }}
-                          className="w-full flex items-center gap-2 px-3 py-2.5 text-[12px] text-slate-300 hover:text-white hover:bg-white/[0.08] rounded-lg transition-all"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                          Duplicar
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteMap(map.id);
-                          }}
-                          className="w-full flex items-center gap-2 px-3 py-2.5 text-[12px] text-red-400 hover:text-red-300 hover:bg-red-500/[0.1] rounded-lg transition-all"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          Excluir
-                        </button>
-                      </motion.div>
-                    )}
-                  </div>
-                </motion.div>
+                  id={map.id}
+                  title={map.title}
+                  description={map.description}
+                  created_at={map.created_at}
+                  updated_at={map.updated_at}
+                  nodes_count={map.nodes_count}
+                  colorIndex={i % 6}
+                  onDelete={handleDeleteMap}
+                  onDuplicate={handleDuplicateMap}
+                />
               ))}
             </AnimatePresence>
           </motion.div>
@@ -445,20 +338,23 @@ export function MapsPage() {
                   onClick={() => navigate(`/map/${map.id}`)}
                   className="w-full flex items-center gap-4 px-4 py-3 rounded-xl border border-transparent hover:border-white/[0.04] bg-transparent hover:bg-white/[0.02] transition-all duration-200"
                 >
-                  <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${iconColors[i % iconColors.length]} flex items-center justify-center flex-shrink-0`}>
-                    <Network className="w-4 h-4" />
+                  <div className={`w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-500/20 to-blue-600/20 flex items-center justify-center flex-shrink-0`}>
+                    <Layers className="w-4 h-4 text-cyan-400" />
                   </div>
                   <div className="flex-1 min-w-0 text-left">
                     <h3 className="text-[13px] font-medium text-white truncate group-hover:text-cyan-300 transition-colors">
                       {map.title}
                     </h3>
+                    {map.description && (
+                      <p className="text-[11px] text-slate-500 truncate mt-0.5">{map.description}</p>
+                    )}
                   </div>
                   <span className="text-[11px] text-slate-500 flex items-center gap-1 flex-shrink-0">
                     <Layers className="w-3 h-3" />
                     {map.nodes_count}
                   </span>
-                  <span className="text-[11px] text-slate-500 flex-shrink-0 w-20 text-right">
-                    {safeDate(map.updated_at)}
+                  <span className="text-[11px] text-slate-500 flex-shrink-0 w-24 text-right">
+                    {formatRelativeTime(new Date(map.updated_at))}
                   </span>
 
                   {/* Actions */}
@@ -490,11 +386,6 @@ export function MapsPage() {
           </motion.div>
         )}
       </motion.div>
-
-      {/* Click outside to close context menu */}
-      {contextMenu && (
-        <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} />
-      )}
     </div>
   );
 }
