@@ -101,108 +101,74 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen w-screen flex items-center justify-center relative overflow-hidden">
+    <div className="h-screen w-screen flex items-center justify-center relative overflow-hidden">
       {/* Optimized neural background */}
       <OptimizedNeuralBackground />
 
-      {/* Main content container */}
+      {/* Main content container - CENTERED SINGLE COLUMN */}
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.8, ease: 'easeOut' }}
-        className="relative z-20 w-full max-w-5xl mx-auto px-4"
+        className="relative z-20 w-full max-w-md px-4"
       >
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-10 items-start">
-          {/* Left section: Hero content */}
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-            className="space-y-8 pt-4"
-          >
-            {/* Logo and title */}
-            <motion.div variants={itemVariants} className="space-y-6">
-              <div className="flex items-center gap-3">
+        {/* Card background */}
+        <div className="relative">
+          <div className="absolute -inset-3 bg-gradient-to-r from-cyan-500/10 via-teal-500/5 to-purple-500/10 rounded-2xl blur-xl" />
+
+          <div className="relative bg-[#080C14]/70 backdrop-blur-xl border border-cyan-500/20 rounded-2xl p-6 shadow-2xl space-y-5">
+            {/* Header: Logo + Title */}
+            <motion.div
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+              className="text-center space-y-2"
+            >
+              <motion.div variants={itemVariants} className="flex justify-center mb-2">
                 <motion.div
-                  className="p-3 bg-gradient-to-br from-cyan-500/30 to-teal-500/10 rounded-xl border border-cyan-400/40 backdrop-blur-sm"
-                  whileHover={{ scale: 1.05, rotate: -5 }}
-                  transition={{ type: 'spring', stiffness: 300 }}
+                  className="p-2 bg-gradient-to-br from-cyan-500/20 to-teal-500/10 rounded-lg border border-cyan-400/30 backdrop-blur-sm"
+                  whileHover={{ scale: 1.1 }}
                 >
-                  <Sparkles className="w-6 h-6 text-cyan-300" strokeWidth={1.5} />
+                  <Sparkles className="w-4 h-4 text-cyan-300" strokeWidth={1.5} />
                 </motion.div>
-                <div>
-                  <h1 className="text-4xl font-light tracking-tight">
-                    <span className="text-white">Neural</span>
-                    <span className="font-bold bg-gradient-to-r from-cyan-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">
-                      Map
-                    </span>
-                  </h1>
-                  <p className="text-xs text-cyan-400/60 tracking-widest uppercase mt-1">
-                    Collaborative Intelligence
-                  </p>
-                </div>
-              </div>
+              </motion.div>
+              <motion.h1 variants={itemVariants} className="text-2xl font-light tracking-tight">
+                <span className="text-white">Neural</span>
+                <span className="font-bold bg-gradient-to-r from-cyan-400 via-teal-400 to-cyan-400 bg-clip-text text-transparent">
+                  Map
+                </span>
+              </motion.h1>
+              <motion.p variants={itemVariants} className="text-xs text-cyan-400/60 tracking-widest uppercase">
+                Collaborative Intelligence Platform
+              </motion.p>
             </motion.div>
 
-            {/* Description */}
-            <motion.div variants={itemVariants} className="space-y-4">
-              <p className="text-slate-300 text-lg leading-relaxed">
-                Powered by advanced neural networks, designed for teams who think differently.
-              </p>
-              <p className="text-slate-400 text-sm">
-                Map your ideas, collaborate in real-time, and unlock insights together.
-              </p>
-            </motion.div>
-
-            {/* Features list */}
-            <motion.div variants={itemVariants} className="space-y-3 pt-4">
-              {[
-                { icon: '⚡', text: 'Real-time Neural AI Processing' },
-                { icon: '🔗', text: 'Seamless Team Collaboration' },
-                { icon: '🛡️', text: 'Enterprise-Grade Security' },
-              ].map((feature, idx) => (
-                <motion.div
-                  key={idx}
-                  className="flex items-center gap-3 text-sm text-slate-300"
-                  whileHover={{ x: 8 }}
-                >
-                  <span className="text-lg">{feature.icon}</span>
-                  <span>{feature.text}</span>
-                </motion.div>
-              ))}
-            </motion.div>
-          </motion.div>
-
-          {/* Right section: Profile selection with dynamic avatar */}
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-            className="relative"
-          >
-            {/* Card background */}
-            <div className="relative">
-              <div className="absolute -inset-4 bg-gradient-to-r from-cyan-500/10 via-teal-500/5 to-purple-500/10 rounded-3xl blur-2xl" />
-
-              <div className="relative bg-[#080C14]/60 backdrop-blur-xl border border-cyan-500/20 rounded-3xl p-8 lg:p-10 shadow-2xl space-y-6 lg:space-y-8">
+            {/* Dynamic Avatar Display */}
+            <motion.div
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+              className="flex flex-col items-center justify-center"
+            >
+              <AnimatePresence mode="wait">
                 {/* Dynamic large avatar display */}
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={selectedProfile || 'empty'}
-                    initial={{ opacity: 0, scale: 0.3, y: 30 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.3, y: -30 }}
-                    transition={{ duration: 0.25, type: 'spring', stiffness: 400, damping: 25 }}
-                    className="flex flex-col items-center justify-center space-y-6 min-h-[340px]"
+                    initial={{ opacity: 0, scale: 0.3 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.3 }}
+                    transition={{ duration: 0.2, type: 'spring', stiffness: 400 }}
+                    className="flex flex-col items-center justify-center space-y-3 py-2"
                   >
                     {selectedProfileData ? (
                       <>
-                        {/* Large avatar with glow */}
+                        {/* Avatar with glow */}
                         <motion.div
                           className="relative flex items-center justify-center"
                           animate={{ 
                             scale: [1, 1.04, 1],
-                            y: [0, -4, 0],
+                            y: [0, -3, 0],
                           }}
                           transition={{ 
                             duration: 3, 
@@ -210,281 +176,183 @@ export function LoginPage() {
                             ease: 'easeInOut'
                           }}
                         >
-                          <div className="w-52 h-52 rounded-3xl overflow-hidden border-2 border-white/10 shadow-2xl relative flex-shrink-0">
+                          <div className="w-32 h-32 rounded-2xl overflow-hidden border-2 border-white/10 shadow-lg relative flex-shrink-0">
                             <img
                               src={selectedProfileData.avatarUrl}
                               alt={selectedProfileData.name}
                               className="w-full h-full object-cover"
                             />
                             <motion.div
-                              className="absolute inset-0 rounded-3xl pointer-events-none"
+                              className="absolute inset-0 rounded-2xl pointer-events-none"
                               style={{
                                 border: `2px solid ${selectedProfileData.color}`,
-                              boxShadow: `inset 0 0 15px ${selectedProfileData.color}25, 0 0 30px ${selectedProfileData.color}40`,
-                            }}
-                            animate={{
-                              boxShadow: [
-                                `inset 0 0 15px ${selectedProfileData.color}25, 0 0 30px ${selectedProfileData.color}40`,
-                                `inset 0 0 30px ${selectedProfileData.color}40, 0 0 50px ${selectedProfileData.color}60`,
-                                `inset 0 0 15px ${selectedProfileData.color}25, 0 0 30px ${selectedProfileData.color}40`,
+                                boxShadow: `inset 0 0 10px ${selectedProfileData.color}25, 0 0 20px ${selectedProfileData.color}40`,
+                              }}
+                              animate={{
+                                boxShadow: [
+                                  `inset 0 0 10px ${selectedProfileData.color}25, 0 0 20px ${selectedProfileData.color}40`,
+                                  `inset 0 0 20px ${selectedProfileData.color}40, 0 0 35px ${selectedProfileData.color}60`,
+                                  `inset 0 0 10px ${selectedProfileData.color}25, 0 0 20px ${selectedProfileData.color}40`,
                                 ],
                               }}
                               transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
                             />
                           </div>
 
-                          {/* Pulsing rings around avatar */}
+                          {/* Pulsing ring */}
                           <motion.div
                             className="absolute rounded-full pointer-events-none"
                             style={{
-                              border: `2px solid ${selectedProfileData.color}40`,
-                              width: '232px',
-                              height: '232px',
+                              border: `1.5px solid ${selectedProfileData.color}40`,
+                              width: '144px',
+                              height: '144px',
                             }}
                             animate={{
-                              scale: [1, 1.15, 1],
-                              opacity: [0.8, 0.2, 0],
+                              scale: [1, 1.2, 1],
+                              opacity: [0.6, 0, 0],
                             }}
                             transition={{ duration: 2.5, repeat: Infinity, ease: 'easeOut' }}
                           />
-                          <motion.div
-                            className="absolute rounded-full pointer-events-none"
-                            style={{
-                              border: `1px solid ${selectedProfileData.color}25`,
-                              width: '272px',
-                              height: '272px',
-                            }}
-                            animate={{
-                              scale: [1, 1.1, 1],
-                              opacity: [0.4, 0, 0],
-                            }}
-                            transition={{ duration: 3, repeat: Infinity, ease: 'easeOut', delay: 0.2 }}
-                          />
                         </motion.div>
 
-                        {/* Profile info */}
+                        {/* Profile name only */}
                         <motion.div
-                          className="text-center space-y-2 w-full"
-                          initial={{ opacity: 0, y: 10 }}
+                          className="text-center space-y-1"
+                          initial={{ opacity: 0, y: 5 }}
                           animate={{ opacity: 1, y: 0 }}
-                          transition={{ duration: 0.4, delay: 0.15 }}
+                          transition={{ duration: 0.3, delay: 0.1 }}
                         >
-                          <h2 className="text-3xl font-semibold text-white tracking-tight">
-                            {selectedProfileData.name}
-                          </h2>
-                          <p className="text-sm text-slate-400 font-medium">
-                            {selectedProfileData.description}
-                          </p>
-                          <motion.div
-                            className="h-1 w-20 rounded-full mx-auto mt-3"
-                            style={{
-                              background: `linear-gradient(90deg, ${selectedProfileData.color}, transparent)`,
-                            }}
-                            initial={{ width: 0 }}
-                            animate={{ width: '80px' }}
-                            transition={{ duration: 0.5, delay: 0.25 }}
-                          />
-                        </motion.div>
-
-                        {/* Quick info */}
-                        <motion.div
-                          className="grid grid-cols-3 gap-4 w-full text-center text-xs"
-                          variants={itemVariants}
-                        >
-                          <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
-                            <p className="text-slate-400 text-xs uppercase tracking-wider">Status</p>
-                            <p className="text-cyan-400 font-semibold mt-1">Ready</p>
-                          </div>
-                          <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
-                            <p className="text-slate-400 text-xs uppercase tracking-wider">Access</p>
-                            <p className="text-teal-400 font-semibold mt-1">Full</p>
-                          </div>
-                          <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-700/30">
-                            <p className="text-slate-400 text-xs uppercase tracking-wider">Role</p>
-                            <p className="text-blue-400 font-semibold mt-1">Active</p>
-                          </div>
+                          <h2 className="text-xl font-semibold text-white">{selectedProfileData.name}</h2>
+                          <p className="text-xs text-slate-400">{selectedProfileData.description}</p>
                         </motion.div>
                       </>
                     ) : (
                       <motion.div
-                        className="flex flex-col items-center justify-center space-y-8 text-center"
-                        initial={{ opacity: 0, scale: 0.3 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.3 }}
-                        transition={{ duration: 0.25, type: 'spring', stiffness: 400 }}
+                        className="flex flex-col items-center justify-center space-y-3 py-2"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
                       >
                         <motion.div 
-                          className="w-48 h-48 rounded-3xl bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-slate-700/50 flex items-center justify-center"
-                          animate={{ 
-                            scale: [1, 1.03, 1],
-                            y: [0, -3, 0],
-                          }}
-                          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                          className="w-24 h-24 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 flex items-center justify-center"
+                          animate={{ scale: [1, 1.02, 1] }}
+                          transition={{ duration: 3, repeat: Infinity }}
                         >
-                          <motion.div 
-                            className="w-28 h-28 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-teal-500/10 flex items-center justify-center border border-cyan-500/20"
-                            animate={{ rotate: 360 }}
-                            transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
-                          >
-                            <Sparkles className="w-10 h-10 text-cyan-400" strokeWidth={1.5} />
-                          </motion.div>
+                          <Sparkles className="w-8 h-8 text-cyan-400/50" strokeWidth={1} />
                         </motion.div>
-                        <motion.div
-                          className="space-y-3"
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ duration: 0.4, delay: 0.1 }}
-                        >
-                          <p className="text-slate-300 font-semibold text-lg">Select your profile</p>
-                          <p className="text-sm text-slate-500">Choose an account below to enter the workspace</p>
-                        </motion.div>
+                        <p className="text-sm text-slate-400 font-medium hidden">Select a profile</p>
                       </motion.div>
                     )}
                   </motion.div>
                 </AnimatePresence>
+              </AnimatePresence>
+            </motion.div>
 
-                {/* Profile selector buttons */}
-                <motion.div
-                  variants={containerVariants}
-                  initial="hidden"
-                  animate="visible"
-                  className="space-y-3 border-t border-slate-700/30 pt-8"
-                >
-                  <p className="text-xs text-slate-500 text-center uppercase tracking-widest">
-                    Choose your workspace
-                  </p>
+            {/* Profile buttons grid - 3 columns */}
+            <motion.div
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+              className="space-y-2"
+            >
+              <div className="grid grid-cols-3 gap-2">
+                {profilesWithAvatars.map((profile) => {
+                  const isSelected = selectedProfile === profile.id;
+                  const Icon = profile.icon;
 
-                  <div className="space-y-2">
-                    {profilesWithAvatars.map((profile) => {
-                      const isSelected = selectedProfile === profile.id;
-                      const Icon = profile.icon;
-
-                      return (
-                        <motion.button
-                          key={profile.id}
-                          variants={itemVariants}
-                          whileHover={{ scale: 1.02, x: 4 }}
-                          whileTap={{ scale: 0.98 }}
-                          onClick={() => handleSelectProfile(profile.id)}
-                          className={`
-                            w-full group relative overflow-hidden rounded-xl p-4
-                            border backdrop-blur-sm transition-all duration-300
-                            flex items-center gap-4 text-left
-                            ${isSelected
-                              ? `border-cyan-400/60 bg-gradient-to-r from-cyan-500/20 to-teal-500/10`
-                              : `border-slate-700/50 bg-slate-800/20 hover:bg-slate-800/40 hover:border-cyan-400/40`
-                            }
-                          `}
-                        >
-                          {/* Selection glow */}
-                          {isSelected && (
-                            <motion.div
-                              layoutId="profileGlow"
-                              className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 to-teal-500/5 rounded-xl"
-                              initial={false}
-                              transition={{ duration: 0.3 }}
-                            />
-                          )}
-
-                          <div className="relative z-10 flex items-center gap-4 flex-1">
-                            {/* Small avatar */}
-                            <motion.div
-                              className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 border border-white/20 shadow-lg"
-                              whileHover={{ scale: 1.08 }}
-                            >
-                              <img
-                                src={profile.avatarUrl}
-                                alt={profile.name}
-                                className="w-full h-full object-cover"
-                              />
-                            </motion.div>
-
-                            {/* Profile name and email */}
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-white">
-                                {profile.name}
-                              </p>
-                              <p className="text-xs text-slate-400 truncate">
-                                {profile.email}
-                              </p>
-                            </div>
-
-                            {/* Icon */}
-                            <Icon
-                              className="w-4 h-4 flex-shrink-0 opacity-60"
-                              style={{ color: profile.color }}
-                            />
-                          </div>
-
-                          {/* Selection indicator */}
-                          {isSelected && (
-                            <motion.div
-                              className="absolute right-4 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full"
-                              style={{ backgroundColor: profile.color }}
-                              animate={{ scale: [1, 1.3, 1], opacity: [1, 0.6, 1] }}
-                              transition={{ duration: 1.5, repeat: Infinity }}
-                            />
-                          )}
-                        </motion.button>
-                      );
-                    })}
-                  </div>
-                </motion.div>
-
-                {/* Login button */}
-                <motion.div variants={itemVariants} className="space-y-3">
-                  <Button
-                    onClick={handleLogin}
-                    disabled={!selectedProfile || isLoading}
-                    className={`
-                      w-full h-12 text-sm font-semibold
-                      bg-gradient-to-r from-cyan-500 via-teal-500 to-cyan-500
-                      hover:from-cyan-400 hover:via-teal-400 hover:to-cyan-400
-                      border-0 shadow-lg shadow-cyan-500/30
-                      disabled:opacity-40 disabled:shadow-none
-                      transition-all duration-300
-                      group relative overflow-hidden
-                    `}
-                    size="lg"
-                  >
-                    <motion.span
-                      className="flex items-center justify-center gap-2"
-                      whileHover={selectedProfile ? { letterSpacing: '0.05em' } : {}}
+                  return (
+                    <motion.button
+                      key={profile.id}
+                      variants={itemVariants}
+                      whileHover={{ scale: 1.05, y: -2 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => handleSelectProfile(profile.id)}
+                      className={`
+                        relative group overflow-hidden rounded-lg p-3
+                        border transition-all duration-200 flex flex-col items-center gap-1
+                        ${isSelected
+                          ? `border-cyan-400/60 bg-gradient-to-b from-cyan-500/25 to-cyan-500/10 shadow-lg shadow-cyan-500/20`
+                          : `border-slate-700/50 bg-slate-800/20 hover:bg-slate-700/30 hover:border-cyan-400/40`
+                        }
+                      `}
                     >
-                      {isLoading ? (
-                        <>
-                          <motion.span
-                            animate={{ rotate: 360 }}
-                            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                            className="inline-block"
-                          >
-                            ⚡
-                          </motion.span>
-                          Entering Neural Workspace...
-                        </>
-                      ) : (
-                        <>
-                          Access Neural Workspace
-                          <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-                        </>
+                      {/* Small avatar */}
+                      <motion.div
+                        className="w-10 h-10 rounded-md overflow-hidden flex-shrink-0 border border-white/20 bg-slate-700"
+                      >
+                        <img
+                          src={profile.avatarUrl}
+                          alt={profile.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </motion.div>
+
+                      {/* Name */}
+                      <p className="text-xs font-semibold text-white text-center">{profile.name}</p>
+
+                      {/* Icon indicator */}
+                      <Icon
+                        className="w-3 h-3"
+                        style={{ color: profile.color, opacity: isSelected ? 1 : 0.6 }}
+                      />
+
+                      {/* Selection dot */}
+                      {isSelected && (
+                        <motion.div
+                          className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full"
+                          style={{ backgroundColor: profile.color }}
+                          animate={{ scale: [1, 1.4, 1], opacity: [1, 0.6, 1] }}
+                          transition={{ duration: 1.5, repeat: Infinity }}
+                        />
                       )}
-                    </motion.span>
-
-                    {/* Shimmer effect */}
-                    <motion.div
-                      className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0"
-                      animate={selectedProfile && !isLoading ? { opacity: [0, 0.3, 0], x: ['-100%', '100%'] } : {}}
-                      transition={{ duration: 2, repeat: Infinity }}
-                    />
-                  </Button>
-
-                  <p className="text-xs text-slate-500 text-center">
-                    🔐 Secure environment • Real-time collaboration
-                  </p>
-                </motion.div>
+                    </motion.button>
+                  );
+                })}
               </div>
-            </div>
-          </motion.div>
+            </motion.div>
+
+            {/* Login button */}
+            <motion.div
+              variants={itemVariants}
+              className="pt-2"
+            >
+              <Button
+                onClick={handleLogin}
+                disabled={!selectedProfile || isLoading}
+                className={`
+                  w-full h-10 text-xs font-semibold
+                  bg-gradient-to-r from-cyan-500 via-teal-500 to-cyan-500
+                  hover:from-cyan-400 hover:via-teal-400 hover:to-cyan-400
+                  border-0 shadow-lg shadow-cyan-500/30
+                  disabled:opacity-40 disabled:shadow-none
+                  transition-all duration-300
+                  relative overflow-hidden
+                `}
+              >
+                <motion.span
+                  className="flex items-center justify-center gap-1.5"
+                  whileHover={selectedProfile ? { letterSpacing: '0.05em' } : {}}
+                >
+                  {isLoading ? (
+                    <>
+                      <motion.span
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                        className="inline-block text-sm"
+                      >
+                        ⚡
+                      </motion.span>
+                      <span>Connecting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Access Workspace</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </>
+                  )}
+                </motion.span>
+              </Button>
+            </motion.div>
+          </div>
         </div>
       </motion.div>
     </div>
