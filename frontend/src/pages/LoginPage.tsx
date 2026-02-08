@@ -145,37 +145,33 @@ export function LoginPage() {
 
             {/* Dynamic Avatar Display */}
             <motion.div
-              variants={containerVariants}
-              initial="hidden"
-              animate="visible"
               className="flex flex-col items-center justify-center"
             >
               <AnimatePresence mode="wait">
                 {/* Dynamic large avatar display */}
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={selectedProfile || 'empty'}
-                    initial={{ opacity: 0, scale: 0.3 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.3 }}
-                    transition={{ duration: 0.2, type: 'spring', stiffness: 400 }}
+                <motion.div
+                  key={selectedProfile || 'empty'}
+                  initial={{ opacity: 0, scale: 0.65, y: 8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.65, y: -8 }}
+                  transition={{ duration: 0.11, type: 'spring', stiffness: 650, damping: 18 }}
                     className="flex flex-col items-center justify-center space-y-3 py-2"
                   >
                     {selectedProfileData ? (
                       <>
                         {/* Avatar with glow */}
-                        <motion.div
-                          className="relative flex items-center justify-center"
-                          animate={{ 
-                            scale: [1, 1.04, 1],
-                            y: [0, -3, 0],
-                          }}
-                          transition={{ 
-                            duration: 3, 
-                            repeat: Infinity,
-                            ease: 'easeInOut'
-                          }}
-                        >
+                          <motion.div
+                            className="relative flex items-center justify-center"
+                            animate={{ 
+                              scale: [1, 1.02, 1],
+                              y: [0, -2, 0],
+                            }}
+                            transition={{ 
+                              duration: 2.8, 
+                              repeat: Infinity,
+                              ease: 'easeInOut'
+                            }}
+                          >
                           <div className="w-32 h-32 rounded-2xl overflow-hidden border-2 border-white/10 shadow-lg relative flex-shrink-0">
                             <img
                               src={selectedProfileData.avatarUrl}
@@ -218,9 +214,9 @@ export function LoginPage() {
                         {/* Profile name only */}
                         <motion.div
                           className="text-center space-y-1"
-                          initial={{ opacity: 0, y: 5 }}
+                          initial={{ opacity: 0, y: 3 }}
                           animate={{ opacity: 1, y: 0 }}
-                          transition={{ duration: 0.3, delay: 0.1 }}
+                          transition={{ duration: 0.12, delay: 0.03 }}
                         >
                           <h2 className="text-xl font-semibold text-white">{selectedProfileData.name}</h2>
                           <p className="text-xs text-slate-400">{selectedProfileData.description}</p>
@@ -228,23 +224,22 @@ export function LoginPage() {
                       </>
                     ) : (
                       <motion.div
-                        className="flex flex-col items-center justify-center space-y-3 py-2"
+                        className="flex flex-col items-center justify-center space-y-2 py-1"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
+                        transition={{ duration: 0.1 }}
                       >
                         <motion.div 
                           className="w-24 h-24 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 flex items-center justify-center"
-                          animate={{ scale: [1, 1.02, 1] }}
-                          transition={{ duration: 3, repeat: Infinity }}
+                          animate={{ scale: [1, 1.01, 1] }}
+                          transition={{ duration: 2, repeat: Infinity }}
                         >
-                          <Sparkles className="w-8 h-8 text-cyan-400/50" strokeWidth={1} />
+                          <Sparkles className="w-6 h-6 text-cyan-400/40" strokeWidth={1} />
                         </motion.div>
-                        <p className="text-sm text-slate-400 font-medium hidden">Select a profile</p>
                       </motion.div>
                     )}
                   </motion.div>
                 </AnimatePresence>
-              </AnimatePresence>
             </motion.div>
 
             {/* Profile buttons grid - 3 columns */}
