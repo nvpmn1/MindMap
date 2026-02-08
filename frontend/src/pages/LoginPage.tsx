@@ -112,13 +112,13 @@ export function LoginPage() {
         transition={{ duration: 0.8, ease: 'easeOut' }}
         className="relative z-20 w-full max-w-5xl mx-auto px-4"
       >
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-10 items-start">
           {/* Left section: Hero content */}
           <motion.div
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            className="space-y-8"
+            className="space-y-8 pt-4"
           >
             {/* Logo and title */}
             <motion.div variants={itemVariants} className="space-y-6">
@@ -184,7 +184,7 @@ export function LoginPage() {
             <div className="relative">
               <div className="absolute -inset-4 bg-gradient-to-r from-cyan-500/10 via-teal-500/5 to-purple-500/10 rounded-3xl blur-2xl" />
 
-              <div className="relative bg-[#080C14]/60 backdrop-blur-xl border border-cyan-500/20 rounded-3xl p-10 shadow-2xl space-y-8">
+              <div className="relative bg-[#080C14]/60 backdrop-blur-xl border border-cyan-500/20 rounded-3xl p-8 lg:p-10 shadow-2xl space-y-6 lg:space-y-8">
                 {/* Dynamic large avatar display */}
                 <AnimatePresence mode="wait">
                   <motion.div
@@ -193,7 +193,7 @@ export function LoginPage() {
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.3, y: -30 }}
                     transition={{ duration: 0.25, type: 'spring', stiffness: 400, damping: 25 }}
-                    className="flex flex-col items-center justify-center space-y-8 min-h-[420px]"
+                    className="flex flex-col items-center justify-center space-y-6 min-h-[340px]"
                   >
                     {selectedProfileData ? (
                       <>
@@ -210,7 +210,7 @@ export function LoginPage() {
                             ease: 'easeInOut'
                           }}
                         >
-                          <div className="w-60 h-60 rounded-3xl overflow-hidden border-2 border-white/10 shadow-2xl relative flex-shrink-0">
+                          <div className="w-52 h-52 rounded-3xl overflow-hidden border-2 border-white/10 shadow-2xl relative flex-shrink-0">
                             <img
                               src={selectedProfileData.avatarUrl}
                               alt={selectedProfileData.name}
@@ -220,13 +220,13 @@ export function LoginPage() {
                               className="absolute inset-0 rounded-3xl pointer-events-none"
                               style={{
                                 border: `2px solid ${selectedProfileData.color}`,
-                                boxShadow: `inset 0 0 20px ${selectedProfileData.color}30, 0 0 40px ${selectedProfileData.color}50`,
-                              }}
-                              animate={{
-                                boxShadow: [
-                                  `inset 0 0 20px ${selectedProfileData.color}30, 0 0 40px ${selectedProfileData.color}50`,
-                                  `inset 0 0 35px ${selectedProfileData.color}50, 0 0 60px ${selectedProfileData.color}70`,
-                                  `inset 0 0 20px ${selectedProfileData.color}30, 0 0 40px ${selectedProfileData.color}50`,
+                              boxShadow: `inset 0 0 15px ${selectedProfileData.color}25, 0 0 30px ${selectedProfileData.color}40`,
+                            }}
+                            animate={{
+                              boxShadow: [
+                                `inset 0 0 15px ${selectedProfileData.color}25, 0 0 30px ${selectedProfileData.color}40`,
+                                `inset 0 0 30px ${selectedProfileData.color}40, 0 0 50px ${selectedProfileData.color}60`,
+                                `inset 0 0 15px ${selectedProfileData.color}25, 0 0 30px ${selectedProfileData.color}40`,
                                 ],
                               }}
                               transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
@@ -238,8 +238,8 @@ export function LoginPage() {
                             className="absolute rounded-full pointer-events-none"
                             style={{
                               border: `2px solid ${selectedProfileData.color}40`,
-                              width: '264px',
-                              height: '264px',
+                              width: '232px',
+                              height: '232px',
                             }}
                             animate={{
                               scale: [1, 1.15, 1],
@@ -251,8 +251,8 @@ export function LoginPage() {
                             className="absolute rounded-full pointer-events-none"
                             style={{
                               border: `1px solid ${selectedProfileData.color}25`,
-                              width: '308px',
-                              height: '308px',
+                              width: '272px',
+                              height: '272px',
                             }}
                             animate={{
                               scale: [1, 1.1, 1],
