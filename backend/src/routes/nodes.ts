@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authenticate, asyncHandler } from '../middleware';
 import { ValidationError, NotFoundError } from '../utils/errors';
 import { logger } from '../utils/logger';
+import { env } from '../utils/env';
 import { supabaseAdmin } from '../services/supabase';
 import { Insertable, Updatable } from '../types/database';
 
@@ -12,7 +13,7 @@ const router = Router();
 const createNodeSchema = z.object({
   map_id: z.string().uuid('Invalid map ID'),
   parent_id: z.string().uuid().nullable().optional(),
-  type: z.enum(['idea', 'task', 'note', 'reference', 'image', 'group']).default('idea'),
+  type: z.enum(['idea', 'task', 'note', 'reference', 'image', 'group', 'research', 'data', 'question']).default('idea'),
   label: z.string().min(1, 'Label required').max(500, 'Label too long'),
   content: z.string().max(10000).nullable().optional(),
   position_x: z.number().default(0),
@@ -26,7 +27,7 @@ const createNodeSchema = z.object({
 
 const updateNodeSchema = z.object({
   parent_id: z.string().uuid().nullable().optional(),
-  type: z.enum(['idea', 'task', 'note', 'reference', 'image', 'group']).optional(),
+  type: z.enum(['idea', 'task', 'note', 'reference', 'image', 'group', 'research', 'data', 'question']).optional(),
   label: z.string().min(1).max(500).optional(),
   content: z.string().max(10000).nullable().optional(),
   position_x: z.number().optional(),
@@ -167,65 +168,92 @@ router.post(
   '/',
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
-    const parsed = createNodeSchema.safeParse(req.body);
-    if (!parsed.success) {
-      throw new ValidationError(parsed.error.errors[0].message);
-    }
+    try {
+      const parsed = createNodeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        logger.warn({ errors: parsed.error.errors }, 'Node validation failed');
+        throw new ValidationError(parsed.error.errors[0].message);
+      }
 
-    const nodeData = {
-      map_id: parsed.data.map_id,
-      parent_id: parsed.data.parent_id,
-      type: parsed.data.type,
-      label: parsed.data.label,
-      content: parsed.data.content,
-      position_x: parsed.data.position_x,
-      position_y: parsed.data.position_y,
-      width: parsed.data.width,
-      height: parsed.data.height,
-      style: parsed.data.style,
-      data: parsed.data.data,
-      collapsed: parsed.data.collapsed,
-      created_by: req.user!.id,
-    };
+      // Verify map exists first
+      const { data: map, error: mapError } = await req.supabase!
+        .from('maps')
+        .select('id')
+        .eq('id', parsed.data.map_id)
+        .single();
 
-    const { data: node, error } = await req.supabase!
-      .from('nodes')
-      .insert(nodeData)
-      .select(`
-        *,
-        creator:profiles!nodes_created_by_fkey (
-          id,
-          display_name,
-          avatar_url,
-          color
-        )
-      `)
-      .single();
+      if (mapError || !map) {
+        logger.warn({ mapId: parsed.data.map_id, error: mapError?.message }, 'Map not found');
+        throw new NotFoundError(`Map ${parsed.data.map_id} not found`);
+      }
 
-    if (error) {
-      logger.error({ error: error.message }, 'Failed to create node');
-      throw new Error('Failed to create node');
-    }
-
-    // Create edge from parent if specified
-    if (parsed.data.parent_id) {
-      await req.supabase!.from('edges').insert({
+      const nodeData: Insertable<'nodes'> & { type?: string } = {
         map_id: parsed.data.map_id,
-        source_id: parsed.data.parent_id,
-        target_id: node.id,
-        type: 'default',
+        parent_id: parsed.data.parent_id || null,
+        type: parsed.data.type as any,
+        label: parsed.data.label || 'Untitled',
+        content: parsed.data.content || null,
+        position_x: parsed.data.position_x,
+        position_y: parsed.data.position_y,
+        width: parsed.data.width,
+        height: parsed.data.height,
+        style: parsed.data.style || {},
+        data: parsed.data.data || {},
+        collapsed: parsed.data.collapsed || false,
+        created_by: req.user!.id,
+        updated_at: new Date().toISOString(),
+      } as any;
+
+      const { data: node, error } = await req.supabase!
+        .from('nodes')
+        .insert(nodeData)
+        .select(`
+          *,
+          creator:profiles!nodes_created_by_fkey (
+            id,
+            display_name,
+            avatar_url,
+            color
+          )
+        `)
+        .single();
+
+      if (error) {
+        logger.error({ error: error.message, code: error.code, nodeData }, 'Failed to create node');
+        throw new Error(`Database error: ${error.message}`);
+      }
+
+      // Create edge from parent if specified
+      if (parsed.data.parent_id) {
+        const { error: edgeError } = await req.supabase!.from('edges').insert({
+          map_id: parsed.data.map_id,
+          source_id: parsed.data.parent_id,
+          target_id: node.id,
+          type: 'default',
+        });
+        
+        if (edgeError) {
+          logger.warn({ error: edgeError.message }, 'Failed to create edge');
+        }
+      }
+
+      // Log activity
+      try {
+        await logNodeActivity(req.user!.id, node.map_id, node.id, 'node_created', `Created node "${node.label}"`);
+      } catch (e) {
+        logger.warn({ error: e }, 'Failed to log activity');
+      }
+
+      logger.info({ nodeId: node.id, mapId: node.map_id, userId: req.user!.id }, 'Node created successfully');
+
+      res.status(201).json({
+        success: true,
+        data: node,
       });
+    } catch (err) {
+      logger.error({ error: err, body: req.body }, 'Create node error');
+      throw err;
     }
-
-    // Log activity
-    await logNodeActivity(req.user!.id, node.map_id, node.id, 'node_created', `Created node "${node.label}"`);
-
-    logger.info({ nodeId: node.id, mapId: node.map_id, userId: req.user!.id }, 'Node created');
-
-    res.status(201).json({
-      success: true,
-      data: node,
-    });
   })
 );
 
@@ -244,10 +272,10 @@ router.patch(
       throw new ValidationError(parsed.error.errors[0].message);
     }
 
-    const updateData: Updatable<'nodes'> = {
+    const updateData: Updatable<'nodes'> & { type?: string } = {
       ...parsed.data,
       updated_at: new Date().toISOString(),
-    };
+    } as any;
 
     const { data: node, error } = await req.supabase!
       .from('nodes')
@@ -644,15 +672,17 @@ async function logNodeActivity(
 ): Promise<void> {
   try {
     // Get workspace ID from map
-    const { data: map } = await supabaseAdmin
+    const { data: map, error } = await supabaseAdmin
       .from('maps')
       .select('workspace_id')
       .eq('id', mapId)
       .single() as any;
 
-    if (map) {
+    const workspaceId = map?.workspace_id || (error?.message?.includes('maps.workspace_id') ? env.DEFAULT_WORKSPACE_ID : undefined);
+
+    if (workspaceId) {
       const activityData: any = {
-        workspace_id: map.workspace_id,
+        workspace_id: workspaceId,
         map_id: mapId,
         node_id: nodeId,
         user_id: userId,

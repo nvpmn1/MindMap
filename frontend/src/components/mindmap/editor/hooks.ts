@@ -12,6 +12,7 @@ import type {
   MapAnalytics
 } from './types';
 import { DEFAULT_NODE_DATA, DEFAULT_EDITOR_SETTINGS, NODE_TYPE_CONFIG } from './constants';
+import { useAuthStore } from '@/stores/authStore';
 
 // ─── useEditorState ─────────────────────────────────────────────────────────
 
@@ -171,7 +172,7 @@ export function useNodeOperations(
     }
 
     // Save to API if remote map
-    if (mapId && mapId !== 'new' && mapId !== 'local') {
+    if (mapId && mapId !== 'new' && mapId !== 'local' && !mapId.startsWith('local_')) {
       import('../../../lib/api').then(({ nodesApi }) => {
         nodesApi.create({
           map_id: mapId,
@@ -180,7 +181,47 @@ export function useNodeOperations(
           content: newNode.data.description || '',
           position_x: nodePosition!.x,
           position_y: nodePosition!.y,
-        } as any).catch(() => {});
+        } as any)
+          .then((response: any) => {
+            const created = response?.data;
+            if (!created?.id) return;
+
+            const newId = created.id as string;
+
+            setNodes(prev => prev.map(node =>
+              node.id === id ? { ...node, id: newId } : node
+            ));
+
+            setEdges(prev => prev.map(edge => {
+              const source = edge.source === id ? newId : edge.source;
+              const target = edge.target === id ? newId : edge.target;
+              return source !== edge.source || target !== edge.target
+                ? { ...edge, source, target }
+                : edge;
+            }));
+
+            // Save edge to API if parent exists
+            if (parentId) {
+              const isUuid = (tid: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tid);
+              const resolvedParentId = parentId;
+              if (isUuid(resolvedParentId)) {
+                nodesApi.createEdge({
+                  map_id: mapId,
+                  source_id: resolvedParentId,
+                  target_id: newId,
+                }).then((edgeRes: any) => {
+                  if (edgeRes?.data?.id) {
+                    setEdges(prev => prev.map(e =>
+                      e.id === `edge_${parentId}_${id}` || e.id === `edge_${resolvedParentId}_${newId}`
+                        ? { ...e, id: edgeRes.data.id }
+                        : e
+                    ));
+                  }
+                }).catch(() => {});
+              }
+            }
+          })
+          .catch(() => {});
       });
     }
 
@@ -209,7 +250,7 @@ export function useNodeOperations(
     setNodes(prev => prev.filter(n => !toDelete.has(n.id)));
     setEdges(prev => prev.filter(e => !toDelete.has(e.source) && !toDelete.has(e.target)));
     
-    toast.success('Nó removido');
+    toast.success('Nó removido', { duration: 2500 });
   }, [edges, setNodes, setEdges, saveToHistory]);
 
   const duplicateNode = useCallback((nodeId: string) => {
@@ -224,22 +265,49 @@ export function useNodeOperations(
       { ...original.data, label: `${original.data.label} (cópia)` }
     );
     
-    toast.success('Nó duplicado');
+    toast.success('Nó duplicado', { duration: 2500 });
     return newNode;
   }, [nodes, createNode, saveToHistory]);
 
   const onConnect = useCallback((connection: Connection) => {
     saveToHistory();
-    const edgeId = `edge_${connection.source}_${connection.target}`;
+    const sourceId = connection.source!;
+    const targetId = connection.target!;
+    const edgeId = `edge_${sourceId}_${targetId}`;
     setEdges(prev => [...prev, {
       id: edgeId,
-      source: connection.source!,
-      target: connection.target!,
+      source: sourceId,
+      target: targetId,
       type: 'power',
       animated: true,
       data: { style: 'neural' as const, strength: 1 },
     }]);
-  }, [setEdges, saveToHistory]);
+
+    // Persist edge to API if remote map
+    if (mapId && mapId !== 'new' && mapId !== 'local' && !mapId.startsWith('local_')) {
+      // Only save if both node IDs are real UUIDs (not local temp IDs)
+      const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      if (isUuid(sourceId) && isUuid(targetId)) {
+        import('../../../lib/api').then(({ nodesApi }) => {
+          nodesApi.createEdge({
+            map_id: mapId,
+            source_id: sourceId,
+            target_id: targetId,
+          }).then((response: any) => {
+            const created = response?.data;
+            if (created?.id) {
+              // Update local edge with server ID
+              setEdges(prev => prev.map(e =>
+                e.id === edgeId ? { ...e, id: created.id } : e
+              ));
+            }
+          }).catch((err: any) => {
+            console.warn('[Edge] Failed to save edge to API:', err);
+          });
+        });
+      }
+    }
+  }, [setEdges, saveToHistory, mapId]);
 
   return {
     createNode, updateNodeData, deleteNode, duplicateNode, onConnect, generateId
@@ -263,6 +331,8 @@ export function useMapPersistence(
 ) {
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const isRemoteMap = mapId && mapId !== 'new' && mapId !== 'local' && !mapId.startsWith('local_');
+  const { workspaces } = useAuthStore();
+  const workspaceId = workspaces[0]?.id || '11111111-1111-1111-1111-111111111111';
 
   // Create default map when loading fails or no data exists
   const createDefaultMap = useCallback(() => {
@@ -297,7 +367,7 @@ export function useMapPersistence(
           const response = await mapsApi.create({
             title: 'Novo Mapa Neural',
             description: 'Meu novo mapa neural colaborativo',
-            workspace_id: '00000000-0000-0000-0000-000000000000',
+            workspace_id: workspaceId,
           } as any);
           if ((response.data as any)) {
             navigate(`/map/${(response.data as any).id}`);
@@ -352,11 +422,11 @@ export function useMapPersistence(
               if (edgesResponse.data && Array.isArray(edgesResponse.data)) {
                 const loadedEdges: PowerEdge[] = edgesResponse.data.map((e: any) => ({
                   id: e.id,
-                  source: e.source_node_id || e.source,
-                  target: e.target_node_id || e.target,
+                  source: e.source_id || e.source_node_id || e.source,
+                  target: e.target_id || e.target_node_id || e.target,
                   type: 'power',
-                  animated: true,
-                  data: { style: 'neural' as const },
+                  animated: e.animated ?? true,
+                  data: { style: 'neural' as const, ...(e.style || {}) },
                 }));
                 setEdges(loadedEdges);
               }
@@ -380,7 +450,7 @@ export function useMapPersistence(
           }
         } catch (err) {
           console.warn('[Map Loading] API error, falling back to default map:', err);
-          toast.error('Usando modo offline - alterações serão salvas localmente', { duration: 3000 });
+          toast.error('Usando modo offline - alterações serão salvas localmente', { duration: 3500 });
           createDefaultMap();
         }
       } else {
@@ -418,6 +488,10 @@ export function useMapPersistence(
         }
         // Batch update nodes
         for (const node of nodes) {
+          if (node.id.startsWith('node_') || node.id.startsWith('local_') || node.id.startsWith('central_')) {
+            continue;
+          }
+
           await nodesApi.update(node.id, {
             label: node.data.label,
             content: node.data.description || '',
@@ -427,6 +501,38 @@ export function useMapPersistence(
             type: node.data.type as any,
           }).catch(() => {});
         }
+
+        // Sync edges: load existing from server and create any missing ones
+        const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+        try {
+          const serverEdgesRes = await nodesApi.getEdges(mapId!);
+          const serverEdges = (serverEdgesRes.data || []) as any[];
+          const serverEdgeKeys = new Set(serverEdges.map((e: any) => `${e.source_id}__${e.target_id}`));
+
+          // Create edges that exist locally but not on server
+          for (const edge of edges) {
+            if (!isUuid(edge.source) || !isUuid(edge.target)) continue;
+            const key = `${edge.source}__${edge.target}`;
+            if (!serverEdgeKeys.has(key)) {
+              await nodesApi.createEdge({
+                map_id: mapId!,
+                source_id: edge.source,
+                target_id: edge.target,
+              }).catch(() => {});
+            }
+          }
+
+          // Delete server edges that no longer exist locally
+          const localEdgeKeys = new Set(edges.map(e => `${e.source}__${e.target}`));
+          for (const se of serverEdges) {
+            const key = `${se.source_id}__${se.target_id}`;
+            if (!localEdgeKeys.has(key)) {
+              await nodesApi.deleteEdge(se.id).catch(() => {});
+            }
+          }
+        } catch (err) {
+          console.warn('[Save] Edge sync failed:', err);
+        }
       } else {
         localStorage.setItem(`neuralmap_${mapId}`, JSON.stringify({
           mapInfo, nodes, edges,
@@ -434,9 +540,9 @@ export function useMapPersistence(
         }));
       }
       setLastSaved(new Date());
-      toast.success('Mapa salvo!', { duration: 1500 });
+      toast.success('Mapa salvo!', { duration: 2500 });
     } catch (err) {
-      toast.error('Erro ao salvar');
+      toast.error('Erro ao salvar', { duration: 3500 });
     } finally {
       setIsSaving(false);
     }

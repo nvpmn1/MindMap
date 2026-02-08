@@ -95,14 +95,15 @@ export function useRealtime({ mapId, enabled = true }: UseRealtimeOptions) {
     let channel: RealtimeChannel;
 
     const setupRealtime = async () => {
-      // Create channel for this map
-      channel = supabase.channel(`map:${mapId}`, {
-        config: {
-          presence: {
-            key: profile?.id || 'anonymous',
+      try {
+        // Create channel for this map
+        channel = supabase.channel(`map:${mapId}`, {
+          config: {
+            presence: {
+              key: profile?.id || 'anonymous',
+            },
           },
-        },
-      });
+        });
       channelRef.current = channel;
 
       // Subscribe to node changes
@@ -135,21 +136,31 @@ export function useRealtime({ mapId, enabled = true }: UseRealtimeOptions) {
         handlePresenceSync(state);
       });
 
-      // Track own presence
-      await channel.subscribe(async (status) => {
-        if (status === 'SUBSCRIBED' && profile) {
-          await channel.track({
-            user_id: profile.id,
-            display_name: profile.display_name || profile.email,
-            color: profile.color,
-            cursor: null,
-            online_at: new Date().toISOString(),
-          });
-        }
-      });
+        // Track own presence
+        await channel.subscribe(async (status) => {
+          if (status === 'SUBSCRIBED' && profile) {
+            try {
+              await channel.track({
+                user_id: profile.id,
+                display_name: profile.display_name || profile.email,
+                color: profile.color,
+                cursor: null,
+                online_at: new Date().toISOString(),
+              });
+            } catch (error) {
+              console.warn('⚠️ Failed to track presence:', error);
+            }
+          }
+        });
+      } catch (error) {
+        console.warn('⚠️ Failed to setup realtime:', error);
+        // Continue without realtime - app should still work
+      }
     };
 
-    setupRealtime();
+    setupRealtime().catch((error) => {
+      console.warn('⚠️ Realtime setup error:', error);
+    });
 
     return () => {
       if (channelRef.current) {
@@ -167,13 +178,18 @@ export function useRealtime({ mapId, enabled = true }: UseRealtimeOptions) {
       const channel = channelRef.current;
       if (!channel) return;
 
-      await channel.track({
-        user_id: profile.id,
-        display_name: profile.display_name || profile.email,
-        color: profile.color,
-        cursor,
-        online_at: new Date().toISOString(),
-      });
+      try {
+        await channel.track({
+          user_id: profile.id,
+          display_name: profile.display_name || profile.email,
+          color: profile.color,
+          cursor,
+          online_at: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.warn('⚠️ Failed to broadcast cursor:', error);
+        // Silently fail - not critical
+      }
     },
     [mapId, profile]
   );

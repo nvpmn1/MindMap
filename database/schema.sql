@@ -1,5 +1,5 @@
 -- ============================================
--- MindMap Hub - Database Schema
+-- MindMap Hub - Database Schema (Compatível com o backend atual)
 -- Execute este arquivo no Supabase SQL Editor
 -- ============================================
 
@@ -8,45 +8,43 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ============================================
 -- 1. TABELA: workspaces
--- Espaço de trabalho compartilhado
 -- ============================================
 CREATE TABLE IF NOT EXISTS workspaces (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255) NOT NULL,
+    slug VARCHAR(255),
     description TEXT,
-    created_by UUID REFERENCES auth.users(id),
+    created_by UUID REFERENCES profiles(id),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE INDEX idx_workspaces_name ON workspaces(name);
 COMMENT ON TABLE workspaces IS 'Espaços de trabalho compartilhados entre membros';
 
 -- ============================================
 -- 2. TABELA: workspace_members
--- Membros do workspace com papéis
 -- ============================================
 CREATE TABLE IF NOT EXISTS workspace_members (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    role VARCHAR(20) NOT NULL CHECK (role IN ('owner', 'editor', 'viewer')),
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    role VARCHAR(20) NOT NULL CHECK (role IN ('owner', 'editor', 'viewer', 'admin', 'member')),
     joined_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(workspace_id, user_id)
 );
 
 CREATE INDEX idx_workspace_members_workspace ON workspace_members(workspace_id);
 CREATE INDEX idx_workspace_members_user ON workspace_members(user_id);
-
 COMMENT ON TABLE workspace_members IS 'Relacionamento entre usuários e workspaces';
 
 -- ============================================
 -- 3. TABELA: profiles
--- Perfil visual e preferências do usuário
 -- ============================================
 CREATE TABLE IF NOT EXISTS profiles (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
-    display_name VARCHAR(100) NOT NULL,
+    id UUID PRIMARY KEY,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    display_name VARCHAR(100),
     avatar_url TEXT,
     color VARCHAR(7) DEFAULT '#6366f1',
     preferences JSONB DEFAULT '{}',
@@ -54,79 +52,67 @@ CREATE TABLE IF NOT EXISTS profiles (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_profiles_user ON profiles(user_id);
-
+CREATE INDEX idx_profiles_email ON profiles(email);
 COMMENT ON TABLE profiles IS 'Perfil visual do usuário (nome, avatar, cor)';
 
 -- ============================================
 -- 4. TABELA: maps
--- Mapas mentais
 -- ============================================
 CREATE TABLE IF NOT EXISTS maps (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     description TEXT,
-    template_type VARCHAR(50),
-    status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+    thumbnail_url TEXT,
+    is_template BOOLEAN DEFAULT FALSE,
     settings JSONB DEFAULT '{}',
-    created_by UUID REFERENCES auth.users(id),
+    created_by UUID REFERENCES profiles(id),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX idx_maps_workspace ON maps(workspace_id);
-CREATE INDEX idx_maps_status ON maps(status);
 CREATE INDEX idx_maps_created_by ON maps(created_by);
-
 COMMENT ON TABLE maps IS 'Mapas mentais do workspace';
 
 -- ============================================
 -- 5. TABELA: nodes
--- Nós do mindmap
 -- ============================================
 CREATE TABLE IF NOT EXISTS nodes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     map_id UUID NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
     parent_id UUID REFERENCES nodes(id) ON DELETE CASCADE,
-    title VARCHAR(500) NOT NULL,
+    type VARCHAR(30) DEFAULT 'idea' CHECK (type IN ('idea', 'task', 'note', 'reference', 'image', 'group', 'research', 'data', 'question')),
+    label VARCHAR(500) NOT NULL,
     content TEXT,
     position_x FLOAT NOT NULL DEFAULT 0,
     position_y FLOAT NOT NULL DEFAULT 0,
-    width FLOAT DEFAULT 200,
-    height FLOAT DEFAULT 80,
-    color VARCHAR(7),
-    icon VARCHAR(50),
-    node_type VARCHAR(30) DEFAULT 'default' CHECK (node_type IN ('default', 'task', 'note', 'question', 'idea', 'warning')),
-    status VARCHAR(20) DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'completed', 'blocked')),
-    tags TEXT[] DEFAULT '{}',
-    metadata JSONB DEFAULT '{}',
-    order_index INT DEFAULT 0,
-    is_collapsed BOOLEAN DEFAULT FALSE,
-    created_by UUID REFERENCES auth.users(id),
+    width FLOAT,
+    height FLOAT,
+    style JSONB DEFAULT '{}',
+    data JSONB DEFAULT '{}',
+    collapsed BOOLEAN DEFAULT FALSE,
+    version INT DEFAULT 1,
+    created_by UUID REFERENCES profiles(id),
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    version INT DEFAULT 1
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX idx_nodes_map ON nodes(map_id);
 CREATE INDEX idx_nodes_parent ON nodes(parent_id);
-CREATE INDEX idx_nodes_status ON nodes(status);
-
 COMMENT ON TABLE nodes IS 'Nós (elementos) do mindmap';
 
 -- ============================================
 -- 6. TABELA: edges
--- Conexões visuais entre nós
 -- ============================================
 CREATE TABLE IF NOT EXISTS edges (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     map_id UUID NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
     source_id UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
     target_id UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    type VARCHAR(30) DEFAULT 'default' CHECK (type IN ('default', 'step', 'smoothstep', 'straight', 'bezier')),
     label VARCHAR(100),
-    edge_type VARCHAR(30) DEFAULT 'default' CHECK (edge_type IN ('default', 'dashed', 'dotted', 'bold')),
-    color VARCHAR(7),
+    style JSONB DEFAULT '{}',
     animated BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(source_id, target_id)
@@ -135,111 +121,95 @@ CREATE TABLE IF NOT EXISTS edges (
 CREATE INDEX idx_edges_map ON edges(map_id);
 CREATE INDEX idx_edges_source ON edges(source_id);
 CREATE INDEX idx_edges_target ON edges(target_id);
-
 COMMENT ON TABLE edges IS 'Conexões visuais (linhas) entre nós';
 
 -- ============================================
 -- 7. TABELA: node_links
--- Conexões semânticas (sem linha visual)
 -- ============================================
 CREATE TABLE IF NOT EXISTS node_links (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    map_id UUID NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
-    source_id UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
-    target_id UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
-    link_type VARCHAR(50) DEFAULT 'related' CHECK (link_type IN ('related', 'depends_on', 'blocks', 'contradicts', 'supports')),
-    strength FLOAT DEFAULT 1.0 CHECK (strength >= 0 AND strength <= 1),
-    notes TEXT,
-    created_by UUID REFERENCES auth.users(id),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(source_id, target_id, link_type)
+    source_node_id UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    target_node_id UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    link_type VARCHAR(50) DEFAULT 'related' CHECK (link_type IN ('reference', 'related', 'blocks', 'blocked_by')),
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_node_links_map ON node_links(map_id);
-
-COMMENT ON TABLE node_links IS 'Conexões semânticas entre nós (rede neural)';
+CREATE INDEX idx_node_links_source ON node_links(source_node_id);
+CREATE INDEX idx_node_links_target ON node_links(target_node_id);
+COMMENT ON TABLE node_links IS 'Conexões semânticas entre nós';
 
 -- ============================================
 -- 8. TABELA: tasks
--- Tarefas derivadas de nós
 -- ============================================
 CREATE TABLE IF NOT EXISTS tasks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    map_id UUID NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
-    node_id UUID REFERENCES nodes(id) ON DELETE SET NULL,
+    node_id UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
     title VARCHAR(500) NOT NULL,
     description TEXT,
-    status VARCHAR(20) DEFAULT 'backlog' CHECK (status IN ('backlog', 'doing', 'waiting', 'done')),
+    status VARCHAR(20) DEFAULT 'backlog' CHECK (status IN ('backlog', 'todo', 'in_progress', 'review', 'done')),
     priority VARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
-    task_type VARCHAR(30) DEFAULT 'task' CHECK (task_type IN ('task', 'research', 'review', 'decision', 'execution')),
-    assignee_id UUID REFERENCES auth.users(id),
     due_date DATE,
-    completed_at TIMESTAMPTZ,
+    assigned_to UUID REFERENCES profiles(id),
+    tags TEXT[] DEFAULT '{}',
+    checklist JSONB DEFAULT '{}',
     order_index INT DEFAULT 0,
-    created_by UUID REFERENCES auth.users(id),
+    created_by UUID REFERENCES profiles(id),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_tasks_map ON tasks(map_id);
-CREATE INDEX idx_tasks_assignee ON tasks(assignee_id);
-CREATE INDEX idx_tasks_status ON tasks(status);
 CREATE INDEX idx_tasks_node ON tasks(node_id);
-
+CREATE INDEX idx_tasks_assigned ON tasks(assigned_to);
+CREATE INDEX idx_tasks_status ON tasks(status);
 COMMENT ON TABLE tasks IS 'Tarefas atribuíveis derivadas de nós';
 
 -- ============================================
 -- 9. TABELA: comments
--- Comentários em nós
 -- ============================================
 CREATE TABLE IF NOT EXISTS comments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     node_id UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
-    author_id UUID NOT NULL REFERENCES auth.users(id),
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     content TEXT NOT NULL,
     mentions UUID[] DEFAULT '{}',
+    parent_comment_id UUID REFERENCES comments(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX idx_comments_node ON comments(node_id);
-CREATE INDEX idx_comments_author ON comments(author_id);
-
+CREATE INDEX idx_comments_user ON comments(user_id);
 COMMENT ON TABLE comments IS 'Comentários em nós do mapa';
 
 -- ============================================
 -- 10. TABELA: notifications
--- Notificações para usuários
 -- ============================================
 CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    type VARCHAR(30) NOT NULL CHECK (type IN ('delegation', 'comment', 'mention', 'task_done', 'ai_complete', 'system')),
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    type VARCHAR(30) NOT NULL CHECK (type IN ('task_assigned', 'comment_mention', 'map_shared', 'deadline_reminder', 'ai_complete')),
     title VARCHAR(255) NOT NULL,
-    body TEXT,
+    message TEXT,
     data JSONB DEFAULT '{}',
-    read_at TIMESTAMPTZ,
+    read BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX idx_notifications_user ON notifications(user_id);
-CREATE INDEX idx_notifications_unread ON notifications(user_id) WHERE read_at IS NULL;
-
+CREATE INDEX idx_notifications_unread ON notifications(user_id) WHERE read = FALSE;
 COMMENT ON TABLE notifications IS 'Notificações para usuários';
 
 -- ============================================
 -- 11. TABELA: activity_events
--- Log de atividades (audit trail)
 -- ============================================
 CREATE TABLE IF NOT EXISTS activity_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
     map_id UUID REFERENCES maps(id) ON DELETE CASCADE,
     node_id UUID REFERENCES nodes(id) ON DELETE SET NULL,
-    user_id UUID REFERENCES auth.users(id),
-    action VARCHAR(50) NOT NULL,
-    entity_type VARCHAR(30) NOT NULL,
-    entity_id UUID NOT NULL,
+    user_id UUID REFERENCES profiles(id),
+    event_type VARCHAR(50) NOT NULL,
+    description TEXT,
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -247,58 +217,48 @@ CREATE TABLE IF NOT EXISTS activity_events (
 CREATE INDEX idx_activity_workspace ON activity_events(workspace_id, created_at DESC);
 CREATE INDEX idx_activity_map ON activity_events(map_id, created_at DESC);
 CREATE INDEX idx_activity_user ON activity_events(user_id);
-
 COMMENT ON TABLE activity_events IS 'Log de atividades para auditoria';
 
 -- ============================================
 -- 12. TABELA: ai_runs
--- Execuções de ações de IA
 -- ============================================
 CREATE TABLE IF NOT EXISTS ai_runs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     map_id UUID NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
-    node_id UUID REFERENCES nodes(id) ON DELETE SET NULL,
-    action_type VARCHAR(50) NOT NULL CHECK (action_type IN (
-        'generate_map', 'expand_node', 'summarize', 'to_tasks',
-        'find_gaps', 'suggest_links', 'experiment', 'report', 'chat'
-    )),
-    input JSONB NOT NULL,
-    output JSONB,
-    diffs JSONB,
-    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+    user_id UUID REFERENCES profiles(id),
+    agent_type VARCHAR(50) NOT NULL,
+    input_context JSONB NOT NULL,
+    output_result JSONB,
+    model_used VARCHAR(100),
     tokens_input INT,
     tokens_output INT,
-    model VARCHAR(50),
     duration_ms INT,
-    error TEXT,
-    created_by UUID REFERENCES auth.users(id),
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed')),
+    error_message TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     completed_at TIMESTAMPTZ
 );
 
 CREATE INDEX idx_ai_runs_map ON ai_runs(map_id);
 CREATE INDEX idx_ai_runs_status ON ai_runs(status);
-
-COMMENT ON TABLE ai_runs IS 'Log de execuções de IA com rastreabilidade';
+COMMENT ON TABLE ai_runs IS 'Log de execuções de IA';
 
 -- ============================================
 -- 13. TABELA: references
--- Referências/links externos em nós
 -- ============================================
 CREATE TABLE IF NOT EXISTS "references" (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     node_id UUID NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    type VARCHAR(30) DEFAULT 'url' CHECK (type IN ('url', 'file', 'image', 'video', 'document')),
     url TEXT NOT NULL,
     title VARCHAR(255),
-    citation TEXT,
-    notes TEXT,
-    type VARCHAR(30) DEFAULT 'link' CHECK (type IN ('link', 'paper', 'book', 'video', 'other')),
-    created_by UUID REFERENCES auth.users(id),
+    description TEXT,
+    thumbnail_url TEXT,
+    metadata JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX idx_references_node ON "references"(node_id);
-
 COMMENT ON TABLE "references" IS 'Referências e links externos anexados a nós';
 
 -- ============================================
@@ -312,7 +272,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Aplicar trigger em tabelas com updated_at
 CREATE TRIGGER set_updated_at_workspaces
     BEFORE UPDATE ON workspaces
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
@@ -358,32 +317,22 @@ CREATE TRIGGER increment_node_version
 CREATE OR REPLACE FUNCTION notify_task_delegation()
 RETURNS TRIGGER AS $$
 DECLARE
-    map_title TEXT;
     node_title TEXT;
-    creator_name TEXT;
+    assigner_name TEXT;
 BEGIN
-    -- Só notifica se assignee mudou e não é null
-    IF NEW.assignee_id IS NOT NULL AND 
-       (OLD IS NULL OR NEW.assignee_id != COALESCE(OLD.assignee_id, '00000000-0000-0000-0000-000000000000'::uuid)) THEN
+    IF NEW.assigned_to IS NOT NULL AND 
+       (OLD IS NULL OR NEW.assigned_to != COALESCE(OLD.assigned_to, '00000000-0000-0000-0000-000000000000'::uuid)) THEN
         
-        -- Buscar informações para a notificação
-        SELECT m.title INTO map_title FROM maps m WHERE m.id = NEW.map_id;
-        SELECT n.title INTO node_title FROM nodes n WHERE n.id = NEW.node_id;
-        SELECT p.display_name INTO creator_name FROM profiles p WHERE p.user_id = NEW.created_by;
+        SELECT label INTO node_title FROM nodes WHERE id = NEW.node_id;
+        SELECT display_name INTO assigner_name FROM profiles WHERE id = NEW.created_by;
         
-        INSERT INTO notifications (user_id, type, title, body, data)
+        INSERT INTO notifications (user_id, type, title, message, data)
         VALUES (
-            NEW.assignee_id,
-            'delegation',
-            'Nova tarefa delegada',
-            COALESCE(creator_name, 'Alguém') || ' delegou "' || NEW.title || '" para você',
-            jsonb_build_object(
-                'task_id', NEW.id,
-                'map_id', NEW.map_id,
-                'node_id', NEW.node_id,
-                'map_title', map_title,
-                'node_title', node_title
-            )
+            NEW.assigned_to,
+            'task_assigned',
+            'Nova tarefa atribuída',
+            COALESCE(assigner_name, 'Alguém') || ' atribuiu a tarefa "' || NEW.title || '"',
+            jsonb_build_object('task_id', NEW.id, 'node_id', NEW.node_id)
         );
     END IF;
     RETURN NEW;
@@ -402,27 +351,20 @@ RETURNS TRIGGER AS $$
 DECLARE
     mentioned_user UUID;
     author_name TEXT;
-    n_title TEXT;
-    m_id UUID;
+    node_label TEXT;
 BEGIN
-    -- Buscar info
-    SELECT p.display_name INTO author_name FROM profiles p WHERE p.user_id = NEW.author_id;
-    SELECT n.title, n.map_id INTO n_title, m_id FROM nodes n WHERE n.id = NEW.node_id;
+    SELECT display_name INTO author_name FROM profiles WHERE id = NEW.user_id;
+    SELECT label INTO node_label FROM nodes WHERE id = NEW.node_id;
     
-    -- Notificar cada mencionado
     FOREACH mentioned_user IN ARRAY NEW.mentions LOOP
-        IF mentioned_user != NEW.author_id THEN
-            INSERT INTO notifications (user_id, type, title, body, data)
+        IF mentioned_user != NEW.user_id THEN
+            INSERT INTO notifications (user_id, type, title, message, data)
             VALUES (
                 mentioned_user,
-                'mention',
+                'comment_mention',
                 'Você foi mencionado',
-                COALESCE(author_name, 'Alguém') || ' mencionou você em "' || COALESCE(n_title, 'um nó') || '"',
-                jsonb_build_object(
-                    'comment_id', NEW.id,
-                    'node_id', NEW.node_id,
-                    'map_id', m_id
-                )
+                COALESCE(author_name, 'Alguém') || ' mencionou você em "' || COALESCE(node_label, 'um nó') || '"',
+                jsonb_build_object('comment_id', NEW.id, 'node_id', NEW.node_id)
             );
         END IF;
     END LOOP;
@@ -436,6 +378,41 @@ CREATE TRIGGER on_comment_mention
     FOR EACH ROW
     WHEN (array_length(NEW.mentions, 1) > 0)
     EXECUTE FUNCTION notify_comment_mention();
+
+-- ============================================
+-- Setup inicial
+-- ============================================
+INSERT INTO workspaces (id, name, slug, description) VALUES (
+    '11111111-1111-1111-1111-111111111111'::uuid,
+    'MindLab',
+    'mindlab',
+    'Workspace padrão do sistema'
+) ON CONFLICT DO NOTHING;
+
+ALTER TABLE workspaces DISABLE ROW LEVEL SECURITY;
+ALTER TABLE workspace_members DISABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles DISABLE ROW LEVEL SECURITY;
+ALTER TABLE maps DISABLE ROW LEVEL SECURITY;
+ALTER TABLE nodes DISABLE ROW LEVEL SECURITY;
+ALTER TABLE edges DISABLE ROW LEVEL SECURITY;
+ALTER TABLE node_links DISABLE ROW LEVEL SECURITY;
+ALTER TABLE tasks DISABLE ROW LEVEL SECURITY;
+ALTER TABLE comments DISABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications DISABLE ROW LEVEL SECURITY;
+ALTER TABLE activity_events DISABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_runs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE "references" DISABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    EXECUTE 'GRANT USAGE ON SCHEMA public TO service_role';
+    EXECUTE 'GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO service_role';
+    EXECUTE 'GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO service_role';
+    EXECUTE 'GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO service_role';
+    EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO service_role';
+    EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO service_role';
+    EXECUTE 'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO service_role';
+END $$;
 
 -- ============================================
 -- FIM DO SCHEMA

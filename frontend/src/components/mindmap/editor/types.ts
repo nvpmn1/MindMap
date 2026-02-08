@@ -239,6 +239,8 @@ export interface AIAgentMessage {
     actions?: AIAgentAction[];
     reasoning?: string;
     confidence?: number;
+    usage?: { input_tokens: number; output_tokens: number };
+    todoList?: Array<{ id: string; title: string; status: string; detail?: string }>;
   };
 }
 

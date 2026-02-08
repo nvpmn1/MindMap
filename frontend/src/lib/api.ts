@@ -2,9 +2,12 @@ import { getAccessToken } from './supabase';
 import { useAuthStore } from '@/stores/authStore';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const MAX_RETRIES = 2;
+const RETRY_DELAY = 500; // ms
 
 interface FetchOptions extends RequestInit {
   authenticated?: boolean;
+  retries?: number;
 }
 
 interface ApiResponse<T> {
@@ -23,62 +26,184 @@ interface ApiResponse<T> {
 }
 
 /**
- * API client for making authenticated requests to the backend
+ * Enhanced API client with retry logic, better error handling, and caching
  */
 class ApiClient {
   private baseUrl: string;
+  private requestCache = new Map<string, { data: any; timestamp: number }>();
+  private cacheTimeout = 5 * 60 * 1000; // 5 minutes
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
   }
 
+  /**
+   * Get auth headers with proper validation
+   */
+  private async getAuthHeaders(): Promise<Record<string, string>> {
+    const headers: Record<string, string> = {};
+
+    try {
+      const token = await getAccessToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+        return headers;
+      }
+
+      // Fallback: Use profile-based headers only if user is logged in
+      const { profile, user, isAuthenticated } = useAuthStore.getState();
+      if (isAuthenticated && (profile || user)) {
+        const profileId = profile?.id || user?.id;
+        const email = profile?.email || user?.email || '';
+        const name = profile?.display_name || user?.display_name || 'Guest';
+        const color = profile?.color || user?.color || '#00D9FF';
+
+        // Only set headers if we have a valid profile ID
+        if (profileId && profileId !== '') {
+          headers['x-profile-id'] = profileId;
+          headers['x-profile-email'] = email;
+          headers['x-profile-name'] = name;
+          headers['x-profile-color'] = color;
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to get auth headers:', error);
+      // Continue without auth
+    }
+
+    return headers;
+  }
+
+  /**
+   * Sleep utility for retry delays
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Build cache key for GET requests
+   */
+  private getCacheKey(endpoint: string, method: string): string | null {
+    if (method === 'GET') {
+      return `${this.baseUrl}${endpoint}`;
+    }
+    return null;
+  }
+
+  /**
+   * Main fetch method with retry logic and error handling
+   */
   private async fetch<T>(
     endpoint: string,
     options: FetchOptions = {}
   ): Promise<ApiResponse<T>> {
-    const { authenticated = true, ...fetchOptions } = options;
+    const { authenticated = true, retries = MAX_RETRIES, ...fetchOptions } = options;
+    const method = (fetchOptions.method || 'GET').toUpperCase();
+
+    // Check cache for GET requests
+    const cacheKey = this.getCacheKey(endpoint, method);
+    if (cacheKey && method === 'GET') {
+      const cached = this.requestCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+        console.log(`✅ Cache hit for ${endpoint}`);
+        return cached.data;
+      }
+    }
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
+
+    // Add auth headers
+    if (authenticated) {
+      const authHeaders = await this.getAuthHeaders();
+      Object.assign(headers, authHeaders);
+    }
 
     // Merge any custom headers
     if (fetchOptions.headers) {
       Object.assign(headers, fetchOptions.headers);
     }
 
-    if (authenticated) {
-      const token = await getAccessToken();
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+    try {
+      const url = `${this.baseUrl}${endpoint}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+      const response = await fetch(url, {
+        ...fetchOptions,
+        method,
+        headers,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      // Handle non-JSON responses
+      const contentType = response.headers.get('content-type');
+      let data;
+
+      if (contentType?.includes('application/json')) {
+        data = await response.json();
       } else {
-        const { profile, user } = useAuthStore.getState();
-        const profileId = profile?.id || user?.id;
-        if (profileId) {
-          headers['x-profile-id'] = profileId;
-          headers['x-profile-email'] = profile?.email || user?.email || '';
-          headers['x-profile-name'] = profile?.display_name || user?.display_name || 'Guest';
-          headers['x-profile-color'] = profile?.color || user?.color || '#00D9FF';
-        }
+        data = await response.text();
       }
-    }
 
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      ...fetchOptions,
-      headers,
-    });
+      if (!response.ok) {
+        const errorMessage =
+          typeof data === 'object'
+            ? data.error?.message || data.message || 'Request failed'
+            : 'Request failed';
 
-    const data = await response.json();
+        const errorCode =
+          typeof data === 'object' ? data.error?.code || 'UNKNOWN_ERROR' : 'UNKNOWN_ERROR';
 
-    if (!response.ok) {
+        throw new ApiError(errorMessage, errorCode, response.status);
+      }
+
+      // Ensure response has expected structure
+      const apiResponse: ApiResponse<T> = typeof data === 'object' ? data : { success: true, data };
+
+      // Cache successful GET responses
+      if (cacheKey && method === 'GET' && apiResponse.success) {
+        this.requestCache.set(cacheKey, {
+          data: apiResponse,
+          timestamp: Date.now(),
+        });
+      }
+
+      return apiResponse;
+    } catch (error) {
+      // Only retry on network errors, not application errors (400/500)
+      const isNetworkError = error instanceof TypeError || 
+                            (error instanceof DOMException && error.name === 'AbortError');
+      const isServerError = error instanceof ApiError && (error.statusCode === 0 || error.statusCode >= 500);
+      
+      if (retries > 0 && (isNetworkError || isServerError)) {
+        console.warn(`⚠️ Request failed, retrying... (${MAX_RETRIES - retries + 1}/${MAX_RETRIES})`);
+        await this.sleep(RETRY_DELAY);
+        return this.fetch<T>(endpoint, { ...options, retries: retries - 1 });
+      }
+
+      // If it's already an ApiError, rethrow it
+      if (error instanceof ApiError) {
+        throw error;
+      }
+
+      // Handle abort errors
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw new ApiError('Request timeout - server took too long to respond', 'TIMEOUT', 0);
+      }
+
+      // Network or other errors
+      console.error('❌ API request failed:', error);
       throw new ApiError(
-        data.error?.message || 'Request failed',
-        data.error?.code || 'UNKNOWN_ERROR',
-        response.status
+        'Failed to connect to server. Please check your connection.',
+        'NETWORK_ERROR',
+        0
       );
     }
-
-    return data;
   }
 
   // GET request

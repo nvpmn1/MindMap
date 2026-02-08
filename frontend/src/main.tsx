@@ -25,13 +25,14 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Toaster
           position="bottom-right"
           toastOptions={{
-            duration: 4000,
+            duration: 3500,
             style: {
               background: 'hsl(var(--card))',
               color: 'hsl(var(--card-foreground))',
               border: '1px solid hsl(var(--border))',
             },
             success: {
+              duration: 3500,
               iconTheme: {
                 primary: '#10B981',
                 secondary: 'white',

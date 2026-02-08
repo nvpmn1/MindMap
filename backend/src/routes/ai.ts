@@ -3,8 +3,18 @@ import { z } from 'zod';
 import { authenticate, asyncHandler } from '../middleware';
 import { ValidationError } from '../utils/errors';
 import { logger } from '../utils/logger';
-import { aiOrchestrator, AIAgentType } from '../ai/orchestrator';
 import { supabaseAdmin } from '../services/supabase';
+
+// ═══ New NeuralMap AI Engine ═══
+import { getOrchestrator } from '../ai/orchestrator/index';
+import { aiMiddleware } from '../ai/middleware';
+import { getAvailableAgents, getAgentInfo } from '../ai/agents';
+import { conversationMemory } from '../ai/memory';
+import type { AgentType, ConversationMessage } from '../ai/core/types';
+import { AGENT_REGISTRY } from '../ai/core/constants';
+
+// Legacy import for backward compatibility with /agent endpoint
+import { aiOrchestrator, AIAgentType } from '../ai/orchestrator.legacy';
 
 const router = Router();
 
@@ -118,7 +128,7 @@ const chatSchema = z.object({
 
 /**
  * POST /api/ai/generate
- * Generate new ideas/nodes from a prompt
+ * Generate new ideas/nodes from a prompt — Uses new NeuralOrchestrator
  */
 router.post(
   '/generate',
@@ -133,16 +143,16 @@ router.post(
 
     logger.info({ mapId: map_id, userId: req.user!.id, prompt: prompt.substring(0, 100) }, 'AI generate request');
 
-    const result = await aiOrchestrator.execute({
+    const orchestrator = getOrchestrator();
+    const result = await orchestrator.execute({
       agentType: 'generate',
+      prompt,
       mapId: map_id,
       userId: req.user!.id,
-      input: {
-        prompt,
-        parent_node_id,
-        ...context,
-      },
-      options: options || {},
+      existing_nodes: context?.existing_nodes,
+      map_title: context?.map_title,
+      map_description: context?.map_description,
+      options: { ...options, parent_node_id },
     });
 
     res.json({
@@ -154,7 +164,7 @@ router.post(
 
 /**
  * POST /api/ai/expand
- * Expand a specific node with sub-ideas
+ * Expand a specific node with sub-ideas — Uses new NeuralOrchestrator
  */
 router.post(
   '/expand',
@@ -169,15 +179,16 @@ router.post(
 
     logger.info({ mapId: map_id, nodeId: node_id, userId: req.user!.id }, 'AI expand request');
 
-    const result = await aiOrchestrator.execute({
+    const orchestrator = getOrchestrator();
+    const result = await orchestrator.execute({
       agentType: 'expand',
       mapId: map_id,
       userId: req.user!.id,
-      input: {
-        node_id,
-        ...context,
-      },
-      options: options || {},
+      node: context.node,
+      parent: context.parent,
+      siblings: context.siblings,
+      map_title: context.map_title,
+      options: { ...options, node_id },
     });
 
     res.json({
@@ -189,7 +200,7 @@ router.post(
 
 /**
  * POST /api/ai/summarize
- * Summarize selected nodes or entire map
+ * Summarize selected nodes or entire map — Uses new NeuralOrchestrator
  */
 router.post(
   '/summarize',
@@ -204,15 +215,14 @@ router.post(
 
     logger.info({ mapId: map_id, nodeCount: node_ids?.length || context.nodes.length, userId: req.user!.id }, 'AI summarize request');
 
-    const result = await aiOrchestrator.execute({
+    const orchestrator = getOrchestrator();
+    const result = await orchestrator.execute({
       agentType: 'summarize',
       mapId: map_id,
       userId: req.user!.id,
-      input: {
-        node_ids,
-        ...context,
-      },
-      options: options || {},
+      nodes: context.nodes,
+      map_title: context.map_title,
+      options: { ...options, node_ids },
     });
 
     res.json({
@@ -224,7 +234,7 @@ router.post(
 
 /**
  * POST /api/ai/to-tasks
- * Convert nodes to actionable tasks
+ * Convert nodes to actionable tasks — Uses new NeuralOrchestrator
  */
 router.post(
   '/to-tasks',
@@ -239,15 +249,13 @@ router.post(
 
     logger.info({ mapId: map_id, nodeIds: node_ids, userId: req.user!.id }, 'AI to-tasks request');
 
-    const result = await aiOrchestrator.execute({
-      agentType: 'to_tasks',
+    const orchestrator = getOrchestrator();
+    const result = await orchestrator.execute({
+      agentType: 'task_convert',
       mapId: map_id,
       userId: req.user!.id,
-      input: {
-        node_ids,
-        ...context,
-      },
-      options: options || {},
+      nodes: context.nodes,
+      options: { ...options, node_ids, team_members: context.team_members },
     });
 
     res.json({
@@ -259,7 +267,7 @@ router.post(
 
 /**
  * POST /api/ai/chat
- * Chat with AI about the map
+ * Chat with AI about the map — Uses new NeuralOrchestrator
  */
 router.post(
   '/chat',
@@ -274,15 +282,16 @@ router.post(
 
     logger.info({ mapId: map_id, userId: req.user!.id, message: message.substring(0, 100) }, 'AI chat request');
 
-    const result = await aiOrchestrator.execute({
+    const orchestrator = getOrchestrator();
+    const result = await orchestrator.execute({
       agentType: 'chat',
+      message,
       mapId: map_id,
       userId: req.user!.id,
-      input: {
-        message,
-        ...context,
-      },
-      options: {},
+      sessionId: req.user!.id, // Use userId as sessionId for simplicity
+      nodes: context?.nodes,
+      map_title: context?.map_title,
+      conversation_history: context?.conversation_history as ConversationMessage[] | undefined,
     });
 
     res.json({
@@ -545,7 +554,7 @@ router.get(
 );
 
 // ─────────────────────────────────────────────────────────────────────────
-// POST /agent — Claude Tool-Use Agent Mode (Haiku-powered)
+// POST /agent — Claude Tool-Use Agent Mode (Real Claude API)
 // ─────────────────────────────────────────────────────────────────────────
 
 const agentSchema = z.object({
@@ -567,6 +576,7 @@ const agentSchema = z.object({
 
 router.post(
   '/agent',
+  authenticate,
   asyncHandler(async (req: Request, res: Response) => {
     const parsed = agentSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -576,19 +586,21 @@ router.post(
     const { model, mode, systemPrompt, messages, tools, maxTokens, temperature } = parsed.data;
     const startTime = Date.now();
 
-    // Use Haiku as default for cost efficiency, allow override
-    const selectedModel = model || 'claude-haiku-4-5-20250201';
+    // Use auto-selection by default for best cost efficiency
+    // Auto intelligently chooses: Haiku (simple) → Sonnet 3.5 (balanced) → Opus (complex)
+    const selectedModel = model || 'auto';
 
     logger.info({
       mode,
       model: selectedModel,
       messageCount: messages.length,
       toolCount: tools.length,
+      userId: req.user?.id,
     }, 'AI Agent request received');
 
     try {
-      // Call Claude with tool-use support
-      const response = await (aiOrchestrator as any).callAgentRaw({
+      // Call Claude with tool-use support via the REAL callAgentRaw method
+      const response = await aiOrchestrator.callAgentRaw({
         model: selectedModel,
         systemPrompt,
         messages: messages.map(m => ({
@@ -612,11 +624,18 @@ router.post(
         inputTokens: response.usage?.input_tokens,
         outputTokens: response.usage?.output_tokens,
         stopReason: response.stop_reason,
+        userId: req.user?.id,
       }, 'AI Agent response completed');
 
-      // Return raw Claude response
+      // Return Claude response in structured format
       res.json({
         success: true,
+        data: {
+          content: response.content,
+          stop_reason: response.stop_reason,
+          model: response.model,
+          usage: response.usage,
+        },
         content: response.content,
         stop_reason: response.stop_reason,
         model: response.model,
@@ -631,6 +650,7 @@ router.post(
         model: selectedModel,
         error: errorMessage,
         durationMs,
+        userId: req.user?.id,
       }, 'AI Agent error');
 
       // Detect rate limit
@@ -646,7 +666,7 @@ router.post(
       if (errorMessage.includes('authentication') || errorMessage.includes('401') || errorMessage.includes('api_key')) {
         return res.status(401).json({
           success: false,
-          error: 'API key inválida. Configure CLAUDE_API_KEY.',
+          error: 'API key inválida. Configure CLAUDE_API_KEY no backend.',
         });
       }
 
@@ -655,6 +675,392 @@ router.post(
         error: `Agent error: ${errorMessage}`,
       });
     }
+  })
+);
+
+// ─────────────────────────────────────────────────────────────────────────
+// POST /agent/stream — Real-time Streaming Agent Mode (SSE)
+// ─────────────────────────────────────────────────────────────────────────
+
+router.post(
+  '/agent/stream',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const parsed = agentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError(parsed.error.errors.map(e => e.message).join(', '));
+    }
+
+    const { model, mode, systemPrompt, messages, tools, maxTokens, temperature } = parsed.data;
+    const selectedModel = model || 'auto';
+
+    logger.info({
+      mode,
+      model: selectedModel,
+      messageCount: messages.length,
+      userId: req.user?.id,
+    }, 'AI Agent STREAM request received');
+
+    // Set up SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+    res.flushHeaders();
+
+    const sendEvent = (event: string, data: any) => {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    try {
+      await aiOrchestrator.streamAgentRaw(
+        {
+          model: selectedModel,
+          systemPrompt,
+          messages: messages.map(m => ({ role: m.role, content: m.content })),
+          tools: tools.map(t => ({ name: t.name, description: t.description, input_schema: t.input_schema })),
+          maxTokens,
+          temperature,
+        },
+        sendEvent,
+      );
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : 'Unknown error';
+      sendEvent('error', { error: errMsg });
+    } finally {
+      sendEvent('done', {});
+      res.end();
+    }
+  })
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NEW NeuralOrchestrator-powered routes
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/ai/neural — Unified agent endpoint
+ * Accepts any agent type via request body, auto-detects if not specified
+ */
+const neuralSchema = z.object({
+  map_id: z.string().min(1, 'map_id is required'),
+  agent_type: z.string().optional(),
+  message: z.string().min(1).max(10000),
+  context: z.object({
+    nodes: z.array(z.any()).optional(),
+    edges: z.array(z.any()).optional(),
+    selected_node: z.any().optional(),
+    map_title: z.string().optional(),
+    map_description: z.string().nullable().optional(),
+    conversation_history: z.array(z.object({
+      role: z.enum(['user', 'assistant']),
+      content: z.string(),
+    })).max(50).optional(),
+  }).optional(),
+  options: z.record(z.any()).optional(),
+  model: z.string().optional(),
+  stream: z.boolean().optional().default(false),
+});
+
+router.post(
+  '/neural',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const parsed = neuralSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError(parsed.error.errors[0].message);
+    }
+
+    const { map_id, agent_type, message, context, options, model, stream } = parsed.data;
+
+    const orchestrator = getOrchestrator();
+
+    // Auto-detect agent type if not specified
+    const detectedAgent = agent_type
+      ? agent_type as AgentType
+      : orchestrator.detectAgentType(message);
+
+    logger.info({
+      mapId: map_id,
+      agentType: detectedAgent,
+      userId: req.user!.id,
+      stream,
+      message: message.substring(0, 100),
+    }, 'Neural agent request');
+
+    const result = await orchestrator.execute({
+      agentType: detectedAgent,
+      message,
+      mapId: map_id,
+      userId: req.user!.id,
+      sessionId: req.user!.id,
+      nodes: context?.nodes,
+      edges: context?.edges,
+      selected_node: context?.selected_node,
+      map_title: context?.map_title,
+      map_description: context?.map_description,
+      conversation_history: context?.conversation_history as ConversationMessage[] | undefined,
+      options: options || {},
+      model_override: model as any,
+      stream,
+      res: stream ? res : undefined,
+    });
+
+    // If streaming, response was already sent
+    if (!stream && result) {
+      res.json({
+        success: true,
+        data: result,
+      });
+    }
+  })
+);
+
+/**
+ * POST /api/ai/neural/stream — Streaming version of neural endpoint
+ */
+router.post(
+  '/neural/stream',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const parsed = neuralSchema.safeParse({ ...req.body, stream: true });
+    if (!parsed.success) {
+      throw new ValidationError(parsed.error.errors[0].message);
+    }
+
+    const { map_id, agent_type, message, context, options, model } = parsed.data;
+
+    const orchestrator = getOrchestrator();
+    const detectedAgent = agent_type
+      ? agent_type as AgentType
+      : orchestrator.detectAgentType(message);
+
+    logger.info({
+      mapId: map_id,
+      agentType: detectedAgent,
+      userId: req.user!.id,
+    }, 'Neural stream request');
+
+    await orchestrator.execute({
+      agentType: detectedAgent,
+      message,
+      mapId: map_id,
+      userId: req.user!.id,
+      sessionId: req.user!.id,
+      nodes: context?.nodes,
+      edges: context?.edges,
+      selected_node: context?.selected_node,
+      map_title: context?.map_title,
+      map_description: context?.map_description,
+      conversation_history: context?.conversation_history as ConversationMessage[] | undefined,
+      options: options || {},
+      model_override: model as any,
+      stream: true,
+      res,
+    });
+  })
+);
+
+/**
+ * POST /api/ai/analyze — Deep analysis of the map
+ */
+router.post(
+  '/analyze',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { map_id, nodes, edges, map_title, analysis_type } = req.body;
+
+    if (!map_id) throw new ValidationError('map_id is required');
+
+    const orchestrator = getOrchestrator();
+    const result = await orchestrator.execute({
+      agentType: 'analyze',
+      mapId: map_id,
+      userId: req.user!.id,
+      nodes,
+      edges,
+      map_title,
+      options: { analysis_type },
+    });
+
+    res.json({ success: true, data: result });
+  })
+);
+
+/**
+ * POST /api/ai/organize — Reorganize map structure
+ */
+router.post(
+  '/organize',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { map_id, nodes, edges, map_title, strategy } = req.body;
+
+    if (!map_id) throw new ValidationError('map_id is required');
+
+    const orchestrator = getOrchestrator();
+    const result = await orchestrator.execute({
+      agentType: 'organize',
+      mapId: map_id,
+      userId: req.user!.id,
+      nodes,
+      edges,
+      map_title,
+      options: { strategy },
+    });
+
+    res.json({ success: true, data: result });
+  })
+);
+
+/**
+ * POST /api/ai/research — Web research and enrichment
+ */
+router.post(
+  '/research',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { map_id, topic, message, nodes, map_title } = req.body;
+
+    if (!map_id) throw new ValidationError('map_id is required');
+
+    const orchestrator = getOrchestrator();
+    const result = await orchestrator.execute({
+      agentType: 'research',
+      message: topic || message,
+      mapId: map_id,
+      userId: req.user!.id,
+      nodes,
+      map_title,
+    });
+
+    res.json({ success: true, data: result });
+  })
+);
+
+/**
+ * POST /api/ai/hypothesize — Generate hypotheses and scenarios
+ */
+router.post(
+  '/hypothesize',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { map_id, message, nodes, map_title } = req.body;
+
+    if (!map_id) throw new ValidationError('map_id is required');
+
+    const orchestrator = getOrchestrator();
+    const result = await orchestrator.execute({
+      agentType: 'hypothesize',
+      message,
+      mapId: map_id,
+      userId: req.user!.id,
+      nodes,
+      map_title,
+    });
+
+    res.json({ success: true, data: result });
+  })
+);
+
+/**
+ * POST /api/ai/critique — Critical analysis
+ */
+router.post(
+  '/critique',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { map_id, nodes, edges, map_title } = req.body;
+
+    if (!map_id) throw new ValidationError('map_id is required');
+
+    const orchestrator = getOrchestrator();
+    const result = await orchestrator.execute({
+      agentType: 'critique',
+      mapId: map_id,
+      userId: req.user!.id,
+      nodes,
+      edges,
+      map_title,
+    });
+
+    res.json({ success: true, data: result });
+  })
+);
+
+/**
+ * POST /api/ai/connect — Discover hidden connections
+ */
+router.post(
+  '/connect',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { map_id, nodes, edges, map_title } = req.body;
+
+    if (!map_id) throw new ValidationError('map_id is required');
+
+    const orchestrator = getOrchestrator();
+    const result = await orchestrator.execute({
+      agentType: 'connect',
+      mapId: map_id,
+      userId: req.user!.id,
+      nodes,
+      edges,
+      map_title,
+    });
+
+    res.json({ success: true, data: result });
+  })
+);
+
+/**
+ * GET /api/ai/agents — List all available agents with their configs
+ */
+router.get(
+  '/agents',
+  authenticate,
+  asyncHandler(async (_req: Request, res: Response) => {
+    const agents = getAvailableAgents().map(name => ({
+      name,
+      ...getAgentInfo(name),
+    }));
+
+    res.json({
+      success: true,
+      data: agents,
+    });
+  })
+);
+
+/**
+ * GET /api/ai/session/stats — Get AI session statistics
+ */
+router.get(
+  '/session/stats',
+  authenticate,
+  asyncHandler(async (_req: Request, res: Response) => {
+    const orchestrator = getOrchestrator();
+    const stats = orchestrator.getSessionStats();
+
+    res.json({
+      success: true,
+      data: stats,
+    });
+  })
+);
+
+/**
+ * DELETE /api/ai/session/memory — Clear conversation memory
+ */
+router.delete(
+  '/session/memory',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { map_id } = req.query;
+    const orchestrator = getOrchestrator();
+    orchestrator.clearSession(req.user!.id, map_id as string);
+
+    res.json({ success: true, message: 'Memory cleared' });
   })
 );
 

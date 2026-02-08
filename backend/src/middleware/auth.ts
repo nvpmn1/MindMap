@@ -69,6 +69,14 @@ export const authenticate = async (
       throw new AuthenticationError('Invalid or expired token');
     }
 
+    // Ensure profile exists for authenticated users
+    await ensureProfileAndMembership(
+      user.id,
+      user.email || '',
+      (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.name)) || 'User',
+      '#00D9FF'
+    );
+
     // Attach user to request
     req.user = {
       id: user.id,

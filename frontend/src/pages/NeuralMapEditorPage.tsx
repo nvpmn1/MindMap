@@ -441,34 +441,34 @@ function NeuralMapEditorInner() {
           const p = action.position ? screenToFlowPosition({ x: action.position.x, y: action.position.y })
             : { x: clipboard.position.x + 50, y: clipboard.position.y + 50 };
           createNode(clipboard.data.type, p, null, { ...clipboard.data, label: `${clipboard.data.label} (cópia)` });
-          toast.success('Nó colado!');
+          toast.success('Nó colado!', { duration: 2500 });
         }
         break;
       }
       case 'pin-node':
         updateNodeData(action.nodeId, { pinned: !nodes.find(n => n.id === action.nodeId)?.data.pinned });
-        toast.success('Nó fixado!'); break;
+        toast.success('Nó fixado!', { duration: 2500 }); break;
       case 'lock-node': {
         const locked = nodes.find(n => n.id === action.nodeId)?.data.locked;
         updateNodeData(action.nodeId, { locked: !locked });
         setNodes(prev => prev.map(n => n.id === action.nodeId ? { ...n, draggable: !!locked } : n));
-        toast.success(locked ? 'Nó desbloqueado' : 'Nó bloqueado'); break;
+        toast.success(locked ? 'Nó desbloqueado' : 'Nó bloqueado', { duration: 2500 }); break;
       }
       case 'collapse-node': {
         const childIds = new Set(edges.filter(e => e.source === action.nodeId).map(e => e.target));
         setNodes(prev => prev.map(n => childIds.has(n.id) ? { ...n, hidden: !n.hidden } : n));
         setEdges(prev => prev.map(e => e.source === action.nodeId ? { ...e, hidden: !e.hidden } : e));
-        toast.success('Filhos alternados'); break;
+        toast.success('Filhos alternados', { duration: 2500 }); break;
       }
       case 'expand-all':
         setNodes(prev => prev.map(n => ({ ...n, hidden: false })));
         setEdges(prev => prev.map(e => ({ ...e, hidden: false })));
-        toast.success('Todos expandidos'); break;
+        toast.success('Todos expandidos', { duration: 2500 }); break;
       case 'select-all':
         setNodes(prev => prev.map(n => ({ ...n, selected: true }))); break;
       case 'group-selected': {
         const sel = nodes.filter(n => n.selected);
-        if (sel.length < 2) { toast.error('Selecione pelo menos 2 nós'); break; }
+        if (sel.length < 2) { toast.error('Selecione pelo menos 2 nós', { duration: 3500 }); break; }
         const gn = createNode('group', {
           x: Math.min(...sel.map(n => n.position.x)) - 20,
           y: Math.min(...sel.map(n => n.position.y)) - 40,
@@ -477,7 +477,7 @@ function NeuralMapEditorInner() {
           id: `edge_${gn.id}_${n.id}`, source: gn.id, target: n.id,
           type: 'power', animated: true, data: { style: 'neural' as const },
         }]));
-        toast.success(`${sel.length} nós agrupados`); break;
+        toast.success(`${sel.length} nós agrupados`, { duration: 2500 }); break;
       }
       case 'connect-to':
         toast('Arraste uma conexão do nó fonte para o destino', { icon: 'ℹ️' }); break;
@@ -531,7 +531,7 @@ function NeuralMapEditorInner() {
             chart: d?.chart,
             table: d?.table,
             dueDate: d?.dueDate,
-            ai: d?.ai || { generated: true, model: 'claude-haiku-4-5-20251001', confidence: 0.8 },
+            ai: d?.ai || { generated: true, model: 'claude-3-5-sonnet-20241022', confidence: 0.8 },
           });
           created++; break;
         case 'update_node':
@@ -584,7 +584,7 @@ function NeuralMapEditorInner() {
     if (updated > 0) parts.push(`${updated} nó(s) atualizado(s)`);
     if (deleted > 0) parts.push(`${deleted} nó(s) removido(s)`);
     if (parts.length > 0) {
-      toast.success(`IA: ${parts.join(', ')}`, { icon: '🤖' });
+      toast.success(`IA: ${parts.join(', ')}`, { duration: 3500, icon: '🤖' });
       setTimeout(() => fitView({ padding: 0.2 }), 300);
     }
   }, [createNode, updateNodeData, deleteNode, setEdges, selectedNodeId, saveToHistory, fitView]);
@@ -603,7 +603,7 @@ function NeuralMapEditorInner() {
     const u = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = u; a.download = `${mapInfo?.title || 'neuralmap'}.json`; a.click();
     URL.revokeObjectURL(u);
-    toast.success('Mapa exportado como JSON!');
+    toast.success('Mapa exportado como JSON!', { duration: 3500 });
   }, [nodes, edges, mapInfo]);
 
   const handleExportPNG = useCallback(async () => {
@@ -631,9 +631,9 @@ function NeuralMapEditorInner() {
       const a = document.createElement('a'); a.href = url;
       a.download = `${mapInfo?.title || 'neuralmap'}.svg`; a.click();
       URL.revokeObjectURL(url);
-      toast.success('Exportado como SVG!');
+      toast.success('Exportado como SVG!', { duration: 3500 });
     } catch {
-      toast.error('Erro ao exportar imagem. Exportando JSON...');
+      toast.error('Erro ao exportar imagem. Exportando JSON...', { duration: 3500 });
       handleExportJSON();
     }
   }, [mapInfo, handleExportJSON]);
@@ -800,11 +800,6 @@ function NeuralMapEditorInner() {
       </div>
 
       <NeuralContextMenu state={contextMenu} onClose={() => setContextMenu(null)} onAction={handleContextMenuAction} />
-
-      <Toaster position="bottom-center" toastOptions={{
-        style: { background: '#1e293b', color: '#e2e8f0', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', fontSize: '13px' },
-        duration: 2000,
-      }} />
 
       <style>{`
         .neural-canvas .react-flow__pane { cursor: crosshair; }

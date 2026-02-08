@@ -21,7 +21,7 @@ const app: Express = express();
 // Security middleware
 app.use(helmet());
 
-// CORS
+// CORS - Must be FIRST!
 const parseCorsOrigins = (value?: string): string[] =>
   (value || '')
     .split(',')
@@ -31,6 +31,10 @@ const parseCorsOrigins = (value?: string): string[] =>
 const allowedOrigins = Array.from(
   new Set([
     env.FRONTEND_URL,
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:3000',
     ...parseCorsOrigins(env.CORS_ORIGINS),
     ...parseCorsOrigins(env.CORS_ORIGIN),
   ])
@@ -38,38 +42,62 @@ const allowedOrigins = Array.from(
 
 const corsOptions = {
   origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
-    // Include localhost origins even if origin is undefined (local development)
-    if (!origin || allowedOrigins.includes(origin) || origin?.includes('localhost')) {
+    // Allow localhost and configured origins for development
+    const isAllowed =
+      !origin || // Browser requests (like file://, data:)
+      allowedOrigins.includes(origin) ||
+      origin?.includes('localhost') ||
+      origin?.includes('127.0.0.1');
+
+    if (isAllowed) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      logger.warn({ origin }, '[CORS] Request from disallowed origin');
+      callback(new Error('Not allowed by CORS policy'));
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'Accept',
+    'Accept-Language',
+    'Accept-Encoding',
+    // Custom profile headers for client-side auth fallback
+    'x-profile-id',
+    'x-profile-email',
+    'x-profile-name',
+    'x-profile-color',
+  ],
+  exposedHeaders: ['Content-Length', 'Content-Range', 'X-Total-Count'],
   maxAge: 86400,
-  optionsSuccessStatus: 200
+  optionsSuccessStatus: 200,
+  preflightContinue: false,
 };
 
 app.use(cors(corsOptions));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: env.RATE_LIMIT_WINDOW_MS,
-  max: env.RATE_LIMIT_MAX,
-  message: { success: false, error: { code: 'RATE_LIMIT', message: 'Too many requests' } },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.use(limiter);
-
-// Body parsing
+// Body parsing BEFORE routes
 app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Request logging
 app.use(requestLogger);
+
+// Rate limiting (after logging, before routes)
+const limiter = rateLimit({
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  max: env.RATE_LIMIT_MAX,
+  message: { success: false, error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests' } },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    // Skip rate limit for health checks
+    return req.path === '/health' || req.path.startsWith('/health/');
+  },
+});
+app.use(limiter);
 
 // Routes
 app.use('/health', healthRoutes);

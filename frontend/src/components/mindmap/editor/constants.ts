@@ -248,17 +248,29 @@ export const COLLABORATOR_COLORS = [
 // ─── AI Models ──────────────────────────────────────────────────────────────
 
 export const AI_MODELS = {
-  agent: {
-    id: 'claude-haiku-4-5-20251001',
-    name: 'Claude Haiku 4.5',
-    description: 'Agente IA principal - rápido e poderoso',
-    maxTokens: 8192,
+  auto: {
+    id: 'auto',
+    name: '🤖 Auto Select',
+    description: 'Seleciona automaticamente o melhor modelo para cada tarefa',
+    maxTokens: 200000,
   },
-  analysis: {
-    id: 'claude-haiku-4-5-20251001',
-    name: 'Claude Haiku 4.5',
-    description: 'Análise profunda e pesquisa',
-    maxTokens: 8192,
+  haiku: {
+    id: 'claude-3-haiku-4-5-20250514',
+    name: 'Claude 3 Haiku 4.5',
+    description: 'Rápido e econômico - ideal para tarefas simples',
+    maxTokens: 200000,
+  },
+  sonnet45: {
+    id: 'claude-3-5-sonnet-20250514',
+    name: 'Claude 3.5 Sonnet',
+    description: 'Balanceado - padrão para maioria das tarefas',
+    maxTokens: 200000,
+  },
+  opus46: {
+    id: 'claude-opus-4-6',
+    name: 'Claude Opus 4.6',
+    description: 'Mais poderoso - para tarefas complexas',
+    maxTokens: 200000,
   },
 };
 

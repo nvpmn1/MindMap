@@ -37,10 +37,28 @@ router.get('/detailed', async (_req: Request, res: Response) => {
       latency: Date.now() - supabaseStart,
     };
   } catch (error) {
+    const errorDetails =
+      error && typeof error === 'object'
+        ? JSON.stringify(
+            {
+              message: (error as { message?: string }).message,
+              details: (error as { details?: string }).details,
+              hint: (error as { hint?: string }).hint,
+              code: (error as { code?: string }).code,
+            },
+            null,
+            2
+          )
+        : undefined;
+
     checks.supabase = {
       status: 'unhealthy',
       latency: Date.now() - supabaseStart,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error
+        ? error.message
+        : errorDetails && errorDetails !== '{}'
+          ? errorDetails
+          : 'Unknown error',
     };
   }
 

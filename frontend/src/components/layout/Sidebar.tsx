@@ -32,7 +32,7 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
   const handleLogout = () => {
     signOut();
     navigate('/login');
-    toast.success('Até logo!');
+    toast.success('Até logo!', { duration: 2500 });
   };
 
   const isActive = (href: string) =>
@@ -130,7 +130,16 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
         >
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500/20 to-purple-500/20 flex items-center justify-center overflow-hidden border border-white/10 flex-shrink-0">
             {user?.avatar_url ? (
-              <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
+              <img 
+                src={user.avatar_url} 
+                alt="Avatar"
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  console.error('Avatar failed to load in Sidebar, using fallback');
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                  (e.currentTarget as HTMLImageElement).parentElement!.textContent = user?.display_name?.charAt(0)?.toUpperCase() || 'U';
+                }}
+              />
             ) : (
               <User className="w-4 h-4 text-slate-400" />
             )}

@@ -118,7 +118,7 @@ export function DashboardPage() {
           description: '',
         });
         const map = response.data as any;
-        toast.success('Mapa criado com sucesso!');
+        toast.success('Mapa criado com sucesso!', { duration: 3500 });
         navigate(`/map/${map.id}`);
         return;
       } catch {

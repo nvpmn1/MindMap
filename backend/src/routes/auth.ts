@@ -252,14 +252,20 @@ router.get(
  * Update current user profile (display_name, avatar_url, color, preferences)
  */
 const updateProfileSchema = z.object({
-  display_name: z.string().max(100).optional(),
-  // Accept data URLs (from local canvas) or regular URLs
-  avatar_url: z.string()
+  display_name: z.string().trim().max(100).optional(),
+  // Accept data URLs (from local canvas) or regular URLs - be strict about validity
+  avatar_url: z.union([
+    z.null(),
+    z.string().min(0).max(0), // Empty string treated as null
+    z.string().min(20) // Minimum length for valid data URL or HTTP URL
+  ])
     .refine(val => {
       if (!val || val === '') return true;
-      // Accept data URLs or HTTP(S) URLs
-      return val.startsWith('data:') || val.startsWith('http://') || val.startsWith('https://');
-    }, 'Must be a valid data URL or HTTP(S) URL')
+      // Accept data URLs or HTTP(S) URLs with proper validation
+      const isValidDataUrl = /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,/.test(val);
+      const isValidHttpUrl = val.startsWith('http://') || val.startsWith('https://');
+      return isValidDataUrl || isValidHttpUrl;
+    }, 'Avatar must be a valid data URL (base64) or HTTP(S) URL')
     .optional(),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   preferences: z.record(z.unknown()).optional(),
@@ -283,23 +289,52 @@ router.patch(
 
     const { display_name, avatar_url, color, preferences } = parsed.data;
 
-    // Build update data
+    // Build update data with strict validation
     const updateData: any = {
       updated_at: new Date().toISOString(),
     };
 
     if (display_name !== undefined) {
-      updateData.display_name = display_name;
+      const trimmedName = display_name?.trim();
+      if (trimmedName && trimmedName.length > 0) {
+        updateData.display_name = trimmedName;
+      } else if (display_name !== undefined) {
+        updateData.display_name = null;
+      }
     }
+
+    // Enhanced avatar handling with validation
     if (avatar_url !== undefined) {
-      updateData.avatar_url = avatar_url || null;
+      if (!avatar_url || avatar_url === '') {
+        updateData.avatar_url = null;
+      } else {
+        // Validate avatar URL format
+        const isValidDataUrl = /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,/.test(avatar_url);
+        const isValidHttpUrl = avatar_url.startsWith('http://') || avatar_url.startsWith('https://');
+        
+        if (isValidDataUrl || isValidHttpUrl) {
+          updateData.avatar_url = avatar_url;
+          logger.debug({ userId, avatarLength: avatar_url.length }, 'Storing avatar URL');
+        } else {
+          throw new ValidationError('Invalid avatar URL format');
+        }
+      }
     }
+
     if (color !== undefined) {
       updateData.color = color;
     }
+
     if (preferences !== undefined) {
       updateData.preferences = preferences;
     }
+
+    // Log the update data (without full avatar if it's a data URL)
+    const logData = { ...updateData };
+    if (logData.avatar_url?.startsWith('data:')) {
+      logData.avatar_url = `[data URL - ${logData.avatar_url.length} chars]`;
+    }
+    logger.debug({ userId, updateData: logData }, 'Updating profile');
 
     // Update profile using authenticated supabase client
     const { data: updatedProfile, error: updateError } = await req.supabase!
@@ -314,17 +349,24 @@ router.patch(
       throw new ValidationError('Failed to update profile');
     }
 
-    logger.info({ userId }, 'Profile updated successfully');
+    logger.info({ userId, updated: Object.keys(updateData) }, 'Profile updated successfully');
+
+    // Prepare response - validate avatar before returning
+    const responseProfile = {
+      user: {
+        id: userId,
+        email: req.user.email,
+        display_name: updatedProfile.display_name,
+        avatar_url: updatedProfile.avatar_url, // Safe to return as is
+        color: updatedProfile.color,
+        created_at: updatedProfile.created_at,
+        updated_at: updatedProfile.updated_at,
+      },
+    };
 
     res.json({
       success: true,
-      data: {
-        user: {
-          id: userId,
-          email: req.user.email,
-          ...updatedProfile,
-        },
-      },
+      data: responseProfile,
     });
   })
 );

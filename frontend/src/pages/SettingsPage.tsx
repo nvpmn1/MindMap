@@ -31,23 +31,45 @@ export function SettingsPage() {
   const [displayName, setDisplayName] = useState(user?.display_name || '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
 
   const handleSave = async () => {
     if (!displayName.trim()) {
-      toast.error('Nome de exibição é obrigatório');
+      toast.error('Nome de exibição é obrigatório', { duration: 3500 });
       return;
     }
 
+    // Validate avatar if present
+    if (avatarUrl && avatarUrl !== '') {
+      const isValidDataUrl = /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,/.test(avatarUrl);
+      const isValidHttpUrl = avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://');
+      
+      if (!isValidDataUrl && !isValidHttpUrl) {
+        toast.error('Avatar inválido. Use a câmera para enviar uma nova imagem.', { duration: 3500 });
+        return;
+      }
+    }
+
     setIsSaving(true);
+    setSyncStatus('syncing');
     try {
+      console.log('📤 Saving profile...');
       await updateProfile({
         display_name: displayName.trim(),
         avatar_url: avatarUrl || null,
       });
       
-      toast.success('Perfil atualizado com sucesso!');
-    } catch {
-      toast.error('Erro ao salvar. Tente novamente.');
+      setSyncStatus('synced');
+      toast.success('Perfil atualizado com sucesso!', { duration: 3500 });
+      
+      // Reset synced status after 2 seconds
+      setTimeout(() => setSyncStatus('idle'), 2000);
+      
+      console.log('✅ Profile saved and synced');
+    } catch (error) {
+      console.error('Failed to save profile:', error);
+      setSyncStatus('error');
+      toast.error('Erro ao salvar. Tente novamente.', { duration: 3500 });
     } finally {
       setIsSaving(false);
     }
@@ -56,7 +78,7 @@ export function SettingsPage() {
   const handleLogout = () => {
     signOut();
     navigate('/login');
-    toast.success('Até logo!');
+    toast.success('Até logo!', { duration: 2500 });
   };
 
   const handleFactoryReset = () => {
@@ -85,20 +107,20 @@ export function SettingsPage() {
       // Clear persisted auth state
       localStorage.removeItem('authStore');
 
-      toast.success('Plataforma resetada completamente! Redirecionando para login...');
+      toast.success('Plataforma resetada completamente! Redirecionando para login...', { duration: 4000 });
       
       // Redirect to login after brief delay
       setTimeout(() => {
         navigate('/login');
       }, 1000);
     } catch {
-      toast.error('Erro ao resetar plataforma');
+      toast.error('Erro ao resetar plataforma', { duration: 3500 });
     }
   };
 
   const handleExportAvatar = () => {
     if (!avatarUrl) {
-      toast.error('Nenhum avatar para exportar');
+      toast.error('Nenhum avatar para exportar', { duration: 3500 });
       return;
     }
     const safeName = (displayName || 'usuario').replace(/\s+/g, '-').toLowerCase();
@@ -136,7 +158,20 @@ export function SettingsPage() {
               <div className="flex flex-col items-center gap-3">
                 <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-cyan-500/15 to-purple-500/15 flex items-center justify-center overflow-hidden border-2 border-white/[0.06]">
                   {avatarUrl ? (
-                    <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                    <img 
+                      src={avatarUrl} 
+                      alt="Avatar" 
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        console.error('Avatar preview failed to load');
+                        (e.currentTarget as HTMLImageElement).style.display = 'none';
+                        const parent = (e.currentTarget as HTMLImageElement).parentElement;
+                        if (parent) {
+                          parent.textContent = '❌';
+                          parent.style.fontSize = '32px';
+                        }
+                      }}
+                    />
                   ) : (
                     <User className="w-10 h-10 text-slate-600" />
                   )}
@@ -186,7 +221,7 @@ export function SettingsPage() {
               </div>
             </div>
 
-            <div className="mt-6 flex items-center gap-3">
+            <div className="flex items-center gap-3">
               <button
                 onClick={handleSave}
                 disabled={isSaving || !hasChanges}
@@ -195,7 +230,13 @@ export function SettingsPage() {
                 <Save className="w-4 h-4" />
                 {isSaving ? 'Salvando...' : 'Salvar Alterações'}
               </button>
-              {hasChanges && (
+              {syncStatus === 'synced' && (
+                <span className="text-[12px] text-green-400/80">✅ Sincronizado</span>
+              )}
+              {syncStatus === 'error' && (
+                <span className="text-[12px] text-red-400/80">❌ Erro na sincronização</span>
+              )}
+              {hasChanges && syncStatus === 'idle' && (
                 <span className="text-[12px] text-amber-400/70">Alterações não salvas</span>
               )}
             </div>

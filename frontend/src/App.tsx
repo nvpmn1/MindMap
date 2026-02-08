@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
+import { useProfileSync } from '@/hooks/useProfileSync';
 
 // Layouts
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -14,6 +15,15 @@ import { SettingsPage } from '@/pages/SettingsPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { MapsPage } from '@/pages/MapsPage';
 import { TasksPage } from '@/pages/TasksPage';
+
+/**
+ * Component that syncs profile data across app
+ * Ensures avatar and settings persist everywhere
+ */
+function ProfileSyncProvider({ children }: { children: React.ReactNode }) {
+  useProfileSync();
+  return <>{children}</>;
+}
 
 // Protected Route wrapper
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -55,50 +65,52 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 
 function App() {
   return (
-    <Routes>
-      {/* Public routes */}
-      <Route element={<AuthLayout />}>
+    <ProfileSyncProvider>
+      <Routes>
+        {/* Public routes */}
+        <Route element={<AuthLayout />}>
+          <Route
+            path="/login"
+            element={
+              <PublicRoute>
+                <LoginPage />
+              </PublicRoute>
+            }
+          />
+        </Route>
+
+        {/* Map Editor - Full screen sem sidebar */}
         <Route
-          path="/login"
+          path="/map/:mapId"
           element={
-            <PublicRoute>
-              <LoginPage />
-            </PublicRoute>
+            <ProtectedRoute>
+              <NeuralMapEditorPage />
+            </ProtectedRoute>
           }
         />
-      </Route>
 
-      {/* Map Editor - Full screen sem sidebar */}
-      <Route
-        path="/map/:mapId"
-        element={
-          <ProtectedRoute>
-            <NeuralMapEditorPage />
-          </ProtectedRoute>
-        }
-      />
+        {/* Protected routes com layout */}
+        <Route
+          element={
+            <ProtectedRoute>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/maps" element={<MapsPage />} />
+          <Route path="/tasks" element={<TasksPage />} />
+          <Route path="/kanban" element={<KanbanPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+        </Route>
 
-      {/* Protected routes com layout */}
-      <Route
-        element={
-          <ProtectedRoute>
-            <AppLayout />
-          </ProtectedRoute>
-        }
-      >
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/maps" element={<MapsPage />} />
-        <Route path="/tasks" element={<TasksPage />} />
-        <Route path="/kanban" element={<KanbanPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-      </Route>
+        {/* Redirects */}
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-      {/* Redirects */}
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-
-      {/* 404 */}
-      <Route path="*" element={<NotFoundPage />} />
-    </Routes>
+        {/* 404 */}
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </ProfileSyncProvider>
   );
 }
 

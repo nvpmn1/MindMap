@@ -94,7 +94,7 @@ export function MapsPage() {
           description: '',
         });
         const map = response.data as any;
-        toast.success('Mapa criado!');
+        toast.success('Mapa criado!', { duration: 3500 });
         navigate(`/map/${map.id}`);
         return;
       } catch {
@@ -113,7 +113,7 @@ export function MapsPage() {
 
     const existing = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
     localStorage.setItem('mindmap_maps', JSON.stringify([newMap, ...existing]));
-    toast.success('Mapa criado!');
+    toast.success('Mapa criado!', { duration: 3500 });
     navigate(`/map/${newMap.id}`);
   };
 

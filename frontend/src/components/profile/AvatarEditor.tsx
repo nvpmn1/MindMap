@@ -95,11 +95,11 @@ export function AvatarEditor({ value, displayName, onChange }: AvatarEditorProps
       onChange(cropped);
       setIsCropping(false);
       setRawImage(null);
-      toast.success('Avatar atualizado!');
+      toast.success('Avatar atualizado!', { duration: 3500 });
     } catch (err) {
       const errorMsg = 'Erro ao processar avatar';
       setError(errorMsg);
-      toast.error(errorMsg);
+      toast.error(errorMsg, { duration: 3500 });
       console.error('Error cropping image:', err);
     } finally {
       setIsProcessing(false);
@@ -228,7 +228,7 @@ export function AvatarEditor({ value, displayName, onChange }: AvatarEditorProps
           selected={value ?? null}
           onSelect={(dataUrl) => {
             onChange(dataUrl);
-            toast.success('Avatar atualizado!');
+            toast.success('Avatar atualizado!', { duration: 3500 });
           }}
         />
       </div>
