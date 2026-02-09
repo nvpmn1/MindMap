@@ -1,6 +1,6 @@
 -- ============================================
--- MindMap Hub - Row Level Security Policies
--- Execute APÓS schema.sql
+-- MindMap Hub - Row Level Security Policies (CORRIGIDO)
+-- Execute APÓS 1_schema.sql
 -- ============================================
 
 -- ============================================
@@ -27,7 +27,7 @@ BEGIN
         SELECT 1 FROM workspace_members
         WHERE workspace_id = ws_id
         AND user_id = auth.uid()
-        AND role IN ('owner', 'editor')
+        AND role IN ('owner', 'editor', 'admin')
     );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -64,7 +64,7 @@ CREATE POLICY "workspaces_update_owner"
             SELECT 1 FROM workspace_members
             WHERE workspace_id = workspaces.id
             AND user_id = auth.uid()
-            AND role = 'owner'
+            AND role IN ('owner', 'admin')
         )
     );
 
@@ -96,7 +96,7 @@ CREATE POLICY "workspace_members_insert_owner_or_first"
             SELECT 1 FROM workspace_members wm
             WHERE wm.workspace_id = workspace_members.workspace_id
             AND wm.user_id = auth.uid()
-            AND wm.role = 'owner'
+            AND wm.role IN ('owner', 'admin')
         )
         OR
         -- Primeiro membro (criador do workspace) pode se adicionar
@@ -113,7 +113,7 @@ CREATE POLICY "workspace_members_update_owner"
             SELECT 1 FROM workspace_members wm
             WHERE wm.workspace_id = workspace_members.workspace_id
             AND wm.user_id = auth.uid()
-            AND wm.role = 'owner'
+            AND wm.role IN ('owner', 'admin')
         )
     );
 
@@ -124,7 +124,7 @@ CREATE POLICY "workspace_members_delete_owner"
             SELECT 1 FROM workspace_members wm
             WHERE wm.workspace_id = workspace_members.workspace_id
             AND wm.user_id = auth.uid()
-            AND wm.role = 'owner'
+            AND wm.role IN ('owner', 'admin')
         )
         AND user_id != auth.uid() -- Não pode remover a si mesmo
     );
@@ -176,7 +176,7 @@ CREATE POLICY "maps_delete_creator_or_owner"
             SELECT 1 FROM workspace_members
             WHERE workspace_id = maps.workspace_id
             AND user_id = auth.uid()
-            AND role = 'owner'
+            AND role IN ('owner', 'admin')
         )
     );
 
@@ -223,53 +223,53 @@ CREATE POLICY "edges_delete_editor"
     USING (can_edit_workspace(get_map_workspace(map_id)));
 
 -- ============================================
--- RLS: node_links
+-- RLS: node_links (CORRIGIDO: usa get_node_map)
 -- ============================================
 ALTER TABLE node_links ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "node_links_select_member"
     ON node_links FOR SELECT
-    USING (is_workspace_member(get_map_workspace(map_id)));
+    USING (is_workspace_member(get_map_workspace(get_node_map(source_node_id))));
 
 CREATE POLICY "node_links_insert_editor"
     ON node_links FOR INSERT
-    WITH CHECK (can_edit_workspace(get_map_workspace(map_id)));
+    WITH CHECK (can_edit_workspace(get_map_workspace(get_node_map(source_node_id))));
 
 CREATE POLICY "node_links_update_editor"
     ON node_links FOR UPDATE
-    USING (can_edit_workspace(get_map_workspace(map_id)));
+    USING (can_edit_workspace(get_map_workspace(get_node_map(source_node_id))));
 
 CREATE POLICY "node_links_delete_editor"
     ON node_links FOR DELETE
-    USING (can_edit_workspace(get_map_workspace(map_id)));
+    USING (can_edit_workspace(get_map_workspace(get_node_map(source_node_id))));
 
 -- ============================================
--- RLS: tasks
+-- RLS: tasks (CORRIGIDO: usa get_node_map e assigned_to)
 -- ============================================
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "tasks_select_member"
     ON tasks FOR SELECT
-    USING (is_workspace_member(get_map_workspace(map_id)));
+    USING (is_workspace_member(get_map_workspace(get_node_map(node_id))));
 
 CREATE POLICY "tasks_insert_editor"
     ON tasks FOR INSERT
-    WITH CHECK (can_edit_workspace(get_map_workspace(map_id)));
+    WITH CHECK (can_edit_workspace(get_map_workspace(get_node_map(node_id))));
 
--- Editors OU assignee podem atualizar
+-- Editors OU assignee podem atualizar (CORRIGIDO: assigned_to em vez de assignee_id)
 CREATE POLICY "tasks_update_editor_or_assignee"
     ON tasks FOR UPDATE
     USING (
-        can_edit_workspace(get_map_workspace(map_id))
-        OR assignee_id = auth.uid()
+        can_edit_workspace(get_map_workspace(get_node_map(node_id)))
+        OR assigned_to = auth.uid()
     );
 
 CREATE POLICY "tasks_delete_editor"
     ON tasks FOR DELETE
-    USING (can_edit_workspace(get_map_workspace(map_id)));
+    USING (can_edit_workspace(get_map_workspace(get_node_map(node_id))));
 
 -- ============================================
--- RLS: comments
+-- RLS: comments (CORRIGIDO: usa get_node_map e user_id)
 -- ============================================
 ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
 
@@ -287,17 +287,18 @@ CREATE POLICY "comments_insert_member"
         is_workspace_member(
             get_map_workspace(get_node_map(node_id))
         )
-        AND author_id = auth.uid()
+        AND user_id = auth.uid()
     );
 
+-- CORRIGIDO: user_id em vez de author_id
 CREATE POLICY "comments_update_author"
     ON comments FOR UPDATE
-    USING (author_id = auth.uid());
+    USING (user_id = auth.uid());
 
 CREATE POLICY "comments_delete_author_or_editor"
     ON comments FOR DELETE
     USING (
-        author_id = auth.uid()
+        user_id = auth.uid()
         OR can_edit_workspace(
             get_map_workspace(get_node_map(node_id))
         )
@@ -362,7 +363,7 @@ CREATE POLICY "ai_runs_update_system"
     USING (true);
 
 -- ============================================
--- RLS: references
+-- RLS: references (CORRIGIDO: usa get_node_map, sem created_by)
 -- ============================================
 ALTER TABLE "references" ENABLE ROW LEVEL SECURITY;
 
@@ -382,20 +383,18 @@ CREATE POLICY "references_insert_editor"
         )
     );
 
-CREATE POLICY "references_update_creator_or_editor"
+CREATE POLICY "references_update_editor"
     ON "references" FOR UPDATE
     USING (
-        created_by = auth.uid()
-        OR can_edit_workspace(
+        can_edit_workspace(
             get_map_workspace(get_node_map(node_id))
         )
     );
 
-CREATE POLICY "references_delete_creator_or_editor"
+CREATE POLICY "references_delete_editor"
     ON "references" FOR DELETE
     USING (
-        created_by = auth.uid()
-        OR can_edit_workspace(
+        can_edit_workspace(
             get_map_workspace(get_node_map(node_id))
         )
     );
@@ -403,7 +402,9 @@ CREATE POLICY "references_delete_creator_or_editor"
 -- ============================================
 -- REALTIME: Habilitar nas tabelas necessárias
 -- ============================================
--- Nota: Execute isso no Dashboard do Supabase ou via API
+-- Nota: Execute isso no Dashboard do Supabase → Database → Replication
+-- ou via SQL Editor:
+-- 
 -- ALTER PUBLICATION supabase_realtime ADD TABLE nodes;
 -- ALTER PUBLICATION supabase_realtime ADD TABLE edges;
 -- ALTER PUBLICATION supabase_realtime ADD TABLE tasks;
@@ -411,5 +412,5 @@ CREATE POLICY "references_delete_creator_or_editor"
 -- ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
 
 -- ============================================
--- FIM DAS POLÍTICAS RLS
+-- FIM DAS POLÍTICAS RLS ✅
 -- ============================================
