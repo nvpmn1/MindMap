@@ -6,6 +6,13 @@ import { Toaster } from 'react-hot-toast';
 import App from './App';
 import './index.css';
 
+// Initialize queue debug utilities in development
+if (import.meta.env.DEV) {
+  import('./lib/queue-debug').then((mod) => {
+    mod.queueDebug.bindToWindow();
+  });
+}
+
 // Suppress browser extension message channel errors
 window.addEventListener('error', (event) => {
   if (

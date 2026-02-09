@@ -197,12 +197,29 @@ class AdvancedSaveQueue {
         }
       }
 
+      console.log(
+        `[SaveQueue] Processing ${this.queue.size} operations across ${mapGroups.size} maps`
+      );
+
       // Process each map
       for (const [mapId, ops] of mapGroups) {
-        await this.processMapOperations(mapId, ops);
+        try {
+          await this.processMapOperations(mapId, ops);
+        } catch (err) {
+          console.error(`[SaveQueue] Failed to process operations for map ${mapId}:`, err);
+        }
       }
     } finally {
       this.isSaving = false;
+
+      // Check if there are still pending operations and log retry schedule
+      if (this.queue.size > 0) {
+        const pendingOps = Array.from(this.queue.values());
+        const pendingForRetry = pendingOps.filter((op) => op.nextRetryAt);
+        console.log(
+          `[SaveQueue] Still ${pendingOps.length} operations pending (${pendingForRetry.length} waiting for retry)`
+        );
+      }
     }
   }
 
