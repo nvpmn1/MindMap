@@ -16,6 +16,7 @@ import nodesRoutes from './routes/nodes';
 import tasksRoutes from './routes/tasks';
 import aiRoutes from './routes/ai';
 import resetRoutes from './routes/reset';
+import setupRoutes from './routes/setup';
 
 const app: Express = express();
 
@@ -116,6 +117,7 @@ app.use(limiter);
 
 // Routes
 app.use('/health', healthRoutes);
+app.use('/api/setup', setupRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/maps', mapsRoutes);
 app.use('/api/nodes', nodesRoutes);
