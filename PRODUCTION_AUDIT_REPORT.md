@@ -196,11 +196,13 @@ jest.config.js          ← sem testes no projeto
 ### Supabase (Database) — Checklist
 
 Execute os arquivos SQL **nesta ordem**:
+
 1. [ ] **`database/0_reset_database.sql`** — Limpa banco existente (se necessário)
 2. [ ] **`database/1_schema.sql`** — Cria todas as tabelas + triggers
 3. [ ] **`database/2_rls_policies.sql`** — Configura Row Level Security (CORRIGIDO)
 
 Configurações no Dashboard:
+
 - [ ] Auth → URL Configuration → Redirect URLs: adicionar `https://mindmap-hub.vercel.app/auth/callback`
 - [ ] Auth → Providers → Email: confirmar Magic Link habilitado
 - [ ] Database → Replication: habilitar realtime em `nodes`, `edges`, `tasks`, `comments`, `notifications`

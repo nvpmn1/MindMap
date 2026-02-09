@@ -99,22 +99,27 @@ SELECT * FROM workspaces;
 ## 🐛 Troubleshooting
 
 ### ✅ CORRIGIDO: "relation 'profiles' does not exist"
+
 **Problema anterior:** `workspaces` era criado antes de `profiles`, mas referenciava `profiles.id`  
 **Correção aplicada:** Ordem ajustada — `profiles` criado PRIMEIRO, depois `workspaces`  
 **Status:** Resolvido no commit `703f128`
 
 ### ✅ CORRIGIDO: "relation 'maps' does not exist" em helper functions
+
 **Problema anterior:** Funções RLS helper referenciavam tabelas que ainda não existiam  
 **Correção aplicada:** Funções criadas no `2_rls_policies.sql` APÓS as tabelas existirem  
 **Status:** Resolvido — sempre executar `1_schema.sql` ANTES de `2_rls_policies.sql`
 
 ### Erro: "column does not exist"
+
 ✅ **Solução:** Execute `0_reset_database.sql` e recomece do início
 
 ### Erro: "policy already exists"
+
 ✅ **Solução:** Execute `0_reset_database.sql` primeiro
 
 ### RLS bloqueia tudo
+
 ✅ **Solução:** Certifique-se que o usuário está autenticado via Supabase Auth e é membro de um workspace
 
 ---
