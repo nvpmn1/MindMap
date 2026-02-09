@@ -123,6 +123,17 @@ app.use('/api/tasks', tasksRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/reset', resetRoutes);
 
+// Root endpoint
+app.get('/', (req: Request, res: Response) => {
+  res.json({
+    success: true,
+    name: 'MindMap Hub API',
+    version: '1.0.0',
+    status: 'ok',
+    environment: env.NODE_ENV,
+  });
+});
+
 // 404 handler
 app.use((req: Request, res: Response) => {
   res.status(404).json({
