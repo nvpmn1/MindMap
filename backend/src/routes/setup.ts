@@ -127,7 +127,6 @@ router.post(
         title: 'Welcome to MindMap Hub',
         description: 'Your first collaborative mind map',
         created_by: userId,
-        version: 1,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
@@ -150,10 +149,8 @@ router.post(
           'Conclusion',
         ][idx],
         content: `Node ${idx + 1} content`,
-        position: JSON.stringify({
-          x: 100 + idx * 150,
-          y: 100 + (idx % 2) * 100,
-        }),
+        position_x: 100 + idx * 150,
+        position_y: 100 + (idx % 2) * 100,
         version: 1,
         created_by: userId,
         created_at: new Date().toISOString(),
@@ -176,8 +173,8 @@ router.post(
       ].map((edge) => ({
         id: randomUUID(),
         map_id: mapId,
-        source_id: edge.source_id,
-        target_id: edge.target_id,
+        source_node_id: edge.source_id,
+        target_node_id: edge.target_id,
         label: 'related',
         version: 1,
         created_by: userId,
