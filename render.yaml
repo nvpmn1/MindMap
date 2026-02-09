@@ -5,7 +5,7 @@ services:
     plan: starter
     region: ohio
 
-    buildCommand: cd backend && npm install && npm run build
+    buildCommand: npm install && npm run build:backend
     startCommand: cd backend && node dist/index.js
 
     healthCheckPath: /health
