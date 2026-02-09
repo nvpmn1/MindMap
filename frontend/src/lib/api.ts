@@ -4,6 +4,8 @@ import { useAuthStore } from '@/stores/authStore';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 const MAX_RETRIES = 2;
 const RETRY_DELAY = 500; // ms
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const isUuid = (value?: string | null) => !!value && UUID_REGEX.test(value);
 
 interface FetchOptions extends RequestInit {
   authenticated?: boolean;
@@ -59,7 +61,7 @@ class ApiClient {
         const color = profile?.color || user?.color || '#00D9FF';
 
         // Only set headers if we have a valid profile ID
-        if (profileId && profileId !== '') {
+        if (profileId && profileId !== '' && isUuid(profileId)) {
           headers['x-profile-id'] = profileId;
           headers['x-profile-email'] = email;
           headers['x-profile-name'] = name;

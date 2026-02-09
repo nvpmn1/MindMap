@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { authApi } from '@/lib/api';
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const isUuid = (value?: string | null) => !!value && UUID_REGEX.test(value);
+const generateUuid = () =>
+  (globalThis.crypto && 'randomUUID' in globalThis.crypto
+    ? globalThis.crypto.randomUUID()
+    : `00000000-0000-4000-8000-${Math.random().toString(16).slice(2, 14)}`);
+
 interface User {
   id: string;
   email: string;
@@ -192,40 +199,8 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   },
 
   initialize: () => {
-    // Try to restore from localStorage with validation
-    const savedUser = localStorage.getItem('mindmap_auth_user');
-    const savedProfile = localStorage.getItem('mindmap_auth_profile');
-
-    if (savedUser && savedProfile) {
-      try {
-        const user = JSON.parse(savedUser) as User;
-        const profile = JSON.parse(savedProfile) as Profile;
-
-        // Validate critical fields
-        if (!user.id || !user.email) {
-          throw new Error('Invalid user data: missing id or email');
-        }
-
-        // Accept avatar as-is - don't validate strictly
-        // Trust what's in localStorage
-
-        set({
-          user,
-          profile,
-          isAuthenticated: true,
-          isLoading: false,
-          workspaces: [DEFAULT_WORKSPACE],
-        });
-        console.log('✅ Session restored from localStorage');
-      } catch (error) {
-        console.error('❌ Failed to parse saved auth:', error);
-        localStorage.removeItem('mindmap_auth_user');
-        localStorage.removeItem('mindmap_auth_profile');
-        set({ isLoading: false });
-      }
-    } else {
-      // Auto-initialize with guest profile for offline mode
-      const guestId = `guest-${Date.now()}`;
+    const initGuestSession = () => {
+      const guestId = generateUuid();
       const guestProfile: Profile = {
         id: guestId,
         email: 'guest@mindmap.local',
@@ -253,13 +228,53 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       localStorage.setItem('mindmap_auth_user', JSON.stringify(guestUser));
       localStorage.setItem('mindmap_auth_profile', JSON.stringify(guestProfile));
       console.log('✅ Guest session initialized');
+    };
+
+    // Try to restore from localStorage with validation
+    const savedUser = localStorage.getItem('mindmap_auth_user');
+    const savedProfile = localStorage.getItem('mindmap_auth_profile');
+
+    if (savedUser && savedProfile) {
+      try {
+        const user = JSON.parse(savedUser) as User;
+        const profile = JSON.parse(savedProfile) as Profile;
+
+        // Validate critical fields
+        if (!user.id || !user.email) {
+          throw new Error('Invalid user data: missing id or email');
+        }
+        if (!isUuid(user.id) || !isUuid(profile.id)) {
+          throw new Error('Invalid user data: non-UUID id');
+        }
+
+        // Accept avatar as-is - don't validate strictly
+        // Trust what's in localStorage
+
+        set({
+          user,
+          profile,
+          isAuthenticated: true,
+          isLoading: false,
+          workspaces: [DEFAULT_WORKSPACE],
+        });
+        console.log('✅ Session restored from localStorage');
+      } catch (error) {
+        console.error('❌ Failed to parse saved auth:', error);
+        localStorage.removeItem('mindmap_auth_user');
+        localStorage.removeItem('mindmap_auth_profile');
+        initGuestSession();
+      }
+    } else {
+      // Auto-initialize with guest profile for offline mode
+      initGuestSession();
     }
   },
 
   loginWithProfile: (profileData) => {
     try {
+      const safeId = isUuid(profileData.id) ? profileData.id : generateUuid();
       const profile: Profile = {
-        id: profileData.id,
+        id: safeId,
         email: profileData.email,
         display_name: profileData.display_name || profileData.email.split('@')[0],
         avatar_url: profileData.avatar_url,
@@ -267,7 +282,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       };
 
       const user: User = {
-        id: profileData.id,
+        id: safeId,
         email: profileData.email,
         display_name: profileData.display_name || profileData.email.split('@')[0],
         avatar_url: profileData.avatar_url,
