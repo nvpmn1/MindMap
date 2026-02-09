@@ -876,6 +876,28 @@ export function useMapPersistence(
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [isRemoteMap, mapId, nodes, isUuid]);
 
+  // On visibility change: sync queue when user returns to tab (background tab sync)
+  useEffect(() => {
+    if (!isRemoteMap || !mapId) return;
+
+    const handleVisibilityChange = async () => {
+      // When page becomes visible (user switches back to tab)
+      if (!document.hidden) {
+        try {
+          const { advancedSaveQueue } = await import('@/lib/advanced-save-queue');
+          console.log('[VisibilityChange] Tab regained focus, syncing queue...');
+          // Sync any pending operations while tab was in background
+          await advancedSaveQueue.forceSync();
+        } catch (err) {
+          console.error('[VisibilityChange] Sync failed:', err);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isRemoteMap, mapId]);
+
   // Initial load
   useEffect(() => {
     loadedRef.current = false;
