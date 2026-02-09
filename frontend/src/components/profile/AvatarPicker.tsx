@@ -7,7 +7,6 @@ import {
   type AvatarCategory,
   type AvatarOption,
 } from '@/lib/avatarLibrary';
-import { useAuthStore } from '@/stores/authStore';
 
 interface AvatarPickerProps {
   onSelect?: (avatar: AvatarOption) => void;
@@ -76,7 +75,6 @@ export function AvatarPicker({ onSelect, selectedAvatarId }: AvatarPickerProps) 
   const [activeCategory, setActiveCategory] = useState<AvatarCategory>('games');
   const [searchTerm, setSearchTerm] = useState('');
   const [previewId, setPreviewId] = useState(selectedAvatarId || 'game-cs2');
-  const { updateProfile } = useAuthStore();
 
   const avatarsInCategory = useMemo(() => {
     const filtered = getAvatarsByCategory(activeCategory);
@@ -92,10 +90,9 @@ export function AvatarPicker({ onSelect, selectedAvatarId }: AvatarPickerProps) 
   const handleSelectAvatar = useCallback(
     async (avatar: AvatarOption) => {
       setPreviewId(avatar.id);
-      await updateProfile({ avatar_url: avatar.url });
       onSelect?.(avatar);
     },
-    [onSelect, updateProfile]
+    [onSelect]
   );
 
   /* fit mode per category: games → cover (art), others → contain (icon) */

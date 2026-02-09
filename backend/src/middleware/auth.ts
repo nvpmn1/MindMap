@@ -62,7 +62,10 @@ export const authenticate = async (
     }
 
     // Verify token with Supabase
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+    const {
+      data: { user },
+      error,
+    } = await supabaseAdmin.auth.getUser(token);
 
     if (error || !user) {
       logger.warn({ error: error?.message }, 'Token verification failed');
@@ -100,6 +103,23 @@ async function ensureProfileAndMembership(
   name: string,
   color: string
 ): Promise<void> {
+  const normalizedEmail = (email || '').trim().toLowerCase();
+
+  let emailToUse = normalizedEmail;
+  if (!emailToUse || emailToUse === 'guest@mindmap.local') {
+    emailToUse = `${profileId}@profile.local`;
+  } else {
+    const { data: existingByEmail } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('email', emailToUse)
+      .maybeSingle();
+
+    if (existingByEmail && existingByEmail.id !== profileId) {
+      emailToUse = `${profileId}@profile.local`;
+    }
+  }
+
   const { data: profile } = await supabaseAdmin
     .from('profiles')
     .select('id')
@@ -107,12 +127,22 @@ async function ensureProfileAndMembership(
     .single();
 
   if (!profile) {
-    await supabaseAdmin.from('profiles').insert({
+    const { error: insertError } = await supabaseAdmin.from('profiles').insert({
       id: profileId,
-      email: email || `${profileId}@profile.local`,
+      email: emailToUse,
       display_name: name,
       color,
     });
+
+    if (insertError?.code === '23505') {
+      // Email conflict — retry with unique email based on profileId
+      await supabaseAdmin.from('profiles').insert({
+        id: profileId,
+        email: `${profileId}@profile.local`,
+        display_name: name,
+        color,
+      });
+    }
   }
 
   const { data: membership } = await supabaseAdmin
@@ -168,7 +198,10 @@ export const optionalAuth = async (
       return next();
     }
 
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+    const {
+      data: { user },
+      error,
+    } = await supabaseAdmin.auth.getUser(token);
 
     if (!error && user) {
       req.user = {
@@ -203,8 +236,8 @@ export const requireWorkspaceMember = (workspaceIdParam: string = 'workspaceId')
       }
 
       // Check membership using RLS-enabled client
-      const { data: membership, error } = await req.supabase!
-        .from('workspace_members')
+      const { data: membership, error } = await req
+        .supabase!.from('workspace_members')
         .select('role')
         .eq('workspace_id', workspaceId)
         .eq('user_id', req.user.id)
@@ -240,8 +273,8 @@ export const requireWorkspaceEditor = (workspaceIdParam: string = 'workspaceId')
         throw new AuthorizationError('Workspace ID required');
       }
 
-      const { data: membership, error } = await req.supabase!
-        .from('workspace_members')
+      const { data: membership, error } = await req
+        .supabase!.from('workspace_members')
         .select('role')
         .eq('workspace_id', workspaceId)
         .eq('user_id', req.user.id)
@@ -281,8 +314,8 @@ export const requireWorkspaceAdmin = (workspaceIdParam: string = 'workspaceId') 
         throw new AuthorizationError('Workspace ID required');
       }
 
-      const { data: membership, error } = await req.supabase!
-        .from('workspace_members')
+      const { data: membership, error } = await req
+        .supabase!.from('workspace_members')
         .select('role')
         .eq('workspace_id', workspaceId)
         .eq('user_id', req.user.id)

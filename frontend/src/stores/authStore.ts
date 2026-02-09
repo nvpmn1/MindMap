@@ -201,9 +201,10 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   initialize: () => {
     const initGuestSession = () => {
       const guestId = generateUuid();
+      const guestEmail = `${guestId}@guest.mindmap.local`;
       const guestProfile: Profile = {
         id: guestId,
-        email: 'guest@mindmap.local',
+        email: guestEmail,
         display_name: 'Guest',
         avatar_url: null,
         color: '#00D9FF',
@@ -211,7 +212,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
 
       const guestUser: User = {
         id: guestId,
-        email: 'guest@mindmap.local',
+        email: guestEmail,
         display_name: 'Guest',
         avatar_url: null,
         color: '#00D9FF',

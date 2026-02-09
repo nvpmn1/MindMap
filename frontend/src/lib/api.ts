@@ -10,6 +10,7 @@ const isUuid = (value?: string | null) => !!value && UUID_REGEX.test(value);
 interface FetchOptions extends RequestInit {
   authenticated?: boolean;
   retries?: number;
+  useCache?: boolean;
 }
 
 interface ApiResponse<T> {
@@ -86,8 +87,8 @@ class ApiClient {
   /**
    * Build cache key for GET requests
    */
-  private getCacheKey(endpoint: string, method: string): string | null {
-    if (method === 'GET') {
+  private getCacheKey(endpoint: string, method: string, useCache: boolean): string | null {
+    if (useCache && method === 'GET') {
       return `${this.baseUrl}${endpoint}`;
     }
     return null;
@@ -97,11 +98,16 @@ class ApiClient {
    * Main fetch method with retry logic and error handling
    */
   private async fetch<T>(endpoint: string, options: FetchOptions = {}): Promise<ApiResponse<T>> {
-    const { authenticated = true, retries = MAX_RETRIES, ...fetchOptions } = options;
+    const {
+      authenticated = true,
+      retries = MAX_RETRIES,
+      useCache = true,
+      ...fetchOptions
+    } = options;
     const method = (fetchOptions.method || 'GET').toUpperCase();
 
     // Check cache for GET requests
-    const cacheKey = this.getCacheKey(endpoint, method);
+    const cacheKey = this.getCacheKey(endpoint, method, useCache);
     if (cacheKey && method === 'GET') {
       const cached = this.requestCache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
@@ -153,7 +159,9 @@ class ApiClient {
         // Handle 409 Conflict (duplicate edges, etc.) - not a real error
         if (response.status === 409) {
           const apiResponse: ApiResponse<T> =
-            typeof data === 'object' ? data : { success: false, error: { code: 'CONFLICT', message: 'Conflict' } };
+            typeof data === 'object'
+              ? data
+              : { success: false, error: { code: 'CONFLICT', message: 'Conflict' } };
           return apiResponse;
         }
 
@@ -313,7 +321,7 @@ export const mapsApi = {
     if (params?.search) searchParams.set('search', params.search);
     if (params?.limit) searchParams.set('limit', params.limit.toString());
     if (params?.offset) searchParams.set('offset', params.offset.toString());
-    return api.get(`/api/maps?${searchParams}`);
+    return api.get(`/api/maps?${searchParams}`, { useCache: false });
   },
 
   get: (mapId: string) => api.get(`/api/maps/${mapId}`),
@@ -372,7 +380,7 @@ export const nodesApi = {
   delete: (nodeId: string, cascade = true) => api.delete(`/api/nodes/${nodeId}?cascade=${cascade}`),
 
   // Edges
-  getEdges: (mapId: string) => api.get(`/api/nodes/edges/map/${mapId}`),
+  getEdges: (mapId: string) => api.get(`/api/nodes/edges/map/${mapId}`, { useCache: false }),
 
   createEdge: (data: { map_id: string; source_id: string; target_id: string; type?: string }) =>
     api.post('/api/nodes/edges', data),

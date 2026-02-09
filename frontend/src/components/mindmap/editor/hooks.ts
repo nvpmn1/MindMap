@@ -215,54 +215,54 @@ export function useNodeOperations(
             position_y: nodePosition!.y,
           } as any)
           .then((response: any) => {
-              const created = response?.data;
-              if (!created?.id) return;
+            const created = response?.data;
+            if (!created?.id) return;
 
-              const newId = created.id as string;
+            const newId = created.id as string;
 
-              setNodes((prev) =>
-                prev.map((node) => (node.id === id ? { ...node, id: newId } : node))
-              );
+            setNodes((prev) =>
+              prev.map((node) => (node.id === id ? { ...node, id: newId } : node))
+            );
 
-              setEdges((prev) =>
-                prev.map((edge) => {
-                  const source = edge.source === id ? newId : edge.source;
-                  const target = edge.target === id ? newId : edge.target;
-                  return source !== edge.source || target !== edge.target
-                    ? { ...edge, source, target }
-                    : edge;
-                })
-              );
+            setEdges((prev) =>
+              prev.map((edge) => {
+                const source = edge.source === id ? newId : edge.source;
+                const target = edge.target === id ? newId : edge.target;
+                return source !== edge.source || target !== edge.target
+                  ? { ...edge, source, target }
+                  : edge;
+              })
+            );
 
-              // Save edge to API if parent exists
-              if (parentId) {
-                const isUuid = (tid: string) =>
-                  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tid);
-                const resolvedParentId = parentId;
-                if (isUuid(resolvedParentId)) {
-                  nodesApi
-                    .createEdge({
-                      map_id: mapId,
-                      source_id: resolvedParentId,
-                      target_id: newId,
-                    })
-                    .then((edgeRes: any) => {
-                      if (edgeRes?.data?.id) {
-                        setEdges((prev) =>
-                          prev.map((e) =>
-                            e.id === `edge_${parentId}_${id}` ||
-                            e.id === `edge_${resolvedParentId}_${newId}`
-                              ? { ...e, id: edgeRes.data.id }
-                              : e
-                          )
-                        );
-                      }
-                    })
-                    .catch(() => {});
-                }
+            // Save edge to API if parent exists
+            if (parentId) {
+              const isUuid = (tid: string) =>
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tid);
+              const resolvedParentId = parentId;
+              if (isUuid(resolvedParentId)) {
+                nodesApi
+                  .createEdge({
+                    map_id: mapId,
+                    source_id: resolvedParentId,
+                    target_id: newId,
+                  })
+                  .then((edgeRes: any) => {
+                    if (edgeRes?.data?.id) {
+                      setEdges((prev) =>
+                        prev.map((e) =>
+                          e.id === `edge_${parentId}_${id}` ||
+                          e.id === `edge_${resolvedParentId}_${newId}`
+                            ? { ...e, id: edgeRes.data.id }
+                            : e
+                        )
+                      );
+                    }
+                  })
+                  .catch(() => {});
               }
-            })
-            .catch(() => {});
+            }
+          })
+          .catch(() => {});
       }
 
       return newNode;
@@ -297,15 +297,15 @@ export function useNodeOperations(
         // For immediate label/content changes, update directly
         if (data.label || data.description !== undefined || data.type) {
           const updatePayload: any = {};
-            if (data.label) updatePayload.label = data.label;
-            if (data.description !== undefined) updatePayload.content = data.description || '';
-            if (data.type) updatePayload.type = data.type;
-            
-            if (Object.keys(updatePayload).length > 0) {
-              nodesApi.update(nodeId, updatePayload).catch(() => {
-                // Will be synced on next save
-              });
-            }
+          if (data.label) updatePayload.label = data.label;
+          if (data.description !== undefined) updatePayload.content = data.description || '';
+          if (data.type) updatePayload.type = data.type;
+
+          if (Object.keys(updatePayload).length > 0) {
+            nodesApi.update(nodeId, updatePayload).catch(() => {
+              // Will be synced on next save
+            });
+          }
         }
       }
     },
@@ -823,7 +823,18 @@ export function useMapPersistence(
       setIsSaving(false);
       isSavingRef.current = false;
     }
-  }, [isRemoteMap, mapId, mapInfo, nodes, edges, setNodes, setEdges, setIsSaving, setLastSaved, isUuid]);
+  }, [
+    isRemoteMap,
+    mapId,
+    mapInfo,
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+    setIsSaving,
+    setLastSaved,
+    isUuid,
+  ]);
 
   // Auto-save with debounce (only for position changes etc.)
   useEffect(() => {
