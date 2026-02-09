@@ -9,7 +9,8 @@
     "start": "npm run build && node dist/index.js",
     "test": "jest",
     "lint": "eslint src/**/*.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "cleanup": "ts-node scripts/cleanup-database.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
