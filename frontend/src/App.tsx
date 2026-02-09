@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useProfileSync } from '@/hooks/useProfileSync';
@@ -67,6 +68,13 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  const initialize = useAuthStore(state => state.initialize);
+
+  // Initialize auth once on app mount
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
+
   return (
     <ErrorBoundary>
       <ProfileSyncProvider>
@@ -109,7 +117,7 @@ function App() {
           </Route>
 
           {/* Redirects */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/" element={<Navigate to="/login" replace />} />
 
           {/* 404 */}
           <Route path="*" element={<NotFoundPage />} />

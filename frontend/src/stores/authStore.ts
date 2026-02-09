@@ -199,75 +199,63 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   },
 
   initialize: () => {
-    const initGuestSession = () => {
-      const guestId = generateUuid();
-      const guestEmail = `${guestId}@guest.mindmap.local`;
-      const guestProfile: Profile = {
-        id: guestId,
-        email: guestEmail,
-        display_name: 'Guest',
-        avatar_url: null,
-        color: '#00D9FF',
-      };
+    set({ isLoading: true });
 
-      const guestUser: User = {
-        id: guestId,
-        email: guestEmail,
-        display_name: 'Guest',
-        avatar_url: null,
-        color: '#00D9FF',
-      };
+    try {
+      // Try to restore from localStorage with validation
+      const savedUser = localStorage.getItem('mindmap_auth_user');
+      const savedProfile = localStorage.getItem('mindmap_auth_profile');
 
-      set({
-        user: guestUser,
-        profile: guestProfile,
-        isAuthenticated: true,
-        isLoading: false,
-        workspaces: [DEFAULT_WORKSPACE],
-      });
+      if (savedUser && savedProfile) {
+        try {
+          const user = JSON.parse(savedUser) as User;
+          const profile = JSON.parse(savedProfile) as Profile;
 
-      localStorage.setItem('mindmap_auth_user', JSON.stringify(guestUser));
-      localStorage.setItem('mindmap_auth_profile', JSON.stringify(guestProfile));
-      console.log('✅ Guest session initialized');
-    };
+          // Validate critical fields
+          if (!user.id || !user.email) {
+            throw new Error('Invalid user data: missing id or email');
+          }
+          if (!isUuid(user.id) || !isUuid(profile.id)) {
+            throw new Error('Invalid user data: non-UUID id');
+          }
 
-    // Try to restore from localStorage with validation
-    const savedUser = localStorage.getItem('mindmap_auth_user');
-    const savedProfile = localStorage.getItem('mindmap_auth_profile');
+          // Accept avatar as-is - don't validate strictly
+          // Trust what's in localStorage
 
-    if (savedUser && savedProfile) {
-      try {
-        const user = JSON.parse(savedUser) as User;
-        const profile = JSON.parse(savedProfile) as Profile;
-
-        // Validate critical fields
-        if (!user.id || !user.email) {
-          throw new Error('Invalid user data: missing id or email');
+          set({
+            user,
+            profile,
+            isAuthenticated: true,
+            isLoading: false,
+            workspaces: [DEFAULT_WORKSPACE],
+          });
+          console.log('✅ Session restored from localStorage');
+          return;
+        } catch (error) {
+          console.error('❌ Failed to parse saved auth:', error);
+          localStorage.removeItem('mindmap_auth_user');
+          localStorage.removeItem('mindmap_auth_profile');
         }
-        if (!isUuid(user.id) || !isUuid(profile.id)) {
-          throw new Error('Invalid user data: non-UUID id');
-        }
-
-        // Accept avatar as-is - don't validate strictly
-        // Trust what's in localStorage
-
-        set({
-          user,
-          profile,
-          isAuthenticated: true,
-          isLoading: false,
-          workspaces: [DEFAULT_WORKSPACE],
-        });
-        console.log('✅ Session restored from localStorage');
-      } catch (error) {
-        console.error('❌ Failed to parse saved auth:', error);
-        localStorage.removeItem('mindmap_auth_user');
-        localStorage.removeItem('mindmap_auth_profile');
-        initGuestSession();
       }
-    } else {
-      // Auto-initialize with guest profile for offline mode
-      initGuestSession();
+
+      // No valid session found - user must select profile on LoginPage
+      set({
+        user: null,
+        profile: null,
+        isAuthenticated: false,
+        isLoading: false,
+        workspaces: [],
+      });
+      console.log('ℹ️ No session found - redirecting to login');
+    } catch (error) {
+      console.error('❌ Initialize error:', error);
+      set({
+        user: null,
+        profile: null,
+        isAuthenticated: false,
+        isLoading: false,
+        workspaces: [],
+      });
     }
   },
 
@@ -329,5 +317,5 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   },
 }));
 
-// Initialize auth on app start
-useAuthStore.getState().initialize();
+// DO NOT auto-initialize here - App.tsx will handle it
+// This prevents creating ghost profiles on every page load

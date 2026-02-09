@@ -17,6 +17,7 @@ import tasksRoutes from './routes/tasks';
 import aiRoutes from './routes/ai';
 import resetRoutes from './routes/reset';
 import setupRoutes from './routes/setup';
+import adminRoutes from './routes/admin';
 
 const app: Express = express();
 
@@ -127,6 +128,7 @@ app.use('/api/nodes', nodesRoutes);
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/reset', resetRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Root endpoint
 app.get('/', (req: Request, res: Response) => {
