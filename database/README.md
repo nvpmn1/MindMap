@@ -1,30 +1,42 @@
 # 🗄️ Setup do Database - MindMap Hub
 
+## ✅ Status: CORRIGIDO e Pronto para Uso
+
+**Última correção:** Ordem de criação das tabelas — `profiles` criada ANTES de `workspaces` (resolvia erro de dependência circular).
+
+---
+
 ## Ordem de Execução no Supabase SQL Editor
 
 ### 1️⃣ **RESET (se necessário)**
+
 ```sql
 -- Execute SOMENTE se precisa limpar o banco existente
 -- ⚠️ CUIDADO: Apaga TUDO!
 ```
+
 **Arquivo:** `0_reset_database.sql`  
 **Quando usar:** Primeira vez OU se precisar recriar do zero
 
 ---
 
 ### 2️⃣ **SCHEMA (obrigatório)**
+
 ```sql
 -- Cria todas as tabelas, triggers, funções
 ```
+
 **Arquivo:** `1_schema.sql`  
 **Cria:** 13 tabelas + triggers + workspace padrão
 
 ---
 
 ### 3️⃣ **RLS POLICIES (obrigatório)**
+
 ```sql
 -- Configura as políticas de segurança Row Level Security
 ```
+
 **Arquivo:** `2_rls_policies.sql`  
 **Configura:** Permissões por workspace/role
 
@@ -35,6 +47,7 @@
 Após executar os 3 arquivos SQL, configure no **Supabase Dashboard**:
 
 ### Authentication
+
 1. **Auth → Providers → Email**
    - ✅ Enable Email provider
    - ✅ Confirm email: OFF (para Magic Link)
@@ -47,6 +60,7 @@ Após executar os 3 arquivos SQL, configure no **Supabase Dashboard**:
      - `http://localhost:5173/auth/callback` (dev)
 
 ### Database Replication (Realtime)
+
 1. **Database → Replication**
 2. Habilite as seguintes tabelas:
    - ✅ `nodes`
@@ -56,6 +70,7 @@ Após executar os 3 arquivos SQL, configure no **Supabase Dashboard**:
    - ✅ `notifications`
 
 ### API Settings
+
 1. **Settings → API**
 2. Copie as credenciais para usar no backend:
    - `SUPABASE_URL`
@@ -82,6 +97,16 @@ SELECT * FROM workspaces;
 ---
 
 ## 🐛 Troubleshooting
+
+### ✅ CORRIGIDO: "relation 'profiles' does not exist"
+**Problema anterior:** `workspaces` era criado antes de `profiles`, mas referenciava `profiles.id`  
+**Correção aplicada:** Ordem ajustada — `profiles` criado PRIMEIRO, depois `workspaces`  
+**Status:** Resolvido no commit `703f128`
+
+### ✅ CORRIGIDO: "relation 'maps' does not exist" em helper functions
+**Problema anterior:** Funções RLS helper referenciavam tabelas que ainda não existiam  
+**Correção aplicada:** Funções criadas no `2_rls_policies.sql` APÓS as tabelas existirem  
+**Status:** Resolvido — sempre executar `1_schema.sql` ANTES de `2_rls_policies.sql`
 
 ### Erro: "column does not exist"
 ✅ **Solução:** Execute `0_reset_database.sql` e recomece do início
@@ -115,4 +140,4 @@ notifications (notificações)
 
 ---
 
-*Última atualização: 08/02/2026*
+_Última atualização: 08/02/2026_
