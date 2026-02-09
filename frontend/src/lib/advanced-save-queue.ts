@@ -217,24 +217,38 @@ class AdvancedSaveQueue {
     const edgeCreates = operations.filter((op) => op.type === 'edge-create');
     const edgeDeletes = operations.filter((op) => op.type === 'edge-delete');
 
+    const processed: QueuedOperation[] = [];
+
     try {
       // Step 1: Update map metadata (consolidate all to last one)
       if (mapUpdates.length > 0) {
         const lastMapUpdate = mapUpdates[mapUpdates.length - 1];
-        await this.executeWithRetry(lastMapUpdate);
+        try {
+          await this.executeWithRetry(lastMapUpdate);
+          processed.push(lastMapUpdate);
+        } catch (err) {
+          console.warn(`[SaveQueue] Failed to update map metadata:`, err);
+        }
       }
 
       // Step 2: Create new nodes in batch
-      for (let i = 0; i < nodeCreates.length; i += this.BATCH_SIZE) {
-        const batch = nodeCreates.slice(i, i + this.BATCH_SIZE);
-        for (const op of batch) {
-          const result = await this.executeWithRetry(op);
-          if (result.success && result.serverId) {
-            // Store ID mapping
-            if (!this.idMappings.has(mapId)) {
-              this.idMappings.set(mapId, new Map());
+      if (nodeCreates.length > 0) {
+        for (let i = 0; i < nodeCreates.length; i += this.BATCH_SIZE) {
+          const batch = nodeCreates.slice(i, i + this.BATCH_SIZE);
+          for (const op of batch) {
+            try {
+              const result = await this.executeWithRetry(op);
+              if (result.success && result.serverId) {
+                // Store ID mapping for future edge creation
+                if (!this.idMappings.has(mapId)) {
+                  this.idMappings.set(mapId, new Map());
+                }
+                this.idMappings.get(mapId)!.set(op.localId || op.payload.id, result.serverId);
+              }
+              processed.push(op);
+            } catch (err) {
+              console.warn(`[SaveQueue] Failed to create node ${op.payload.id}:`, err);
             }
-            this.idMappings.get(mapId)!.set(op.localId || op.payload.id, result.serverId);
           }
         }
       }
@@ -249,27 +263,64 @@ class AdvancedSaveQueue {
 
         for (let i = 0; i < nodeUpdateMap.size; i += this.BATCH_SIZE) {
           const batch = Array.from(nodeUpdateMap.values()).slice(i, i + this.BATCH_SIZE);
-          await this.executeBatchNodeUpdate(batch);
+          try {
+            await this.executeBatchNodeUpdate(batch);
+            processed.push(...batch);
+          } catch (err) {
+            console.warn(`[SaveQueue] Batch node update failed, falling back to individual updates:`, err);
+            // Fallback: Individual updates
+            for (const op of batch) {
+              try {
+                await this.executeWithRetry(op);
+                processed.push(op);
+              } catch (innerErr) {
+                console.warn(`[SaveQueue] Individual node update failed for ${op.payload.id}:`, innerErr);
+              }
+            }
+          }
         }
       }
 
       // Step 4: Create edges (after node IDs are resolved)
-      for (const op of edgeCreates) {
-        await this.executeWithRetry(op);
+      if (edgeCreates.length > 0) {
+        for (const op of edgeCreates) {
+          try {
+            await this.executeWithRetry(op);
+            processed.push(op);
+          } catch (err: any) {
+            // 409 conflict usually means edge already exists - safe to ignore
+            if (err?.statusCode === 409) {
+              console.log(`[SaveQueue] Edge already exists (409), skipping:`, op.payload);
+              processed.push(op); // Still mark as processed
+            } else {
+              console.warn(`[SaveQueue] Failed to create edge:`, err);
+            }
+          }
+        }
       }
 
       // Step 5: Delete edges
-      for (const op of edgeDeletes) {
-        await this.executeWithRetry(op);
+      if (edgeDeletes.length > 0) {
+        for (const op of edgeDeletes) {
+          try {
+            await this.executeWithRetry(op);
+            processed.push(op);
+          } catch (err) {
+            console.warn(`[SaveQueue] Failed to delete edge:`, err);
+          }
+        }
       }
 
-      // Mark all as successful
-      for (const op of operations) {
+      // Mark successful operations as complete
+      for (const op of processed) {
         this.queue.delete(op.id);
         this.deletePersistedOperation(op.id);
       }
 
-      this.lastSuccessfulSave = Date.now();
+      if (processed.length > 0) {
+        this.lastSuccessfulSave = Date.now();
+        console.log(`[SaveQueue] Processed ${processed.length}/${operations.length} operations for map ${mapId}`);
+      }
     } catch (err) {
       console.error('[SaveQueue] Error processing map operations:', err);
       // Operations will retry based on their nextRetryAt
@@ -298,10 +349,12 @@ class AdvancedSaveQueue {
 
       switch (op.type) {
         case 'map-update':
+          console.log('[SaveQueue] Updating map:', op.payload);
           result = await mapsApi.update(op.mapId, op.payload);
           break;
 
         case 'node-create':
+          console.log('[SaveQueue] Creating node:', op.payload.id);
           result = await nodesApi.create(op.payload as any);
           return {
             success: result?.success !== false,
@@ -313,6 +366,7 @@ class AdvancedSaveQueue {
           break;
 
         case 'edge-create':
+          console.log('[SaveQueue] Creating edge:', op.payload.source_id, '->', op.payload.target_id);
           result = await nodesApi.createEdge(op.payload as any);
           return {
             success: result?.success !== false,
@@ -333,22 +387,32 @@ class AdvancedSaveQueue {
     } catch (err: any) {
       // Handle specific errors
       const statusCode = err?.statusCode || err?.status;
+      const errorMessage = err?.message || 'Unknown error';
 
-      // 404 = resource not found - don't retry
-      if (statusCode === 404) {
-        console.warn(`[SaveQueue] Resource not found for operation ${op.id}`);
-        return { success: false };
+      console.error(`[SaveQueue] Operation error (${op.type}):`, { statusCode, message: errorMessage });
+
+      // 404 = resource not found on batch update - try individual updates instead
+      if (statusCode === 404 && op.type === 'node-update') {
+        console.warn(`[SaveQueue] Got 404 on node update, will fall back to individual updates`);
+        // Don't immediately fail - let the caller know to retry
       }
 
-      // 409 = conflict - could be duplicate, try to continue anyway
+      // 409 = conflict - could be duplicate (especially for edges)
       if (statusCode === 409) {
-        console.warn(`[SaveQueue] Conflict for operation ${op.id}`);
-        return { success: false };
+        console.log(`[SaveQueue] Conflict (409) for operation ${op.id} - likely duplicate, will retry`);
+        // Still retry, as it might be transient
+      }
+
+      // 401/403 = auth errors - don't retry, fail immediately
+      if (statusCode === 401 || statusCode === 403) {
+        console.error('[SaveQueue] Authentication error - user may not be logged in');
+        op.lastError = 'Authentication failed: ' + errorMessage;
+        throw err;
       }
 
       // Network/server error - retry with backoff
       op.retries++;
-      op.lastError = err.message;
+      op.lastError = errorMessage;
       op.nextRetryAt = Date.now() + this.calculateBackoff(op.retries);
 
       this.persistOperation(op);
@@ -358,9 +422,11 @@ class AdvancedSaveQueue {
   }
 
   /**
-   * Execute batch node update
+   * Execute batch node update with better error handling
    */
   private async executeBatchNodeUpdate(ops: QueuedOperation[]): Promise<void> {
+    const BATCH_TIMEOUT = 15000; // 15 seconds timeout
+
     try {
       const payload = ops.map((op) => ({
         id: op.payload.id,
@@ -371,18 +437,26 @@ class AdvancedSaveQueue {
         ...(op.payload.type && { type: op.payload.type }),
       }));
 
-      await nodesApi.batchUpdate(payload);
+      console.log('[SaveQueue] Attempting batch node update with', payload.length, 'nodes');
 
-      // Remove from queue
+      // Set a timeout for the batch operation
+      const batchPromise = nodesApi.batchUpdate(payload);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Batch update timeout')), BATCH_TIMEOUT);
+      });
+
+      await Promise.race([batchPromise, timeoutPromise]);
+      console.log('[SaveQueue] Batch node update succeeded');
+
+      // Remove from queue only if successful
       for (const op of ops) {
         this.queue.delete(op.id);
         this.deletePersistedOperation(op.id);
       }
-    } catch (err) {
-      // Fallback to individual updates
-      for (const op of ops) {
-        await this.executeWithRetry(op);
-      }
+    } catch (err: any) {
+      console.warn('[SaveQueue] Batch update failed, will retry individual updates:', err?.message);
+      // Don't throw - let individual updates handle the retry logic
+      throw err;
     }
   }
 

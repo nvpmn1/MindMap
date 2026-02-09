@@ -110,7 +110,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
     setCurrentTitle(mapInfo?.title || '');
   }, [mapInfo?.title]);
 
-  // Debounced title save
+  // Debounced title save - use advanced queue for reliability
   useEffect(() => {
     if (!mapInfo?.id || !isEditingTitle) return;
     if (currentTitle === mapInfo.title) return; // No change
@@ -128,18 +128,28 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
         setIsSavingTitle(true);
         const toastId = toast.loading('Salvando título...', { duration: 5000 });
 
-        // Call API to update map title
-        await mapsApi.update(mapInfo.id, {
-          title: currentTitle,
+        // Use advanced queue for title updates with retry logic
+        const { advancedSaveQueue } = await import('@/lib/advanced-save-queue');
+        advancedSaveQueue.enqueueOperation({
+          mapId: mapInfo.id,
+          type: 'map-update',
+          payload: {
+            title: currentTitle,
+            description: mapInfo.description || '',
+          },
         });
+
+        // Force immediate sync for title changes
+        await advancedSaveQueue.forceSync();
 
         toast.dismiss(toastId);
         toast.success('Título salvo com sucesso!', { duration: 2000 });
+        onUpdateMapInfo({ title: currentTitle }); // Update parent state
         setIsSavingTitle(false);
       } catch (error) {
         console.error('[Header] Failed to save title:', error);
-        toast.error('Erro ao salvar título', { duration: 2500 });
-        setCurrentTitle(mapInfo.title || '');
+        toast.error('Erro ao salvar título - será salvo automaticamente', { duration: 3000 });
+        // Don't reset title - let the auto-save handle it
         setIsSavingTitle(false);
       }
     }, 1500); // 1.5 second debounce
@@ -147,7 +157,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
     return () => {
       if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current);
     };
-  }, [currentTitle, mapInfo?.id, mapInfo?.title, isEditingTitle]);
+  }, [currentTitle, mapInfo?.id, mapInfo?.title, isEditingTitle, onUpdateMapInfo]);
 
   const formatSavedTime = useCallback(() => {
     if (isSaving) return 'Salvando...';
