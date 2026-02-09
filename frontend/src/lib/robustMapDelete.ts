@@ -48,7 +48,7 @@ class RobustMapDeleteManager {
         }
         // Wait before retry
         if (attempt < MAX_RETRIES - 1) {
-          await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
         }
       }
     }
@@ -64,7 +64,11 @@ class RobustMapDeleteManager {
     return this.pendingCount;
   }
 
-  getStatus(): { pendingCount: number; lastStatus: 'idle' | 'deleted' | 'error'; lastUpdated: number } {
+  getStatus(): {
+    pendingCount: number;
+    lastStatus: 'idle' | 'deleted' | 'error';
+    lastUpdated: number;
+  } {
     return {
       pendingCount: this.pendingCount,
       lastStatus: this.lastStatus,

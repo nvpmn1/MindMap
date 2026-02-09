@@ -669,164 +669,84 @@ export function useMapPersistence(
     isUuid,
   ]);
 
-  // Manual save
+  // Simplified manual save using advanced queue
   const saveMap = useCallback(async () => {
     if (!mapId || isSavingRef.current) return;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+
     isSavingRef.current = true;
     setIsSaving(true);
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
 
     try {
       if (isRemoteMap) {
-        // 1. Update map metadata
-        if (mapInfo) {
-          try {
-            await mapsApi.update(mapId, {
+        // Load the advancedSaveQueue dynamically to queue all operations
+        const { advancedSaveQueue } = await import('@/lib/advanced-save-queue');
+        
+        // Queue all operations at once - the queue will handle batching, retries, etc
+        // Map update
+        if (mapInfo?.title) {
+          advancedSaveQueue.enqueueOperation({
+            mapId,
+            type: 'map-update',
+            payload: {
               title: mapInfo.title,
               description: mapInfo.description || '',
-            });
-          } catch (err: any) {
-            if (err?.statusCode === 404) {
-              toast.error('Mapa não encontrado no servidor', { duration: 3000 });
-              return;
-            }
-          }
+            },
+          });
         }
 
-        // 2. Separate nodes into create vs update
-        const nodesToCreate: PowerNode[] = [];
-        const nodesToUpdate: PowerNode[] = [];
-
+        // Node creates and updates
         for (const node of nodes) {
-          if (isUuid(node.id)) {
-            nodesToUpdate.push(node);
-          } else {
-            nodesToCreate.push(node);
-          }
-        }
-
-        // 3. Create new nodes
-        const idMapping = new Map<string, string>();
-
-        for (const node of nodesToCreate) {
-          try {
-            const response = await nodesApi.create({
-              map_id: mapId,
-              type: node.data.type as any,
-              label: node.data.label,
-              content: node.data.description || '',
-              position_x: node.position.x,
-              position_y: node.position.y,
+          if (!isUuid(node.id)) {
+            advancedSaveQueue.enqueueOperation({
+              mapId,
+              type: 'node-create',
+              localId: node.id,
+              payload: {
+                id: node.id,
+                map_id: mapId,
+                type: node.data.type as any,
+                label: node.data.label,
+                content: node.data.description || '',
+                position_x: node.position.x,
+                position_y: node.position.y,
+              },
             });
-            const created = response?.data as any;
-            if (created?.id) {
-              idMapping.set(node.id, created.id);
-            }
-          } catch {
-            // Continue with other nodes
-          }
-        }
-
-        // 4. Update local IDs with server IDs
-        if (idMapping.size > 0) {
-          setNodes((prev) =>
-            prev.map((node) => {
-              const newId = idMapping.get(node.id);
-              return newId ? { ...node, id: newId } : node;
-            })
-          );
-          setEdges((prev) =>
-            prev.map((edge) => ({
-              ...edge,
-              source: idMapping.get(edge.source) || edge.source,
-              target: idMapping.get(edge.target) || edge.target,
-            }))
-          );
-        }
-
-        // 5. Update existing nodes in batch
-        if (nodesToUpdate.length > 0) {
-          try {
-            await nodesApi.batchUpdate(
-              nodesToUpdate.map((node) => ({
+          } else {
+            advancedSaveQueue.enqueueOperation({
+              mapId,
+              type: 'node-update',
+              payload: {
                 id: node.id,
                 position_x: node.position.x,
                 position_y: node.position.y,
-              }))
-            );
-          } catch {
-            // Fallback to individual updates
-            for (const node of nodesToUpdate) {
-              try {
-                await nodesApi.update(node.id, {
-                  label: node.data.label,
-                  content: node.data.description || '',
-                  position_x: node.position.x,
-                  position_y: node.position.y,
-                  type: node.data.type as any,
-                });
-              } catch {
-                // Continue
-              }
-            }
+                label: node.data.label,
+                content: node.data.description || '',
+                type: node.data.type as any,
+              },
+            });
           }
         }
 
-        // 6. Sync edges
-        try {
-          const serverEdgesRes = await nodesApi.getEdges(mapId);
-          const serverEdges = (serverEdgesRes.data || []) as any[];
-          const serverEdgeKeys = new Set<string>();
-          serverEdges.forEach((e: any) => {
-            serverEdgeKeys.add(`${e.source_id}__${e.target_id}`);
-          });
-
-          // Resolve local edges with ID mapping
-          const resolvedEdges = edges.map((e) => ({
-            source: idMapping.get(e.source) || e.source,
-            target: idMapping.get(e.target) || e.target,
-            localId: e.id,
-          }));
-
-          // Create missing edges
-          for (const edge of resolvedEdges) {
-            if (!isUuid(edge.source) || !isUuid(edge.target)) continue;
-            if (edge.source === edge.target) continue;
-            const key = `${edge.source}__${edge.target}`;
-            if (!serverEdgeKeys.has(key)) {
-              try {
-                await nodesApi.createEdge({
-                  map_id: mapId,
-                  source_id: edge.source,
-                  target_id: edge.target,
-                });
-              } catch {
-                // 409 conflict or other - continue
-              }
-            }
+        // Edge creates
+        for (const edge of edges) {
+          if (isUuid(edge.source) && isUuid(edge.target)) {
+            advancedSaveQueue.enqueueOperation({
+              mapId,
+              type: 'edge-create',
+              payload: {
+                map_id: mapId,
+                source_id: edge.source,
+                target_id: edge.target,
+              },
+            });
           }
-
-          // Delete orphaned server edges
-          const localEdgeKeys = new Set<string>();
-          resolvedEdges.forEach((e) => {
-            if (isUuid(e.source) && isUuid(e.target)) {
-              localEdgeKeys.add(`${e.source}__${e.target}`);
-            }
-          });
-
-          for (const se of serverEdges) {
-            const key = `${se.source_id}__${se.target_id}`;
-            if (!localEdgeKeys.has(key)) {
-              try {
-                await nodesApi.deleteEdge(se.id);
-              } catch {
-                // Continue
-              }
-            }
-          }
-        } catch {
-          // Edge sync non-critical
         }
+
+        // Force immediate sync
+        await advancedSaveQueue.forceSync();
+        setLastSaved(new Date());
+        toast.success('Mapa salvo com sucesso!', { duration: 2000 });
       } else {
         // Local map: save to localStorage
         localStorage.setItem(
@@ -838,10 +758,9 @@ export function useMapPersistence(
             savedAt: new Date().toISOString(),
           })
         );
+        setLastSaved(new Date());
+        toast.success('Mapa salvo localmente!', { duration: 2000 });
       }
-
-      setLastSaved(new Date());
-      toast.success('Mapa salvo!', { duration: 2000 });
     } catch (err) {
       console.error('[Save] Error:', err);
       toast.error('Erro ao salvar mapa', { duration: 3000 });
@@ -855,14 +774,12 @@ export function useMapPersistence(
     mapInfo,
     nodes,
     edges,
-    setNodes,
-    setEdges,
     setIsSaving,
     setLastSaved,
     isUuid,
   ]);
 
-  // Auto-save with debounce (only for position changes etc.)
+  // Auto-save with 10-second interval for batch operations
   useEffect(() => {
     if (nodes.length === 0 || !mapId || !isRemoteMap) return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
@@ -870,24 +787,33 @@ export function useMapPersistence(
     autoSaveTimerRef.current = setTimeout(async () => {
       if (isSavingRef.current) return;
 
-      // Only auto-save node positions using the batch endpoint
-      const uuidNodes = nodes.filter((n) => isUuid(n.id));
+      try {
+        const { advancedSaveQueue } = await import('@/lib/advanced-save-queue');
 
-      if (uuidNodes.length > 0) {
-        try {
-          await nodesApi.batchUpdate(
-            uuidNodes.map((n) => ({
-              id: n.id,
-              position_x: n.position.x,
-              position_y: n.position.y,
-            }))
-          );
+        // Only queue node position updates + label/content changes
+        const uuidNodes = nodes.filter((n) => isUuid(n.id));
+
+        if (uuidNodes.length > 0) {
+          for (const node of uuidNodes) {
+            advancedSaveQueue.enqueueOperation({
+              mapId,
+              type: 'node-update',
+              payload: {
+                id: node.id,
+                position_x: node.position.x,
+                position_y: node.position.y,
+                label: node.data.label,
+                content: node.data.description || '',
+                type: node.data.type as any,
+              },
+            });
+          }
           setLastSaved(new Date());
-        } catch {
-          // Silent - positions will sync on next manual save
         }
+      } catch (err) {
+        console.error('[AutoSave] Error:', err);
       }
-    }, 5000); // 5 second debounce for auto-save
+    }, 10000); // 10 second interval for batch auto-save
 
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
