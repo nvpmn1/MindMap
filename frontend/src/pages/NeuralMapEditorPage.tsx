@@ -1099,6 +1099,10 @@ function NeuralMapEditorInner() {
 
   const handleDeleteMap = useCallback(async () => {
     if (!confirm('Você tem certeza? Não é possível recuperar o mapa depois de deletado!')) return;
+    if (!mapId) {
+      toast.error('ID do mapa não encontrado');
+      return;
+    }
 
     try {
       // Use robust delete system - removes from UI immediately, syncs backend with retry

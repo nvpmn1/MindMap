@@ -11,10 +11,8 @@ import {
   Search,
   BarChart3,
   Grid3X3,
-  Milestone,
+  Image,
   HelpCircle,
-  GitBranch,
-  Users,
   type LucideIcon,
 } from 'lucide-react';
 import type { NeuralNodeType, NodeStatus, NodePriority, ConnectionStyle, ViewMode } from './types';
@@ -35,18 +33,6 @@ export interface NodeTypeConfig {
 }
 
 export const NODE_TYPE_CONFIG: Record<NeuralNodeType, NodeTypeConfig> = {
-  central: {
-    type: 'idea',
-    label: 'Central',
-    icon: Brain,
-    color: '#a855f7',
-    gradient: 'from-purple-500/20 to-violet-600/20',
-    glow: 'shadow-purple-500/30',
-    bgColor: 'bg-purple-500/10',
-    borderColor: 'border-purple-500/40',
-    shortcut: 'C',
-    description: 'Tema central do mapa',
-  },
   idea: {
     type: 'idea',
     label: 'Ideia',
@@ -131,17 +117,17 @@ export const NODE_TYPE_CONFIG: Record<NeuralNodeType, NodeTypeConfig> = {
     shortcut: 'G',
     description: 'Agrupamento de nós',
   },
-  milestone: {
-    type: 'milestone',
-    label: 'Marco',
-    icon: Milestone,
-    color: '#f97316',
-    gradient: 'from-orange-500/20 to-amber-600/20',
-    glow: 'shadow-orange-500/30',
-    bgColor: 'bg-orange-500/10',
-    borderColor: 'border-orange-500/40',
-    shortcut: 'M',
-    description: 'Marcos e objetivos',
+  image: {
+    type: 'image',
+    label: 'Imagem',
+    icon: Image,
+    color: '#38bdf8',
+    gradient: 'from-sky-500/20 to-cyan-600/20',
+    glow: 'shadow-sky-500/30',
+    bgColor: 'bg-sky-500/10',
+    borderColor: 'border-sky-500/40',
+    shortcut: 'IMG',
+    description: 'Imagens e mídia visual',
   },
   question: {
     type: 'question',
@@ -154,30 +140,6 @@ export const NODE_TYPE_CONFIG: Record<NeuralNodeType, NodeTypeConfig> = {
     borderColor: 'border-yellow-500/40',
     shortcut: 'Q',
     description: 'Perguntas e hipóteses',
-  },
-  decision: {
-    type: 'decision',
-    label: 'Decisão',
-    icon: GitBranch,
-    color: '#ef4444',
-    gradient: 'from-red-500/20 to-rose-600/20',
-    glow: 'shadow-red-500/30',
-    bgColor: 'bg-red-500/10',
-    borderColor: 'border-red-500/40',
-    shortcut: 'X',
-    description: 'Pontos de decisão',
-  },
-  resource: {
-    type: 'resource',
-    label: 'Recurso',
-    icon: Users,
-    color: '#14b8a6',
-    gradient: 'from-teal-500/20 to-emerald-600/20',
-    glow: 'shadow-teal-500/30',
-    bgColor: 'bg-teal-500/10',
-    borderColor: 'border-teal-500/40',
-    shortcut: 'U',
-    description: 'Recursos e equipe',
   },
 };
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Database Cleanup Script
- * 
+ *
  * Removes ghost profiles, duplicates, and orphaned data from Supabase
  * Run: npm run cleanup
  */
@@ -46,7 +46,7 @@ async function cleanup() {
       results.errors.push(guestError.message);
     } else if (guestProfiles && guestProfiles.length > 0) {
       console.log(`   Found ${guestProfiles.length} guest profiles`);
-      const guestIds = guestProfiles.map(p => p.id);
+      const guestIds = guestProfiles.map((p) => p.id);
 
       // Get maps created by guests
       const { data: guestMaps } = await supabase
@@ -55,7 +55,7 @@ async function cleanup() {
         .in('created_by', guestIds);
 
       if (guestMaps && guestMaps.length > 0) {
-        const guestMapIds = guestMaps.map(m => m.id);
+        const guestMapIds = guestMaps.map((m) => m.id);
         console.log(`   Found ${guestMapIds.length} maps to delete`);
 
         // Delete edges
@@ -123,7 +123,7 @@ async function cleanup() {
       results.errors.push(profileError.message);
     } else if (profileEmails && profileEmails.length > 0) {
       console.log(`   Found ${profileEmails.length} profile fallback emails`);
-      const profileIds = profileEmails.map(p => p.id);
+      const profileIds = profileEmails.map((p) => p.id);
 
       // Get maps
       const { data: profileMaps } = await supabase
@@ -132,7 +132,7 @@ async function cleanup() {
         .in('created_by', profileIds);
 
       if (profileMaps && profileMaps.length > 0) {
-        const profileMapIds = profileMaps.map(m => m.id);
+        const profileMapIds = profileMaps.map((m) => m.id);
         console.log(`   Found ${profileMapIds.length} maps to delete`);
 
         // Delete edges
@@ -194,12 +194,12 @@ async function cleanup() {
     const { data: validProfiles } = await supabase.from('profiles').select('id');
 
     if (allMaps && validProfiles) {
-      const validProfileIds = new Set(validProfiles.map(p => p.id));
-      const orphanedMaps = allMaps.filter(m => !validProfileIds.has(m.created_by));
+      const validProfileIds = new Set(validProfiles.map((p) => p.id));
+      const orphanedMaps = allMaps.filter((m) => !validProfileIds.has(m.created_by));
 
       if (orphanedMaps.length > 0) {
         console.log(`   Found ${orphanedMaps.length} orphaned maps`);
-        const orphanedMapIds = orphanedMaps.map(m => m.id);
+        const orphanedMapIds = orphanedMaps.map((m) => m.id);
 
         // Delete edges
         const { count: edgesDeleted } = await supabase
@@ -238,7 +238,7 @@ async function cleanup() {
     console.log(`   Orphaned edges: ${results.orphanedEdgesDeleted}`);
     if (results.errors.length > 0) {
       console.log(`   Errors: ${results.errors.length}`);
-      results.errors.forEach(err => console.log(`      - ${err}`));
+      results.errors.forEach((err) => console.log(`      - ${err}`));
     }
 
     console.log('\n✅ Cleanup completed successfully!\n');

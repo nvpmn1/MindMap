@@ -32,7 +32,11 @@ class MapPersistenceManager {
    * Returns the map record from the server.
    */
   async createMap(mapData: MapData): Promise<MapRecord> {
-    const response = await mapsApi.create(mapData);
+    const safeData = {
+      ...mapData,
+      description: mapData.description ?? '', // Convert null to empty string
+    };
+    const response = await mapsApi.create(safeData);
 
     if (!response.success || !response.data) {
       throw new Error('Failed to create map on server');
@@ -73,7 +77,7 @@ class MapPersistenceManager {
   removeFromCache(mapId: string): void {
     try {
       const maps = this.getCachedMaps();
-      const filtered = maps.filter(m => m.id !== mapId);
+      const filtered = maps.filter((m) => m.id !== mapId);
       localStorage.setItem(CACHE_KEY, JSON.stringify(filtered));
     } catch {
       // Not critical

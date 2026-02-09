@@ -923,8 +923,8 @@ const PowerNodeComponent: React.FC<NodeProps> = ({ id, data: rawData, selected }
                 isActive={activeSubmenu === 'more'}
                 onHover={() => setActiveSubmenu('more')}
                 onClick={() => setActiveSubmenu(activeSubmenu === 'more' ? null : 'more')}
-                isPinned={data.pinned}
-                isLocked={data.locked}
+                isPinned={Boolean(data.pinned)}
+                isLocked={Boolean(data.locked)}
                 nodeId={id}
                 onUpdateData={onUpdateData}
               />
@@ -952,7 +952,7 @@ const PowerNodeComponent: React.FC<NodeProps> = ({ id, data: rawData, selected }
               {activeSubmenu === 'more' && (
                 <MoreSubmenu
                   isPinned={data.pinned}
-                  isLocked={data.locked}
+                  isLocked={Boolean(data.locked)}
                   nodeId={id}
                   onUpdateData={onUpdateData}
                   onAction={handleAction}

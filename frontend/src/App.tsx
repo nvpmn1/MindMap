@@ -68,7 +68,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
-  const initialize = useAuthStore(state => state.initialize);
+  const initialize = useAuthStore((state) => state.initialize);
 
   // Initialize auth once on app mount
   useEffect(() => {

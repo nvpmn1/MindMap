@@ -40,9 +40,7 @@ const nodeActions: Array<{ type: NeuralNodeType; shortcut: string }> = [
   { type: 'research', shortcut: 'P' },
   { type: 'data', shortcut: 'D' },
   { type: 'question', shortcut: 'Q' },
-  { type: 'milestone', shortcut: 'M' },
-  { type: 'decision', shortcut: 'X' },
-  { type: 'resource', shortcut: 'U' },
+  { type: 'group', shortcut: 'G' },
 ];
 
 const CommandToolbarComponent: React.FC<CommandToolbarProps> = ({

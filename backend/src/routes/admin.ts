@@ -8,7 +8,7 @@ const router = Router();
 /**
  * DELETE /api/admin/cleanup-profiles
  * Remove guest profiles, duplicates, and orphaned data
- * 
+ *
  * This cleans up:
  * - Guest profiles with email pattern *@guest.mindmap.local
  * - Profile-based emails *@profile.local (fallback emails)
@@ -38,33 +38,33 @@ router.delete(
       if (guestError) {
         results.errors.push(`Failed to fetch guest profiles: ${guestError.message}`);
       } else if (guestProfiles && guestProfiles.length > 0) {
-        const guestIds = guestProfiles.map(p => p.id);
-        
+        const guestIds = guestProfiles.map((p) => p.id);
+
         // Get maps created by guests
         const { data: guestMaps } = await supabaseAdmin
           .from('maps')
           .select('id')
           .in('created_by', guestIds);
-        
+
         if (guestMaps && guestMaps.length > 0) {
-          const guestMapIds = guestMaps.map(m => m.id);
-          
+          const guestMapIds = guestMaps.map((m) => m.id);
+
           // Delete associated edges
           await supabaseAdmin.from('edges').delete().in('map_id', guestMapIds);
-          
+
           // Delete associated nodes
           await supabaseAdmin.from('nodes').delete().in('map_id', guestMapIds);
-          
+
           // Delete maps
           await supabaseAdmin.from('maps').delete().in('id', guestMapIds);
         }
-        
+
         // Delete profiles
         const { error: deleteGuestError } = await supabaseAdmin
           .from('profiles')
           .delete()
           .in('id', guestIds);
-        
+
         if (deleteGuestError) {
           results.errors.push(`Failed to delete guest profiles: ${deleteGuestError.message}`);
         } else {
@@ -82,33 +82,33 @@ router.delete(
       if (profileError) {
         results.errors.push(`Failed to fetch profile emails: ${profileError.message}`);
       } else if (profileEmails && profileEmails.length > 0) {
-        const profileIds = profileEmails.map(p => p.id);
-        
+        const profileIds = profileEmails.map((p) => p.id);
+
         // Get maps created by these profiles
         const { data: profileMaps } = await supabaseAdmin
           .from('maps')
           .select('id')
           .in('created_by', profileIds);
-        
+
         if (profileMaps && profileMaps.length > 0) {
-          const profileMapIds = profileMaps.map(m => m.id);
-          
+          const profileMapIds = profileMaps.map((m) => m.id);
+
           // Delete associated edges
           await supabaseAdmin.from('edges').delete().in('map_id', profileMapIds);
-          
+
           // Delete associated nodes
           await supabaseAdmin.from('nodes').delete().in('map_id', profileMapIds);
-          
+
           // Delete maps
           await supabaseAdmin.from('maps').delete().in('id', profileMapIds);
         }
-        
+
         // Delete profiles
         const { error: deleteProfileError } = await supabaseAdmin
           .from('profiles')
           .delete()
           .in('id', profileIds);
-        
+
         if (deleteProfileError) {
           results.errors.push(`Failed to delete profile emails: ${deleteProfileError.message}`);
         } else {
@@ -120,36 +120,36 @@ router.delete(
       // 3. Clean up orphaned maps (maps without valid creator)
       const { data: allMaps } = await supabaseAdmin.from('maps').select('id, created_by');
       const { data: validProfiles } = await supabaseAdmin.from('profiles').select('id');
-      
+
       if (allMaps && validProfiles) {
-        const validProfileIds = new Set(validProfiles.map(p => p.id));
+        const validProfileIds = new Set(validProfiles.map((p) => p.id));
         const orphanedMapIds = allMaps
-          .filter(m => !validProfileIds.has(m.created_by))
-          .map(m => m.id);
-        
+          .filter((m) => !validProfileIds.has(m.created_by))
+          .map((m) => m.id);
+
         if (orphanedMapIds.length > 0) {
           // Delete edges first
           const { error: edgeError } = await supabaseAdmin
             .from('edges')
             .delete()
             .in('map_id', orphanedMapIds);
-          
+
           if (!edgeError) results.orphanedEdgesDeleted = orphanedMapIds.length;
-          
+
           // Delete nodes
           const { error: nodeError } = await supabaseAdmin
             .from('nodes')
             .delete()
             .in('map_id', orphanedMapIds);
-          
+
           if (!nodeError) results.orphanedNodesDeleted = orphanedMapIds.length;
-          
+
           // Delete maps
           const { error: mapError } = await supabaseAdmin
             .from('maps')
             .delete()
             .in('id', orphanedMapIds);
-          
+
           if (!mapError) {
             results.orphanedMapsDeleted = orphanedMapIds.length;
             logger.info(`Deleted ${orphanedMapIds.length} orphaned maps`);

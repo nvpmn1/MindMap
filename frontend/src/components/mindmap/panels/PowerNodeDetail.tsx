@@ -270,7 +270,7 @@ const OverviewTab: React.FC<{
       </FieldGroup>
 
       {/* Due Date */}
-      {(data.type === 'task' || data.type === 'milestone') && (
+      {data.type === 'task' && (
         <FieldGroup label="Data Limite">
           <input
             type="date"
