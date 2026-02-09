@@ -7,7 +7,24 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ============================================
--- 1. TABELA: workspaces
+-- 1. TABELA: profiles (SEM DEPENDÊNCIAS - PRIMEIRA!)
+-- ============================================
+CREATE TABLE IF NOT EXISTS profiles (
+    id UUID PRIMARY KEY,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    display_name VARCHAR(100),
+    avatar_url TEXT,
+    color VARCHAR(7) DEFAULT '#6366f1',
+    preferences JSONB DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_profiles_email ON profiles(email);
+COMMENT ON TABLE profiles IS 'Perfil visual do usuário (nome, avatar, cor)';
+
+-- ============================================
+-- 2. TABELA: workspaces (depende de profiles)
 -- ============================================
 CREATE TABLE IF NOT EXISTS workspaces (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -23,7 +40,7 @@ CREATE INDEX idx_workspaces_name ON workspaces(name);
 COMMENT ON TABLE workspaces IS 'Espaços de trabalho compartilhados entre membros';
 
 -- ============================================
--- 2. TABELA: workspace_members
+-- 3. TABELA: workspace_members (depende de workspaces + profiles)
 -- ============================================
 CREATE TABLE IF NOT EXISTS workspace_members (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -37,23 +54,6 @@ CREATE TABLE IF NOT EXISTS workspace_members (
 CREATE INDEX idx_workspace_members_workspace ON workspace_members(workspace_id);
 CREATE INDEX idx_workspace_members_user ON workspace_members(user_id);
 COMMENT ON TABLE workspace_members IS 'Relacionamento entre usuários e workspaces';
-
--- ============================================
--- 3. TABELA: profiles
--- ============================================
-CREATE TABLE IF NOT EXISTS profiles (
-    id UUID PRIMARY KEY,
-    email VARCHAR(255) NOT NULL UNIQUE,
-    display_name VARCHAR(100),
-    avatar_url TEXT,
-    color VARCHAR(7) DEFAULT '#6366f1',
-    preferences JSONB DEFAULT '{}',
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_profiles_email ON profiles(email);
-COMMENT ON TABLE profiles IS 'Perfil visual do usuário (nome, avatar, cor)';
 
 -- ============================================
 -- 4. TABELA: maps
