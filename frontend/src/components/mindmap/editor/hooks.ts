@@ -771,9 +771,17 @@ export function useMapPersistence(
   }, [isRemoteMap, mapId, mapInfo, nodes, edges, setIsSaving, setLastSaved, isUuid]);
 
   // Auto-save with 10-second interval for batch operations
+  // But if there are unsaved (non-UUID) nodes, save IMMEDIATELY every 3s
   useEffect(() => {
     if (nodes.length === 0 || !mapId || !isRemoteMap) return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+
+    // Check if there are unsaved nodes (with temp IDs)
+    const unsavedNodes = nodes.filter((n) => !isUuid(n.id));
+    const hasUnsavedNodes = unsavedNodes.length > 0;
+
+    // If there are unsaved nodes, save every 3 seconds INSTEAD of 10
+    const saveInterval = hasUnsavedNodes ? 3000 : 10000;
 
     autoSaveTimerRef.current = setTimeout(async () => {
       if (isSavingRef.current) return;
@@ -781,11 +789,26 @@ export function useMapPersistence(
       try {
         const { advancedSaveQueue } = await import('@/lib/advanced-save-queue');
 
-        // Only queue node position updates + label/content changes
-        const uuidNodes = nodes.filter((n) => isUuid(n.id));
-
-        if (uuidNodes.length > 0) {
-          for (const node of uuidNodes) {
+        // Queue BOTH unsaved (node-create) and saved (node-update) nodes
+        for (const node of nodes) {
+          if (!isUuid(node.id)) {
+            // New node - queue create
+            advancedSaveQueue.enqueueOperation({
+              mapId,
+              type: 'node-create',
+              localId: node.id,
+              payload: {
+                id: node.id,
+                map_id: mapId,
+                type: node.data.type || 'idea',
+                label: node.data.label || 'Untitled',
+                content: node.data.description || '',
+                position_x: node.position.x || 0,
+                position_y: node.position.y || 0,
+              },
+            });
+          } else {
+            // Existing node - queue update
             advancedSaveQueue.enqueueOperation({
               mapId,
               type: 'node-update',
@@ -799,17 +822,59 @@ export function useMapPersistence(
               },
             });
           }
-          setLastSaved(new Date());
         }
+
+        // Queue edge creates
+        for (const edge of edges) {
+          if (isUuid(edge.source) && isUuid(edge.target)) {
+            advancedSaveQueue.enqueueOperation({
+              mapId,
+              type: 'edge-create',
+              payload: {
+                map_id: mapId,
+                source_id: edge.source,
+                target_id: edge.target,
+              },
+            });
+          }
+        }
+
+        setLastSaved(new Date());
       } catch (err) {
         console.error('[AutoSave] Error:', err);
       }
-    }, 10000); // 10 second interval for batch auto-save
+    }, saveInterval);
 
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
   }, [nodes, edges, mapId, isRemoteMap, setLastSaved, isUuid]);
+
+  // Before unload: force save to prevent data loss when user leaves page
+  useEffect(() => {
+    if (!isRemoteMap || !mapId) return;
+
+    const handleBeforeUnload = async (e: BeforeUnloadEvent) => {
+      // Check if there are unsaved changes
+      const hasUnsavedNodes = nodes.some((n) => !isUuid(n.id));
+      if (nodes.length > 0 || hasUnsavedNodes) {
+        try {
+          const { advancedSaveQueue } = await import('@/lib/advanced-save-queue');
+          console.log('[BeforeUnload] Forcing queue sync before leaving page...');
+          // Force all pending operations to sync immediately
+          await advancedSaveQueue.forceSync();
+        } catch (err) {
+          console.error('[BeforeUnload] Sync failed, but continuing unload:', err);
+        }
+        // Show browser warning
+        e.preventDefault();
+        e.returnValue = 'Salvando suas alterações...';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isRemoteMap, mapId, nodes, isUuid]);
 
   // Initial load
   useEffect(() => {
