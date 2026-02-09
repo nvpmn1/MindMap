@@ -22,7 +22,9 @@
     "clean": "npm run clean:backend && npm run clean:frontend",
     "clean:backend": "cd backend && rm -rf node_modules dist",
     "clean:frontend": "cd frontend && rm -rf node_modules dist .vite",
-    "clean:all": "npm run clean && rm -rf node_modules"
+    "clean:all": "npm run clean && rm -rf node_modules",
+    "start": "cd backend && node dist/index.js",
+    "postinstall": "cd backend && npm install && npm run build || true"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
