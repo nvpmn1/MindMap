@@ -681,7 +681,7 @@ export function useMapPersistence(
       if (isRemoteMap) {
         // Load the advancedSaveQueue dynamically to queue all operations
         const { advancedSaveQueue } = await import('@/lib/advanced-save-queue');
-        
+
         // Queue all operations at once - the queue will handle batching, retries, etc
         // Map update
         if (mapInfo?.title) {
@@ -768,16 +768,7 @@ export function useMapPersistence(
       setIsSaving(false);
       isSavingRef.current = false;
     }
-  }, [
-    isRemoteMap,
-    mapId,
-    mapInfo,
-    nodes,
-    edges,
-    setIsSaving,
-    setLastSaved,
-    isUuid,
-  ]);
+  }, [isRemoteMap, mapId, mapInfo, nodes, edges, setIsSaving, setLastSaved, isUuid]);
 
   // Auto-save with 10-second interval for batch operations
   useEffect(() => {

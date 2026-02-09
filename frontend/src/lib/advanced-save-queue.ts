@@ -135,7 +135,9 @@ class AdvancedSaveQueue {
   /**
    * Queue a new operation
    */
-  enqueueOperation(op: Omit<QueuedOperation, 'id' | 'retries' | 'maxRetries' | 'createdAt'>): string {
+  enqueueOperation(
+    op: Omit<QueuedOperation, 'id' | 'retries' | 'maxRetries' | 'createdAt'>
+  ): string {
     const id = `op_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const queuedOp: QueuedOperation = {
       ...op,
@@ -463,6 +465,25 @@ class AdvancedSaveQueue {
    */
   async forceSync(): Promise<void> {
     await this.processQueue();
+  }
+
+  /**
+   * Cancel all pending operations for a specific map
+   * Call this when a map is deleted to prevent orphaned operations
+   */
+  cancelMapQueue(mapId: string): number {
+    let canceledCount = 0;
+
+    // Remove from in-memory queue
+    for (const [opId, op] of this.queue) {
+      if (op.mapId === mapId) {
+        this.queue.delete(opId);
+        canceledCount++;
+        this.deletePersistedOperation(opId);
+      }
+    }
+
+    return canceledCount;
   }
 
   /**

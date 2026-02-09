@@ -1114,6 +1114,13 @@ function NeuralMapEditorInner() {
         return;
       }
 
+      // Cancel any pending save operations for this map
+      const { advancedSaveQueue } = await import('@/lib/advanced-save-queue');
+      const canceled = advancedSaveQueue.cancelMapQueue(mapId);
+      if (canceled > 0) {
+        console.log(`[Delete] Canceled ${canceled} pending operations for map ${mapId}`);
+      }
+
       toast.success('Mapa excluído com sucesso! Redirecionando...', { duration: 2000 });
 
       // Redirect after a brief delay so user sees the success message

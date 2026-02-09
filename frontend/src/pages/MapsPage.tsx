@@ -144,6 +144,13 @@ export function MapsPage() {
       // IMMEDIATELY remove from local state (instant UI feedback)
       setMaps((prev) => prev.filter((m) => m.id !== mapId));
 
+      // Cancel any pending save operations for this map
+      const { advancedSaveQueue } = await import('@/lib/advanced-save-queue');
+      const canceled = advancedSaveQueue.cancelMapQueue(mapId);
+      if (canceled > 0) {
+        console.log(`[Delete] Canceled ${canceled} pending operations for map ${mapId}`);
+      }
+
       // Delete via API with retry
       const result = await robustMapDelete.queueDelete(mapId);
 

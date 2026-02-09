@@ -8,7 +8,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
-import { advancedSaveQueue, type SaveStatus, type QueuedOperation } from '@/lib/advanced-save-queue';
+import {
+  advancedSaveQueue,
+  type SaveStatus,
+  type QueuedOperation,
+} from '@/lib/advanced-save-queue';
 import { mapsApi, nodesApi } from '@/lib/api';
 import type { PowerNode, PowerEdge, MapInfo } from '@/components/mindmap/editor/types';
 

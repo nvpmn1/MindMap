@@ -111,13 +111,13 @@ const {
   queueNodeUpdates,    // Atualiza vários nós
   queueEdgeCreate,     // Cria uma aresta
   queueEdgeDelete,     // Deleta uma aresta
-  
+
   // Status em tempo real
   saveStatus,          // { queueLength, isSaving, failedOps... }
   lastSaved,           // Data do último sucesso
   isSaving,            // Está processando agora?
   queueLength,         // Quantas ops na fila?
-  
+
   // Utilidades
   forceSyncNow(),      // Salvar imediatamente (Ctrl+S)
   getIdMapping(),      // Resolver local IDs → server UUIDs
@@ -125,6 +125,7 @@ const {
 ```
 
 **Monitoramento automático**:
+
 - Verifica status a cada 500ms
 - Atualiza `lastSaved` timestamp
 - Notifica componentes de mudanças
@@ -137,19 +138,20 @@ Agora muito mais leve:
 // Auto-save a cada 10 segundos (não mais debounce)
 useEffect(() => {
   const timer = setTimeout(async () => {
-    const { advancedSaveQueue } = 
-      await import('@/lib/advanced-save-queue');
-    
+    const { advancedSaveQueue } = await import('@/lib/advanced-save-queue');
+
     // Enfileira node updates + edge creates
     for (const node of nodes) {
       advancedSaveQueue.enqueueOperation({
         mapId,
         type: 'node-update',
-        payload: { /* dados */ }
+        payload: {
+          /* dados */
+        },
       });
     }
   }, 10000);
-  
+
   return () => clearTimeout(timer);
 }, [nodes, edges, mapId]);
 
@@ -162,6 +164,7 @@ const saveMap = useCallback(async () => {
 ```
 
 **Benefícios**:
+
 - Zero chamadas API sequenciais
 - Tudo processado em background
 - Usuário não vê travamentos
@@ -187,6 +190,7 @@ const saveMap = useCallback(async () => {
 ```
 
 **Detalhes ao pairar**:
+
 - Tipo de operações pendentes
 - Número de retries
 - Últimos erros ocorridos
@@ -198,20 +202,21 @@ const saveMap = useCallback(async () => {
 
 ### Antes vs Depois
 
-| Métrica | Antes | Depois | Melhoria |
-|---------|-------|--------|----------|
-| **Intervalo de save** | 5s (debounce) | 10s (batch) | 2x batch |
-| **Operações/ciclo** | 1-5 (débil) | 50+ (rápido) | 10x+ |
-| **Retries** | Não tinha | 4x com backoff | Robusto |
-| **Persistência** | localStorage | IndexedDB | Durável |
-| **Chamadas API** | 20/ciclo (wasteful) | 4-6/ciclo (otimizado) | 75-80% menos |
-| **Tempo resposta** | 3-5s espera | <100ms (enqueue) | 30-50x mais rápido |
+| Métrica               | Antes               | Depois                | Melhoria           |
+| --------------------- | ------------------- | --------------------- | ------------------ |
+| **Intervalo de save** | 5s (debounce)       | 10s (batch)           | 2x batch           |
+| **Operações/ciclo**   | 1-5 (débil)         | 50+ (rápido)          | 10x+               |
+| **Retries**           | Não tinha           | 4x com backoff        | Robusto            |
+| **Persistência**      | localStorage        | IndexedDB             | Durável            |
+| **Chamadas API**      | 20/ciclo (wasteful) | 4-6/ciclo (otimizado) | 75-80% menos       |
+| **Tempo resposta**    | 3-5s espera         | <100ms (enqueue)      | 30-50x mais rápido |
 
 ### Exemplos reais
 
 **Cenário 1: Editar 10 nós rapidamente**
 
 Antes:
+
 ```
 [0s]   Edita nó 1 → Debounce
 [1s]   Edita nó 2 → Reset debounce
@@ -229,6 +234,7 @@ Total: 13 segundos de espera
 ```
 
 Depois:
+
 ```
 [0s]   Edita nó 1 → Enfileira
 [0.1s] Edita nó 2 → Enfileira
@@ -244,6 +250,7 @@ Total: <1s percebido, processado em background
 **Cenário 2: Salvar com Ctrl+S durante edição**
 
 Antes:
+
 ```
 Clica Ctrl+S → Inicia save sequencial
   → Atualiza metadata (1 API call)
@@ -254,6 +261,7 @@ Espera 8-12 segundos... 😠
 ```
 
 Depois:
+
 ```
 Clica Ctrl+S → Enfileira tudo
   → forceSync() processa imediatamente
@@ -289,6 +297,7 @@ Queue exibe erro ao usuário
 ```
 
 **Código**:
+
 ```typescript
 calculateBackoff(retryCount: number): number {
   // 500ms * 2^(retryCount-1)
@@ -380,7 +389,7 @@ const handleCreateMany = async () => {
 ```typescript
 // Enquanto arrasta:
 onNodeDragStop = (node) => {
-  setNodes([...updatedNodes]);  // Atualiza UI imediatamente
+  setNodes([...updatedNodes]); // Atualiza UI imediatamente
   // Não enfileira ainda (espera por consolidação)
 };
 
@@ -422,7 +431,7 @@ Resultado: Perdeu 0 dados! ✨
 
 window.beforeunload = async () => {
   // Hook de cleanup detecta pendências
-  await advancedSaveQueue.forceSync();  // Força agora
+  await advancedSaveQueue.forceSync(); // Força agora
   // IndexedDB já salvou tudo
 };
 
@@ -457,22 +466,15 @@ import { EnhancedSaveStatus } from '@/components/...';
 
 const MyHeader = () => {
   const { saveStatus, lastSaved } = useAdvancedSave({ mapId });
-  
-  return (
-    <EnhancedSaveStatus 
-      status={saveStatus} 
-      lastSaved={lastSaved}
-      showDetails={true}
-    />
-  );
+
+  return <EnhancedSaveStatus status={saveStatus} lastSaved={lastSaved} showDetails={true} />;
 };
 ```
 
 ### Para operações customizadas:
 
 ```typescript
-const { queueMapUpdate, queueNodeUpdate, forceSyncNow } = 
-  useAdvancedSave({ mapId });
+const { queueMapUpdate, queueNodeUpdate, forceSyncNow } = useAdvancedSave({ mapId });
 
 // Atualizar mapa:
 handleTitleChange = (newTitle) => {
@@ -482,7 +484,7 @@ handleTitleChange = (newTitle) => {
 
 // Depois (quando quiser):
 handleSave = async () => {
-  await forceSyncNow();  // Processa imediatamente
+  await forceSyncNow(); // Processa imediatamente
 };
 ```
 
@@ -498,12 +500,12 @@ for (let i = 0; i < 5; i++) {
   queue.enqueueOperation({
     mapId: 'test',
     type: 'node-update',
-    payload: { id: 'n1', position_x: i * 10 }
+    payload: { id: 'n1', position_x: i * 10 },
   });
 }
 
 // Esperar processamento
-await new Promise(r => setTimeout(r, 11000));
+await new Promise((r) => setTimeout(r, 11000));
 
 // Verificar: apenas última posição foi salva
 assert(lastApiCall.payload.position_x === 40);
