@@ -19,6 +19,8 @@ export const DeleteStatusIndicator: React.FC<DeleteStatusIndicatorProps> = ({
     'deleting' | 'deleted' | 'error' | 'offline' | 'idle'
   >('idle');
   const [pendingCount, setPendingCount] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState(0);
+  const [lastResult, setLastResult] = useState<'idle' | 'deleted' | 'error'>('idle');
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
@@ -54,19 +56,34 @@ export const DeleteStatusIndicator: React.FC<DeleteStatusIndicatorProps> = ({
   // Monitor pending deletes
   useEffect(() => {
     const checkStatus = () => {
-      const count = robustMapDelete.getPendingCount();
-      setPendingCount(count);
+      const status = robustMapDelete.getStatus();
+      setPendingCount(status.pendingCount);
+      setLastUpdated(status.lastUpdated);
+      setLastResult(status.lastStatus);
 
-      if (!isOnline && count > 0) {
+      if (!isOnline && status.pendingCount > 0) {
         setDeleteStatus('offline');
         return;
       }
 
-      if (count > 0) {
+      if (status.pendingCount > 0) {
         setDeleteStatus('deleting');
-      } else {
-        setDeleteStatus('deleted');
+        return;
       }
+
+      // Only show "deleted" if there was a recent delete
+      const recentlyUpdated = status.lastUpdated && Date.now() - status.lastUpdated < 3000;
+      if (status.lastStatus === 'deleted' && recentlyUpdated) {
+        setDeleteStatus('deleted');
+        return;
+      }
+
+      if (status.lastStatus === 'error' && recentlyUpdated) {
+        setDeleteStatus('error');
+        return;
+      }
+
+      setDeleteStatus('idle');
     };
 
     const interval = setInterval(checkStatus, 2000);
@@ -77,13 +94,13 @@ export const DeleteStatusIndicator: React.FC<DeleteStatusIndicatorProps> = ({
 
   // Auto-hide after success
   useEffect(() => {
-    if (deleteStatus === 'deleted' && pendingCount === 0) {
+    if ((deleteStatus === 'deleted' || deleteStatus === 'error') && pendingCount === 0) {
       const timeout = setTimeout(() => {
         setDeleteStatus('idle');
       }, 2000);
       return () => clearTimeout(timeout);
     }
-  }, [deleteStatus, pendingCount]);
+  }, [deleteStatus, pendingCount, lastUpdated, lastResult]);
 
   const getStatusInfo = () => {
     switch (deleteStatus) {

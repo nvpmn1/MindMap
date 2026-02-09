@@ -40,6 +40,15 @@ class RobustMapsApi {
     description?: string;
   }): Promise<ApiResponse<MapRecord>> {
     const response = (await mapsApi.create(data)) as ApiResponse<MapRecord>;
+    if (response.success && response.data) {
+      try {
+        const cached = mapPersistence.getCachedMaps();
+        const next = [response.data, ...cached.filter((m) => m.id !== response.data!.id)];
+        mapPersistence.updateCache(next);
+      } catch {
+        // Non-critical cache update
+      }
+    }
     return response;
   }
 

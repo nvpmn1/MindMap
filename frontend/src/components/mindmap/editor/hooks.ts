@@ -556,23 +556,49 @@ export function useMapPersistence(
 
             setNodes(loadedNodes);
 
-            // If no nodes exist yet, create a root node
+            // If no nodes exist yet, create a root node on server
             if (loadedNodes.length === 0 && mapResponse.data) {
               const mapData = mapResponse.data as any;
-              const centralNode: PowerNode = {
-                id: 'central_1',
-                type: 'power',
-                position: { x: 0, y: 0 },
-                data: {
-                  label: mapData.title || 'Tema Central',
+              try {
+                const created = await nodesApi.create({
+                  map_id: mapId,
                   type: 'idea',
-                  description: '',
-                  ...DEFAULT_NODE_DATA,
-                  status: 'active',
-                  priority: 'high',
-                },
-              };
-              setNodes([centralNode]);
+                  label: mapData.title || 'Tema Central',
+                  content: '',
+                  position_x: 0,
+                  position_y: 0,
+                });
+                const node = created?.data as any;
+                const centralNode: PowerNode = {
+                  id: node?.id || 'central_1',
+                  type: 'power',
+                  position: { x: 0, y: 0 },
+                  data: {
+                    label: mapData.title || 'Tema Central',
+                    type: 'idea',
+                    description: '',
+                    ...DEFAULT_NODE_DATA,
+                    status: 'active',
+                    priority: 'high',
+                  },
+                };
+                setNodes([centralNode]);
+              } catch {
+                const centralNode: PowerNode = {
+                  id: 'central_1',
+                  type: 'power',
+                  position: { x: 0, y: 0 },
+                  data: {
+                    label: mapData.title || 'Tema Central',
+                    type: 'idea',
+                    description: '',
+                    ...DEFAULT_NODE_DATA,
+                    status: 'active',
+                    priority: 'high',
+                  },
+                };
+                setNodes([centralNode]);
+              }
             }
           }
 

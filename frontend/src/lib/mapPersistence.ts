@@ -8,6 +8,7 @@ import { mapsApi } from '@/lib/api';
 import { logger } from '@/lib/logger';
 
 const CACHE_KEY = 'mindmap_maps_cache';
+const LEGACY_CACHE_KEY = 'mindmap_maps';
 
 interface MapData {
   workspace_id: string;
@@ -65,7 +66,18 @@ class MapPersistenceManager {
   getCachedMaps(): MapRecord[] {
     try {
       const raw = localStorage.getItem(CACHE_KEY);
-      return raw ? JSON.parse(raw) : [];
+      if (raw) return JSON.parse(raw);
+
+      // Migrate legacy cache if present
+      const legacy = localStorage.getItem(LEGACY_CACHE_KEY);
+      if (legacy) {
+        const parsed = JSON.parse(legacy) as MapRecord[];
+        localStorage.setItem(CACHE_KEY, JSON.stringify(parsed));
+        localStorage.removeItem(LEGACY_CACHE_KEY);
+        return Array.isArray(parsed) ? parsed : [];
+      }
+
+      return [];
     } catch {
       return [];
     }
@@ -90,6 +102,7 @@ class MapPersistenceManager {
   clearCache(): void {
     try {
       localStorage.removeItem(CACHE_KEY);
+      localStorage.removeItem(LEGACY_CACHE_KEY);
     } catch {
       // Not critical
     }

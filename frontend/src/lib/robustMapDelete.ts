@@ -9,10 +9,18 @@ import { mapPersistence } from '@/lib/mapPersistence';
 const MAX_RETRIES = 3;
 
 class RobustMapDeleteManager {
+  private pendingCount = 0;
+  private lastStatus: 'idle' | 'deleted' | 'error' = 'idle';
+  private lastUpdated = 0;
+
   /**
    * Delete a map via the backend API with retry
    */
   async queueDelete(mapId: string): Promise<{ success: boolean; error?: string }> {
+    this.pendingCount += 1;
+    this.lastStatus = 'idle';
+    this.lastUpdated = Date.now();
+
     // Remove from local cache immediately for instant UI feedback
     mapPersistence.removeFromCache(mapId);
 
@@ -22,6 +30,9 @@ class RobustMapDeleteManager {
         const response = await mapsApi.delete(mapId);
         if (response.success || (response as any).message) {
           console.log('[Delete] Map deleted:', mapId);
+          this.pendingCount = Math.max(0, this.pendingCount - 1);
+          this.lastStatus = 'deleted';
+          this.lastUpdated = Date.now();
           return { success: true };
         }
         lastError = (response as any)?.error?.message || 'Delete failed';
@@ -30,6 +41,9 @@ class RobustMapDeleteManager {
         // If 404, map is already gone - that's fine
         if (err?.statusCode === 404) {
           console.log('[Delete] Map already gone:', mapId);
+          this.pendingCount = Math.max(0, this.pendingCount - 1);
+          this.lastStatus = 'deleted';
+          this.lastUpdated = Date.now();
           return { success: true };
         }
         // Wait before retry
@@ -40,11 +54,22 @@ class RobustMapDeleteManager {
     }
 
     console.error('[Delete] Failed after retries:', mapId, lastError);
+    this.pendingCount = Math.max(0, this.pendingCount - 1);
+    this.lastStatus = 'error';
+    this.lastUpdated = Date.now();
     return { success: false, error: lastError };
   }
 
   getPendingCount(): number {
-    return 0;
+    return this.pendingCount;
+  }
+
+  getStatus(): { pendingCount: number; lastStatus: 'idle' | 'deleted' | 'error'; lastUpdated: number } {
+    return {
+      pendingCount: this.pendingCount,
+      lastStatus: this.lastStatus,
+      lastUpdated: this.lastUpdated,
+    };
   }
 
   async forceSyncNow(): Promise<void> {

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/stores/authStore';
 import { robustMapsApi } from '@/lib/robustMapsApi';
+import { mapPersistence } from '@/lib/mapPersistence';
 import { robustMapDelete } from '@/lib/robustMapDelete';
 import { formatRelativeTime } from '@/lib/utils';
 import { DeleteStatusIndicator } from '@/components/mindmap/layout/DeleteStatusIndicator';
@@ -63,32 +64,40 @@ export function MapsPage() {
       setIsLoading(true);
       const workspaceId = workspaces[0]?.id;
 
-      if (workspaceId) {
-        try {
-          const response = await robustMapsApi.list({
-            workspace_id: workspaceId,
-            limit: 100,
-            offset: 0,
-          });
-          const data = (response.data as any[]) || [];
-          const normalized = data.map((map) => ({
-            id: map.id,
-            title: map.title,
-            description: map.description || null,
-            created_at: map.created_at || map.updated_at || new Date().toISOString(),
-            updated_at: map.updated_at || map.created_at || new Date().toISOString(),
-            nodes_count: map._count?.count || map.nodes_count || 0,
-          })) as MapItem[];
-          setMaps(normalized);
-          setIsLoading(false);
-          return;
-        } catch (error) {
-          console.warn('Failed to load from API, trying localStorage:', error);
-        }
+      // Show cached maps immediately for better UX
+      const cached = mapPersistence.getCachedMaps();
+      if (cached.length > 0) {
+        const normalized = cached.map((map) => ({
+          id: map.id,
+          title: map.title,
+          description: map.description || null,
+          created_at: map.created_at || map.updated_at || new Date().toISOString(),
+          updated_at: map.updated_at || map.created_at || new Date().toISOString(),
+          nodes_count: (map as any)._count?.count || (map as any).nodes_count || 0,
+        })) as MapItem[];
+        setMaps(normalized);
       }
 
-      const stored = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
-      setMaps(stored);
+      if (!workspaceId) {
+        setIsLoading(false);
+        return;
+      }
+
+      const response = await robustMapsApi.list({
+        workspace_id: workspaceId,
+        limit: 100,
+        offset: 0,
+      });
+      const data = (response.data as any[]) || [];
+      const normalized = data.map((map) => ({
+        id: map.id,
+        title: map.title,
+        description: map.description || null,
+        created_at: map.created_at || map.updated_at || new Date().toISOString(),
+        updated_at: map.updated_at || map.created_at || new Date().toISOString(),
+        nodes_count: map._count?.count || map.nodes_count || 0,
+      })) as MapItem[];
+      setMaps(normalized);
       setIsLoading(false);
     } catch (error) {
       console.error('Critical error loading maps:', error);
