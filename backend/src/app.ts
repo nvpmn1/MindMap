@@ -47,9 +47,10 @@ const corsOptions = {
     origin: string | undefined,
     callback: (err: Error | null, allow?: boolean) => void
   ) {
-    // In production, only allow configured origins
+    // In production, allow configured origins + all Vercel preview URLs
     if (env.NODE_ENV === 'production') {
-      const isAllowed = !origin || allowedOrigins.includes(origin);
+      const isVercelPreview = origin?.includes('.vercel.app');
+      const isAllowed = !origin || isVercelPreview || allowedOrigins.includes(origin);
       if (isAllowed) {
         callback(null, true);
       } else {
@@ -57,9 +58,11 @@ const corsOptions = {
         callback(new Error('Not allowed by CORS policy'));
       }
     } else {
-      // In development, also allow localhost
+      // In development, also allow localhost and Vercel
+      const isVercelPreview = origin?.includes('.vercel.app');
       const isAllowed =
         !origin ||
+        isVercelPreview ||
         allowedOrigins.includes(origin) ||
         origin?.includes('localhost') ||
         origin?.includes('127.0.0.1');
