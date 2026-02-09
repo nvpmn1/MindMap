@@ -141,13 +141,7 @@ router.post(
       const nodes = nodeIds.map((nodeId, idx) => ({
         id: nodeId,
         map_id: mapId,
-        label: [
-          'Central Thought',
-          'Idea 1',
-          'Idea 2',
-          'Idea 3',
-          'Conclusion',
-        ][idx],
+        label: ['Central Thought', 'Idea 1', 'Idea 2', 'Idea 3', 'Conclusion'][idx],
         content: `Node ${idx + 1} content`,
         position_x: 100 + idx * 150,
         position_y: 100 + (idx % 2) * 100,

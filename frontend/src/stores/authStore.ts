@@ -4,9 +4,9 @@ import { authApi } from '@/lib/api';
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const isUuid = (value?: string | null) => !!value && UUID_REGEX.test(value);
 const generateUuid = () =>
-  (globalThis.crypto && 'randomUUID' in globalThis.crypto
+  globalThis.crypto && 'randomUUID' in globalThis.crypto
     ? globalThis.crypto.randomUUID()
-    : `00000000-0000-4000-8000-${Math.random().toString(16).slice(2, 14)}`);
+    : `00000000-0000-4000-8000-${Math.random().toString(16).slice(2, 14)}`;
 
 interface User {
   id: string;

@@ -68,6 +68,7 @@ import {
 } from '../components/mindmap/menus/NeuralContextMenu';
 import { NeuralLoadingScreen } from '../components/NeuralLoadingScreen';
 import { robustMapDelete } from '../lib/robustMapDelete';
+import { robustMapSave } from '../lib/robustMapSave';
 
 // ─── Node & Edge type registrations ────────────────────────────────────────
 
@@ -575,7 +576,6 @@ function NeuralMapEditorInner() {
 
         // Also queue save to robust system (non-blocking)
         try {
-          const { robustMapSave } = await import('@/lib/robustMapSave');
           robustMapSave.queueSave(id, cleanNodes, e, m).catch(() => {});
         } catch {
           // Silent fail on robust save during unload

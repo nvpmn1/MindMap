@@ -96,10 +96,7 @@ class ApiClient {
   /**
    * Main fetch method with retry logic and error handling
    */
-  private async fetch<T>(
-    endpoint: string,
-    options: FetchOptions = {}
-  ): Promise<ApiResponse<T>> {
+  private async fetch<T>(endpoint: string, options: FetchOptions = {}): Promise<ApiResponse<T>> {
     const { authenticated = true, retries = MAX_RETRIES, ...fetchOptions } = options;
     const method = (fetchOptions.method || 'GET').toUpperCase();
 
@@ -153,12 +150,20 @@ class ApiClient {
       }
 
       if (!response.ok) {
-        // Handle 409 Conflict status specifically (e.g., duplicate edges)
+        // Handle 409 Conflict (duplicate edges, etc.) - not a real error
         if (response.status === 409) {
-          const apiResponse: ApiResponse<T> = typeof data === 'object' 
-            ? data 
-            : { success: false, error: data };
+          const apiResponse: ApiResponse<T> =
+            typeof data === 'object' ? data : { success: false, error: { code: 'CONFLICT', message: 'Conflict' } };
           return apiResponse;
+        }
+
+        // Handle 404 Not Found
+        if (response.status === 404) {
+          throw new ApiError(
+            typeof data === 'object' ? data.error?.message || 'Not found' : 'Not found',
+            'NOT_FOUND',
+            404
+          );
         }
 
         const errorMessage =
@@ -186,12 +191,16 @@ class ApiClient {
       return apiResponse;
     } catch (error) {
       // Only retry on network errors, not application errors (400/500)
-      const isNetworkError = error instanceof TypeError || 
-                            (error instanceof DOMException && error.name === 'AbortError');
-      const isServerError = error instanceof ApiError && (error.statusCode === 0 || error.statusCode >= 500);
-      
+      const isNetworkError =
+        error instanceof TypeError ||
+        (error instanceof DOMException && error.name === 'AbortError');
+      const isServerError =
+        error instanceof ApiError && (error.statusCode === 0 || error.statusCode >= 500);
+
       if (retries > 0 && (isNetworkError || isServerError)) {
-        console.warn(`⚠️ Request failed, retrying... (${MAX_RETRIES - retries + 1}/${MAX_RETRIES})`);
+        console.warn(
+          `⚠️ Request failed, retrying... (${MAX_RETRIES - retries + 1}/${MAX_RETRIES})`
+        );
         await this.sleep(RETRY_DELAY);
         return this.fetch<T>(endpoint, { ...options, retries: retries - 1 });
       }
@@ -231,7 +240,11 @@ class ApiClient {
   }
 
   // PATCH request
-  async patch<T>(endpoint: string, body?: unknown, options?: FetchOptions): Promise<ApiResponse<T>> {
+  async patch<T>(
+    endpoint: string,
+    body?: unknown,
+    options?: FetchOptions
+  ): Promise<ApiResponse<T>> {
     return this.fetch<T>(endpoint, {
       ...options,
       method: 'PATCH',
@@ -281,19 +294,16 @@ export const authApi = {
   refreshToken: (refreshToken: string) =>
     api.post('/api/auth/refresh', { refresh_token: refreshToken }, { authenticated: false }),
 
-  logout: () =>
-    api.post('/api/auth/logout'),
+  logout: () => api.post('/api/auth/logout'),
 
-  getMe: () =>
-    api.get('/api/auth/me'),
+  getMe: () => api.get('/api/auth/me'),
 
   updateProfile: (data: {
     display_name?: string;
     avatar_url?: string | null;
     color?: string;
     preferences?: Record<string, unknown>;
-  }) =>
-    api.patch('/api/auth/me', data),
+  }) => api.patch('/api/auth/me', data),
 };
 
 export const mapsApi = {
@@ -306,28 +316,25 @@ export const mapsApi = {
     return api.get(`/api/maps?${searchParams}`);
   },
 
-  get: (mapId: string) =>
-    api.get(`/api/maps/${mapId}`),
+  get: (mapId: string) => api.get(`/api/maps/${mapId}`),
 
   create: (data: { workspace_id: string; title: string; description?: string }) =>
     api.post('/api/maps', data),
 
-  update: (mapId: string, data: { title?: string; description?: string; settings?: Record<string, unknown> }) =>
-    api.patch(`/api/maps/${mapId}`, data),
+  update: (
+    mapId: string,
+    data: { title?: string; description?: string; settings?: Record<string, unknown> }
+  ) => api.patch(`/api/maps/${mapId}`, data),
 
-  delete: (mapId: string) =>
-    api.delete(`/api/maps/${mapId}`),
+  delete: (mapId: string) => api.delete(`/api/maps/${mapId}`),
 
-  duplicate: (mapId: string, title?: string) =>
-    api.post(`/api/maps/${mapId}/duplicate`, { title }),
+  duplicate: (mapId: string, title?: string) => api.post(`/api/maps/${mapId}/duplicate`, { title }),
 };
 
 export const nodesApi = {
-  listByMap: (mapId: string) =>
-    api.get(`/api/nodes/map/${mapId}`),
+  listByMap: (mapId: string) => api.get(`/api/nodes/map/${mapId}`),
 
-  get: (nodeId: string) =>
-    api.get(`/api/nodes/${nodeId}`),
+  get: (nodeId: string) => api.get(`/api/nodes/${nodeId}`),
 
   create: (data: {
     map_id: string;
@@ -337,51 +344,48 @@ export const nodesApi = {
     content?: string;
     position_x?: number;
     position_y?: number;
-  }) =>
-    api.post('/api/nodes', data),
+  }) => api.post('/api/nodes', data),
 
-  update: (nodeId: string, data: {
-    label?: string;
-    content?: string;
-    type?: string;
-    position_x?: number;
-    position_y?: number;
-    collapsed?: boolean;
-    style?: Record<string, unknown>;
-    data?: Record<string, unknown>;
-  }) =>
-    api.patch(`/api/nodes/${nodeId}`, data),
+  update: (
+    nodeId: string,
+    data: {
+      label?: string;
+      content?: string;
+      type?: string;
+      position_x?: number;
+      position_y?: number;
+      collapsed?: boolean;
+      style?: Record<string, unknown>;
+      data?: Record<string, unknown>;
+    }
+  ) => api.patch(`/api/nodes/${nodeId}`, data),
 
-  batchUpdate: (nodes: Array<{
-    id: string;
-    position_x?: number;
-    position_y?: number;
-    collapsed?: boolean;
-  }>) =>
-    api.patch('/api/nodes/batch', { nodes }),
+  batchUpdate: (
+    nodes: Array<{
+      id: string;
+      position_x?: number;
+      position_y?: number;
+      collapsed?: boolean;
+    }>
+  ) => api.patch('/api/nodes/batch', { nodes }),
 
-  delete: (nodeId: string, cascade = true) =>
-    api.delete(`/api/nodes/${nodeId}?cascade=${cascade}`),
+  delete: (nodeId: string, cascade = true) => api.delete(`/api/nodes/${nodeId}?cascade=${cascade}`),
 
   // Edges
-  getEdges: (mapId: string) =>
-    api.get(`/api/nodes/edges/map/${mapId}`),
+  getEdges: (mapId: string) => api.get(`/api/nodes/edges/map/${mapId}`),
 
   createEdge: (data: { map_id: string; source_id: string; target_id: string; type?: string }) =>
     api.post('/api/nodes/edges', data),
 
-  deleteEdge: (edgeId: string) =>
-    api.delete(`/api/nodes/edges/${edgeId}`),
+  deleteEdge: (edgeId: string) => api.delete(`/api/nodes/edges/${edgeId}`),
 
   // Comments
-  getComments: (nodeId: string) =>
-    api.get(`/api/nodes/${nodeId}/comments`),
+  getComments: (nodeId: string) => api.get(`/api/nodes/${nodeId}/comments`),
 
   addComment: (nodeId: string, content: string, mentions?: string[]) =>
     api.post(`/api/nodes/${nodeId}/comments`, { content, mentions }),
 
-  deleteComment: (commentId: string) =>
-    api.delete(`/api/nodes/comments/${commentId}`),
+  deleteComment: (commentId: string) => api.delete(`/api/nodes/comments/${commentId}`),
 };
 
 export const tasksApi = {
@@ -399,11 +403,9 @@ export const tasksApi = {
     return api.get(`/api/tasks?${searchParams}`);
   },
 
-  getKanban: (mapId: string) =>
-    api.get(`/api/tasks/kanban/${mapId}`),
+  getKanban: (mapId: string) => api.get(`/api/tasks/kanban/${mapId}`),
 
-  get: (taskId: string) =>
-    api.get(`/api/tasks/${taskId}`),
+  get: (taskId: string) => api.get(`/api/tasks/${taskId}`),
 
   create: (data: {
     node_id: string;
@@ -414,29 +416,28 @@ export const tasksApi = {
     assigned_to?: string;
     due_date?: string;
     tags?: string[];
-  }) =>
-    api.post('/api/tasks', data),
+  }) => api.post('/api/tasks', data),
 
-  update: (taskId: string, data: {
-    title?: string;
-    description?: string;
-    status?: string;
-    priority?: string;
-    assigned_to?: string | null;
-    due_date?: string | null;
-    tags?: string[];
-    checklist?: Array<{ id: string; text: string; done: boolean }>;
-  }) =>
-    api.patch(`/api/tasks/${taskId}`, data),
+  update: (
+    taskId: string,
+    data: {
+      title?: string;
+      description?: string;
+      status?: string;
+      priority?: string;
+      assigned_to?: string | null;
+      due_date?: string | null;
+      tags?: string[];
+      checklist?: Array<{ id: string; text: string; done: boolean }>;
+    }
+  ) => api.patch(`/api/tasks/${taskId}`, data),
 
   reorder: (tasks: Array<{ id: string; order_index: number; status?: string }>) =>
     api.patch('/api/tasks/reorder', { tasks }),
 
-  delete: (taskId: string) =>
-    api.delete(`/api/tasks/${taskId}`),
+  delete: (taskId: string) => api.delete(`/api/tasks/${taskId}`),
 
-  getStats: (workspaceId: string) =>
-    api.get(`/api/tasks/stats/${workspaceId}`),
+  getStats: (workspaceId: string) => api.get(`/api/tasks/stats/${workspaceId}`),
 };
 
 export const aiApi = {
@@ -446,31 +447,27 @@ export const aiApi = {
     parent_node_id?: string;
     context?: { existing_nodes?: Array<{ id: string; label: string }>; map_title?: string };
     options?: { count?: number; style?: string };
-  }) =>
-    api.post('/api/ai/generate', data),
+  }) => api.post('/api/ai/generate', data),
 
   expand: (data: {
     map_id: string;
     node_id: string;
     context: { node: { id: string; label: string; type: string; content?: string } };
     options?: { count?: number; direction?: string };
-  }) =>
-    api.post('/api/ai/expand', data),
+  }) => api.post('/api/ai/expand', data),
 
   summarize: (data: {
     map_id: string;
     context: { nodes: Array<{ id: string; label: string; type: string; content?: string }> };
     options?: { format?: string; length?: string };
-  }) =>
-    api.post('/api/ai/summarize', data),
+  }) => api.post('/api/ai/summarize', data),
 
   toTasks: (data: {
     map_id: string;
     node_ids: string[];
     context: { nodes: Array<{ id: string; label: string; type: string; content?: string }> };
     options?: { include_subtasks?: boolean };
-  }) =>
-    api.post('/api/ai/to-tasks', data),
+  }) => api.post('/api/ai/to-tasks', data),
 
   chat: (data: {
     map_id: string;
@@ -479,20 +476,16 @@ export const aiApi = {
       nodes?: Array<{ id: string; label: string }>;
       conversation_history?: Array<{ role: 'user' | 'assistant'; content: string }>;
     };
-  }) =>
-    api.post('/api/ai/chat', data),
+  }) => api.post('/api/ai/chat', data),
 
-  getHistory: (mapId: string) =>
-    api.get(`/api/ai/history/${mapId}`),
+  getHistory: (mapId: string) => api.get(`/api/ai/history/${mapId}`),
 
   applyRun: (runId: string, selectedItems?: number[]) =>
     api.post(`/api/ai/apply/${runId}`, { selected_items: selectedItems }),
 
-  getUsage: (period = '30d') =>
-    api.get(`/api/ai/usage?period=${period}`),
+  getUsage: (period = '30d') => api.get(`/api/ai/usage?period=${period}`),
 };
 
 export const resetApi = {
-  factoryReset: () =>
-    api.post('/api/reset/factory-reset', {}),
+  factoryReset: () => api.post('/api/reset/factory-reset', {}),
 };

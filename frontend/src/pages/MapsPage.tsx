@@ -5,7 +5,6 @@ import { useAuthStore } from '@/stores/authStore';
 import { robustMapsApi } from '@/lib/robustMapsApi';
 import { robustMapDelete } from '@/lib/robustMapDelete';
 import { formatRelativeTime } from '@/lib/utils';
-import { mapPersistence } from '@/lib/mapPersistence';
 import { DeleteStatusIndicator } from '@/components/mindmap/layout/DeleteStatusIndicator';
 import { MapCard } from '@/components/MapCard';
 import {
@@ -51,22 +50,13 @@ export function MapsPage() {
   const [maps, setMaps] = useState<MapItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState('');
-  const [syncStatus, setSyncStatus] = useState<number>(0);
+  const [syncStatus] = useState<number>(0);
   const [sortBy, setSortBy] = useState<SortBy>('updated');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
   useEffect(() => {
     loadMaps();
   }, [workspaces]);
-
-  // Monitor sync status
-  useEffect(() => {
-    const checkSync = setInterval(() => {
-      setSyncStatus(mapPersistence.getPendingCount());
-    }, 2000);
-
-    return () => clearInterval(checkSync);
-  }, []);
 
   const loadMaps = async () => {
     try {
@@ -114,53 +104,50 @@ export function MapsPage() {
 
   const handleCreateMap = async () => {
     const workspaceId = workspaces[0]?.id;
-    if (workspaceId) {
-      try {
-        // Use robust persistence system
-        const newMap = await mapPersistence.saveMapCritical({
-          workspace_id: workspaceId,
-          title: 'Novo Mapa Mental',
-          description: '',
-        });
+    if (!workspaceId) {
+      toast.error('Workspace não encontrado');
+      return;
+    }
 
-        // Auto-reload maps list
-        loadMaps();
+    try {
+      // Create map via backend API
+      const response = await robustMapsApi.create({
+        workspace_id: workspaceId,
+        title: 'Novo Mapa Mental',
+        description: '',
+      });
 
-        toast.success('Mapa criado com sucesso!', { duration: 3500 });
-        navigate(`/map/${newMap.id}`);
-        return;
-      } catch (err) {
-        console.error('Failed to create map:', err);
+      const created = response.data as any;
+      if (created?.id) {
+        toast.success('Mapa criado com sucesso!', { duration: 3000 });
+        navigate(`/map/${created.id}`);
+      } else {
         toast.error('Erro ao criar mapa');
       }
+    } catch (err) {
+      console.error('Failed to create map:', err);
+      toast.error('Erro ao criar mapa. Verifique a conexão.');
     }
   };
 
   const handleDeleteMap = async (mapId: string) => {
-    console.log('🗑️ User initiated delete for map:', mapId);
-
     try {
       // IMMEDIATELY remove from local state (instant UI feedback)
       setMaps((prev) => prev.filter((m) => m.id !== mapId));
 
-      // Use robust delete system (removes from localStorage AND syncs backend with retry)
+      // Delete via API with retry
       const result = await robustMapDelete.queueDelete(mapId);
 
-      if (!result.success) {
-        console.error('❌ Delete queueing failed:', result.error);
+      if (result.success) {
+        toast.success('Mapa excluído com sucesso!', { duration: 3000 });
+      } else {
         toast.error('Erro ao excluir: ' + (result.error || 'tente novamente'));
         // Reload to restore state
         await loadMaps();
-        return;
       }
-
-      console.log('✅ Delete queued successfully - UI updated immediately');
-      toast.success('Mapa excluído com sucesso!', { duration: 3000 });
     } catch (err) {
-      console.error('❌ Error in delete handler:', err);
+      console.error('Error in delete handler:', err);
       toast.error('Erro ao excluir mapa');
-
-      // Reload to restore state
       await loadMaps();
     }
   };

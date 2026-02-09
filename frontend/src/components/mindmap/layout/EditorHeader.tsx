@@ -36,6 +36,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { SaveStatusIndicator } from './SaveStatusIndicator';
+import { mapsApi } from '@/lib/api';
 import type { MapInfo, ViewMode, CollaboratorInfo, EditorSettings } from '../editor/types';
 
 interface EditorHeaderProps {
@@ -128,7 +129,6 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
         const toastId = toast.loading('Salvando título...', { duration: 5000 });
 
         // Call API to update map title
-        const { mapsApi } = await import('@/lib/api');
         await mapsApi.update(mapInfo.id, {
           title: currentTitle,
         });

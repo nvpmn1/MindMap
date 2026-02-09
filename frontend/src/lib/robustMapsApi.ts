@@ -1,16 +1,15 @@
-/**
- * Fixed Maps API Integration
- * Ensures maps are ALWAYS saved and synced with Supabase
+﻿/**
+ * Robust Maps API - Clean wrapper around backend API
+ * No localStorage fallbacks - all data goes through the API
  */
 
-import { mapsApi as baseApi } from '@/lib/api';
+import { mapsApi } from '@/lib/api';
 import { mapPersistence } from '@/lib/mapPersistence';
-import { logger } from '@/lib/logger';
 
 interface ApiResponse<T> {
   success: boolean;
   data?: T;
-  error?: string | null;
+  error?: any;
   pagination?: {
     total: number;
     limit: number;
@@ -33,237 +32,60 @@ interface MapRecord {
 
 class RobustMapsApi {
   /**
-   * Create a map with guaranteed persistence
+   * Create a map via the backend API
    */
   async create(data: {
     workspace_id: string;
     title: string;
     description?: string;
-    is_template?: boolean;
-    settings?: Record<string, unknown>;
   }): Promise<ApiResponse<MapRecord>> {
-    try {
-      console.log('🔵 Creating map with robust persistence:', data);
-
-      // Step 1: Try to save via backend API (which then saves to Supabase)
-      const response = (await Promise.race([
-        baseApi.create(data),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('API timeout')), 5000)),
-      ])) as ApiResponse<MapRecord>;
-
-      console.log('✅ Map created and saved to Supabase via API:', response);
-      return response;
-    } catch (apiError) {
-      console.warn('⚠️ API creation failed, using fallback:', apiError);
-
-      // Fallback: Use robust persistence layer
-      const savedMap = await mapPersistence.saveMapCritical(data);
-
-      logger.info('📋 Map saved to persistence layer:', savedMap);
-      return {
-        success: true,
-        data: savedMap,
-      };
-    }
+    const response = (await mapsApi.create(data)) as ApiResponse<MapRecord>;
+    return response;
   }
 
   /**
-   * List maps with cache fallback
+   * List maps from the backend API, with cache update
    */
   async list(query: {
     workspace_id: string;
     limit?: number;
     offset?: number;
   }): Promise<ApiResponse<MapRecord[]>> {
-    try {
-      console.log('📚 Fetching maps list:', query);
+    const response = (await mapsApi.list(query)) as ApiResponse<MapRecord[]>;
 
-      // Try API first with timeout
-      const response: ApiResponse<MapRecord[]> = await Promise.race([
-        baseApi.list(query) as Promise<ApiResponse<MapRecord[]>>,
-        new Promise<ApiResponse<MapRecord[]>>((_, reject) =>
-          setTimeout(() => reject(new Error('API timeout')), 5000)
-        ),
-      ]);
-
-      console.log('✅ Maps fetched from Supabase:', response);
-
-      // Update localStorage cache
-      if (response.data && Array.isArray(response.data)) {
-        localStorage.setItem('mindmap_maps', JSON.stringify(response.data));
-      }
-
-      return response;
-    } catch (err) {
-      console.warn('⚠️ API fetch failed, using cache:', err);
-
-      // Fallback to localStorage cache
-      let cached: MapRecord[] = [];
-      try {
-        const cached_raw = localStorage.getItem('mindmap_maps');
-        if (cached_raw) {
-          cached = JSON.parse(cached_raw) as MapRecord[];
-        }
-      } catch (parseErr) {
-        console.error('Error parsing cached maps:', parseErr);
-        cached = [];
-      }
-
-      if (cached.length > 0) {
-        console.log('📋 Using cached maps:', cached);
-        return {
-          success: true,
-          data: cached,
-          pagination: {
-            total: cached.length,
-            limit: query.limit || 20,
-            offset: query.offset || 0,
-            hasMore: false,
-          },
-        };
-      }
-
-      // Return empty if no cache either
-      return {
-        success: true,
-        data: [],
-        pagination: {
-          total: 0,
-          limit: query.limit || 20,
-          offset: query.offset || 0,
-          hasMore: false,
-        },
-      };
+    // Update cache for faster subsequent loads
+    if (response.success && response.data && Array.isArray(response.data)) {
+      mapPersistence.updateCache(response.data);
     }
+
+    return response;
   }
 
   /**
-   * Delete map with guaranteed sync and retry logic
+   * Delete a map via the backend API
    */
   async delete(mapId: string): Promise<ApiResponse<null>> {
-    let retries = 0;
-    const MAX_RETRIES = 3;
+    const response = (await mapsApi.delete(mapId)) as ApiResponse<null>;
 
-    while (retries < MAX_RETRIES) {
-      try {
-        console.log(`🗑️ Deleting map: ${mapId} (attempt ${retries + 1}/${MAX_RETRIES})`);
+    // Remove from local cache
+    mapPersistence.removeFromCache(mapId);
 
-        const response = (await Promise.race([
-          baseApi.delete(mapId),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('API timeout')), 5000)
-          ),
-        ])) as ApiResponse<null>;
-
-        // Success! Remove from localStorage AND return
-        let maps: MapRecord[] = [];
-        try {
-          const maps_raw = localStorage.getItem('mindmap_maps');
-          if (maps_raw) {
-            maps = JSON.parse(maps_raw) as MapRecord[];
-          }
-        } catch (parseErr) {
-          console.error('Error parsing maps for deletion:', parseErr);
-          maps = [];
-        }
-
-        const filtered = maps.filter((m) => m.id !== mapId);
-        localStorage.setItem('mindmap_maps', JSON.stringify(filtered));
-
-        // Remove from pending saves if exists
-        let pending: unknown[] = [];
-        try {
-          const pending_raw = localStorage.getItem('mindmap_pending_saves');
-          if (pending_raw) {
-            pending = JSON.parse(pending_raw) as unknown[];
-          }
-        } catch (parseErr) {
-          console.error('Error parsing pending saves:', parseErr);
-          pending = [];
-        }
-
-        const filteredPending = pending.filter((p: any) => p.id !== mapId);
-        localStorage.setItem('mindmap_pending_saves', JSON.stringify(filteredPending));
-
-        console.log('✅ Map deleted successfully:', mapId);
-        return response;
-      } catch (err) {
-        retries++;
-        console.warn(`⚠️ Delete attempt ${retries} failed:`, err);
-
-        if (retries < MAX_RETRIES) {
-          // Wait before retry
-          await new Promise((r) => setTimeout(r, 1000 * retries));
-        }
-      }
-    }
-
-    // Final fallback: at least remove from local cache
-    console.error('❌ Delete failed after all retries, removing from cache anyway');
-    let maps: MapRecord[] = [];
-    try {
-      const maps_raw = localStorage.getItem('mindmap_maps');
-      if (maps_raw) {
-        maps = JSON.parse(maps_raw) as MapRecord[];
-      }
-    } catch (parseErr) {
-      console.error('Error parsing maps:', parseErr);
-      maps = [];
-    }
-
-    const filtered = maps.filter((m) => m.id !== mapId);
-    localStorage.setItem('mindmap_maps', JSON.stringify(filtered));
-
-    // Also remove from pending
-    let pending: unknown[] = [];
-    try {
-      const pending_raw = localStorage.getItem('mindmap_pending_saves');
-      if (pending_raw) {
-        pending = JSON.parse(pending_raw) as unknown[];
-      }
-    } catch (parseErr) {
-      console.error('Error parsing pending saves:', parseErr);
-      pending = [];
-    }
-
-    const filteredPending = pending.filter((p: any) => p.id !== mapId);
-    localStorage.setItem('mindmap_pending_saves', JSON.stringify(filteredPending));
-
-    // Still return success because we cleaned cache
-    return {
-      success: true,
-      data: null,
-    };
+    return response;
   }
 
   /**
-   * Duplicate map
+   * Duplicate a map via the backend API
    */
   async duplicate(mapId: string): Promise<ApiResponse<MapRecord>> {
-    try {
-      console.log('📋 Duplicating map:', mapId);
-
-      const response = (await baseApi.duplicate(mapId)) as ApiResponse<MapRecord>;
-      console.log('✅ Map duplicated:', response);
-      return response;
-    } catch (err) {
-      console.warn('⚠️ Duplicate failed:', err);
-      throw err;
-    }
+    const response = (await mapsApi.duplicate(mapId)) as ApiResponse<MapRecord>;
+    return response;
   }
 
   /**
-   * Force sync pending changes
+   * Force sync - no-op since everything is API-based now
    */
   async forceSyncPending(): Promise<{ success: boolean; pending: number }> {
-    console.log('🔄 Force syncing pending saves...');
-    const pendingCount = mapPersistence.getPendingCount();
-    if (pendingCount > 0) {
-      console.log(`⏳ Waiting for ${pendingCount} saves to sync...`);
-      // Give some time for sync to complete
-      await new Promise((r) => setTimeout(r, 2000));
-    }
-    return { success: true, pending: pendingCount };
+    return { success: true, pending: 0 };
   }
 }
 

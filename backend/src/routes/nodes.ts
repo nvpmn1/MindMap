@@ -74,31 +74,7 @@ router.get(
 
     const { data: nodes, error } = await req.supabase!
       .from('nodes')
-      .select(`
-        *,
-        creator:profiles!nodes_created_by_fkey (
-          id,
-          display_name,
-          avatar_url,
-          color
-        ),
-        tasks (
-          id,
-          title,
-          status,
-          priority,
-          due_date,
-          assigned_to
-        ),
-        comments (count),
-        references (
-          id,
-          type,
-          url,
-          title,
-          thumbnail_url
-        )
-      `)
+      .select('*')
       .eq('map_id', mapId)
       .order('created_at', { ascending: true });
 
@@ -126,26 +102,7 @@ router.get(
 
     const { data: node, error } = await req.supabase!
       .from('nodes')
-      .select(`
-        *,
-        creator:profiles!nodes_created_by_fkey (
-          id,
-          display_name,
-          avatar_url,
-          color
-        ),
-        tasks (*),
-        comments (
-          *,
-          user:profiles!comments_user_id_fkey (
-            id,
-            display_name,
-            avatar_url,
-            color
-          )
-        ),
-        references (*)
-      `)
+      .select('*')
       .eq('id', nodeId)
       .single();
 
@@ -207,15 +164,7 @@ router.post(
       const { data: node, error } = await req.supabase!
         .from('nodes')
         .insert(nodeData)
-        .select(`
-          *,
-          creator:profiles!nodes_created_by_fkey (
-            id,
-            display_name,
-            avatar_url,
-            color
-          )
-        `)
+        .select('*')
         .single();
 
       if (error) {
@@ -281,15 +230,7 @@ router.patch(
       .from('nodes')
       .update(updateData)
       .eq('id', nodeId)
-      .select(`
-        *,
-        creator:profiles!nodes_created_by_fkey (
-          id,
-          display_name,
-          avatar_url,
-          color
-        )
-      `)
+      .select('*')
       .single();
 
     if (error || !node) {
@@ -561,15 +502,7 @@ router.get(
 
     const { data: comments, error } = await req.supabase!
       .from('comments')
-      .select(`
-        *,
-        user:profiles!comments_user_id_fkey (
-          id,
-          display_name,
-          avatar_url,
-          color
-        )
-      `)
+      .select('*')
       .eq('node_id', nodeId)
       .order('created_at', { ascending: true });
 
@@ -608,15 +541,7 @@ router.post(
         mentions,
         parent_comment_id,
       })
-      .select(`
-        *,
-        user:profiles!comments_user_id_fkey (
-          id,
-          display_name,
-          avatar_url,
-          color
-        )
-      `)
+      .select('*')
       .single();
 
     if (error) {
