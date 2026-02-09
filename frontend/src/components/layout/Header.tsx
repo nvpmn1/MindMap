@@ -14,6 +14,7 @@ import {
   Loader2,
   X,
 } from 'lucide-react';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { cn, formatRelativeTime } from '@/lib/utils';
 
@@ -36,7 +37,7 @@ export function Header() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, workspaces } = useAuthStore();
-  
+
   // Search state
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,7 +47,7 @@ export function Header() {
     maps: [],
     nodes: [],
   });
-  
+
   const searchRef = useRef<HTMLDivElement>(null);
   const nodesCacheRef = useRef(new Map<string, any[]>());
   const lastQueryRef = useRef('');
@@ -198,8 +199,7 @@ export function Header() {
                   nodeResults.push({
                     id: node.id,
                     label: node.data?.label ?? node.label ?? 'Nó',
-                    content:
-                      node.data?.content ?? node.content ?? node.data?.description ?? '',
+                    content: node.data?.content ?? node.content ?? node.data?.description ?? '',
                     mapId: m.id,
                     mapTitle: m.title || 'Mapa',
                   });
@@ -281,10 +281,7 @@ export function Header() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const totalResults = useMemo(
-    () => results.maps.length + results.nodes.length,
-    [results]
-  );
+  const totalResults = useMemo(() => results.maps.length + results.nodes.length, [results]);
 
   return (
     <header className="h-16 border-b border-white/[0.06] bg-gradient-to-r from-[#0A0E18] via-[#0D1323] to-[#0A0E18] backdrop-blur-xl flex items-center px-6 gap-6">
@@ -301,9 +298,7 @@ export function Header() {
             <span
               className={cn(
                 'text-sm whitespace-nowrap',
-                i === config.crumbs.length - 1
-                  ? 'text-white font-semibold'
-                  : 'text-slate-500'
+                i === config.crumbs.length - 1 ? 'text-white font-semibold' : 'text-slate-500'
               )}
             >
               {crumb}
@@ -354,10 +349,7 @@ export function Header() {
               if (e.key === 'Escape') {
                 e.currentTarget.blur();
                 setSearchOpen(false);
-              } else if (
-                e.key === 'Enter' &&
-                results.maps.length > 0
-              ) {
+              } else if (e.key === 'Enter' && results.maps.length > 0) {
                 e.preventDefault();
                 navigate(`/map/${results.maps[0].id}`);
                 setSearchOpen(false);
@@ -398,7 +390,11 @@ export function Header() {
               <div className="px-5 py-4 border-b border-white/[0.05] flex items-center justify-between flex-shrink-0 bg-gradient-to-r from-white/[0.02] to-transparent">
                 <div>
                   <p className="text-xs text-slate-600 font-bold uppercase tracking-wider">
-                    {isSearching ? '🔍 Buscando...' : totalResults > 0 ? `${totalResults} resultado(s)` : '✨ Pronto'}
+                    {isSearching
+                      ? '🔍 Buscando...'
+                      : totalResults > 0
+                        ? `${totalResults} resultado(s)`
+                        : '✨ Pronto'}
                   </p>
                   {searchQuery && (
                     <p className="text-xs text-slate-500 mt-1">
@@ -429,9 +425,7 @@ export function Header() {
                       Nenhum resultado para{' '}
                       <span className="text-white font-medium">"{searchQuery}"</span>
                     </p>
-                    <p className="text-xs text-slate-700 mt-2">
-                      Tente outro termo de busca
-                    </p>
+                    <p className="text-xs text-slate-700 mt-2">Tente outro termo de busca</p>
                   </div>
                 )}
 
@@ -441,7 +435,8 @@ export function Header() {
                     <div className="px-5 pt-4 pb-2">
                       <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-600">
                         <Network className="w-3.5 h-3.5 text-cyan-400" />
-                        Mapas <span className="text-slate-700 font-normal">({results.maps.length})</span>
+                        Mapas{' '}
+                        <span className="text-slate-700 font-normal">({results.maps.length})</span>
                       </p>
                     </div>
                     <div className="space-y-0.5 px-3 pb-3">
@@ -484,7 +479,8 @@ export function Header() {
                     <div className="px-5 py-3 border-t border-white/[0.05]">
                       <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-600">
                         <CircleDot className="w-3.5 h-3.5 text-purple-400" />
-                        Nós <span className="text-slate-700 font-normal">({results.nodes.length})</span>
+                        Nós{' '}
+                        <span className="text-slate-700 font-normal">({results.nodes.length})</span>
                       </p>
                     </div>
                     <div className="space-y-0.5 px-3 pb-3">
@@ -548,24 +544,7 @@ export function Header() {
           </p>
           <p className="text-[10px] text-slate-600">Perfil</p>
         </div>
-        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500/25 to-purple-500/25 border border-white/[0.15] flex items-center justify-center flex-shrink-0 overflow-hidden">
-          {user?.avatar_url ? (
-            <img
-              src={user.avatar_url}
-              alt="Avatar"
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).style.display = 'none';
-                const parent = (e.currentTarget as HTMLImageElement).parentElement;
-                if (parent) {
-                  parent.textContent = user?.display_name?.charAt(0)?.toUpperCase() || 'U';
-                }
-              }}
-            />
-          ) : (
-            <User className="w-4 h-4 text-slate-500" />
-          )}
-        </div>
+        <UserAvatar url={user?.avatar_url} displayName={user?.display_name} size="md" />
       </button>
     </header>
   );

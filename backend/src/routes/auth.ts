@@ -37,26 +37,9 @@ router.post(
 
     const { email } = parsed.data;
 
-    // Check if email is in allowed list (for private beta)
-    const allowedEmails = [
-      'guilherme@mindlab.com',
-      'helen@mindlab.com',
-      'pablo@mindlab.com',
-      // Add more as needed
-    ];
-
-    // In production, you might want to check against a database table instead
-    const isAllowed = env.NODE_ENV === 'development' || 
-      allowedEmails.some(allowed => email.toLowerCase().includes(allowed.split('@')[0]));
-
-    if (!isAllowed) {
-      logger.warn({ email }, 'Unauthorized email attempted login');
-      // Return success anyway to prevent email enumeration
-      return res.json({
-        success: true,
-        message: 'If this email is registered, a magic link has been sent',
-      });
-    }
+    // Send magic link via Supabase Auth
+    // User management (allowed emails, domains) should be configured
+    // in the Supabase dashboard under Authentication > Settings
 
     // Send magic link
     const { error } = await supabaseAdmin.auth.signInWithOtp({
@@ -171,13 +154,15 @@ router.post(
   '/logout',
   asyncHandler(async (req: Request, res: Response) => {
     const authHeader = req.headers.authorization;
-    
+
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
-      
+
       // Get user from token
-      const { data: { user } } = await supabaseAdmin.auth.getUser(token);
-      
+      const {
+        data: { user },
+      } = await supabaseAdmin.auth.getUser(token);
+
       if (user) {
         // Sign out the user
         await supabaseAdmin.auth.admin.signOut(token);
@@ -207,16 +192,17 @@ router.get(
     const userId = req.user.id;
 
     // Get profile
-    const { data: profile } = await req.supabase!
-      .from('profiles')
+    const { data: profile } = await req
+      .supabase!.from('profiles')
       .select('*')
       .eq('id', userId)
       .single();
 
     // Get workspaces
-    const { data: memberships } = await req.supabase!
-      .from('workspace_members')
-      .select(`
+    const { data: memberships } = await req
+      .supabase!.from('workspace_members')
+      .select(
+        `
         role,
         workspace:workspaces (
           id,
@@ -224,12 +210,13 @@ router.get(
           slug,
           description
         )
-      `)
+      `
+      )
       .eq('user_id', userId);
 
     const userProfile = profile as any;
-    const membershipsList = memberships as any[] || [];
-    
+    const membershipsList = (memberships as any[]) || [];
+
     res.json({
       success: true,
       data: {
@@ -238,7 +225,7 @@ router.get(
           email: req.user.email,
           ...(userProfile || {}),
         },
-        workspaces: membershipsList.map(m => ({
+        workspaces: membershipsList.map((m) => ({
           ...(m.workspace || {}),
           role: m.role,
         })),
@@ -255,19 +242,23 @@ const updateProfileSchema = z.object({
   display_name: z.string().trim().max(100).optional(),
   // Accept almost any string as avatar URL - data URLs, HTTP URLs, SVGs, etc
   // Validation is lenient to support various avatar sources
-  avatar_url: z.union([
-    z.null(),
-    z.string().min(0).max(0), // Empty string
-    z.string().min(1).max(100000), // Any string up to 100KB (reasonable limit for data URLs)
-  ])
-    .refine(val => {
+  avatar_url: z
+    .union([
+      z.null(),
+      z.string().min(0).max(0), // Empty string
+      z.string().min(1).max(100000), // Any string up to 100KB (reasonable limit for data URLs)
+    ])
+    .refine((val) => {
       // Reject obviously broken data
       if (val === null || val === '') return true;
       // At this point val is a non-empty string, accept it
       return true;
     }, 'Avatar URL should be valid')
     .optional(),
-  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  color: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}$/)
+    .optional(),
   preferences: z.record(z.unknown()).optional(),
 });
 
@@ -331,8 +322,8 @@ router.patch(
     logger.debug({ userId, updateData: logData }, 'Updating profile');
 
     // Update profile using authenticated supabase client
-    const { data: updatedProfile, error: updateError } = await req.supabase!
-      .from('profiles')
+    const { data: updatedProfile, error: updateError } = await req
+      .supabase!.from('profiles')
       .update(updateData)
       .eq('id', userId)
       .select()
@@ -388,23 +379,21 @@ async function ensureProfile(userId: string, email: string): Promise<void> {
       color,
       preferences: {},
     };
-    
+
     await supabaseAdmin.from('profiles').insert(profileData);
 
     logger.info({ userId, email }, 'Created new user profile');
 
     // Add to default workspace (MindLab)
     const defaultWorkspaceId = '11111111-1111-1111-1111-111111111111';
-    
+
     const memberData: any = {
       workspace_id: defaultWorkspaceId,
       user_id: userId,
       role: 'member',
     };
-    
-    const { error: memberError } = await supabaseAdmin
-      .from('workspace_members')
-      .insert(memberData);
+
+    const { error: memberError } = await supabaseAdmin.from('workspace_members').insert(memberData);
 
     if (!memberError) {
       logger.info({ userId, workspaceId: defaultWorkspaceId }, 'Added user to default workspace');

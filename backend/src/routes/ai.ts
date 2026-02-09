@@ -14,7 +14,7 @@ import type { AgentType, ConversationMessage } from '../ai/core/types';
 import { AGENT_REGISTRY } from '../ai/core/constants';
 
 // Legacy import for backward compatibility with /agent endpoint
-import { aiOrchestrator, AIAgentType } from '../ai/orchestrator.legacy';
+import { aiOrchestrator, AIAgentType } from '../ai/orchestrator';
 
 const router = Router();
 
@@ -23,21 +23,29 @@ const generateSchema = z.object({
   map_id: z.string().uuid('Invalid map ID'),
   prompt: z.string().min(1, 'Prompt required').max(2000, 'Prompt too long'),
   parent_node_id: z.string().uuid().nullable().optional(),
-  context: z.object({
-    existing_nodes: z.array(z.object({
-      id: z.string(),
-      label: z.string(),
-      type: z.string(),
-      content: z.string().nullable().optional(),
-    })).optional(),
-    map_title: z.string().optional(),
-    map_description: z.string().nullable().optional(),
-  }).optional(),
-  options: z.object({
-    count: z.number().min(1).max(20).optional().default(5),
-    depth: z.number().min(1).max(3).optional().default(1),
-    style: z.enum(['brainstorm', 'structured', 'detailed']).optional().default('brainstorm'),
-  }).optional(),
+  context: z
+    .object({
+      existing_nodes: z
+        .array(
+          z.object({
+            id: z.string(),
+            label: z.string(),
+            type: z.string(),
+            content: z.string().nullable().optional(),
+          })
+        )
+        .optional(),
+      map_title: z.string().optional(),
+      map_description: z.string().nullable().optional(),
+    })
+    .optional(),
+  options: z
+    .object({
+      count: z.number().min(1).max(20).optional().default(5),
+      depth: z.number().min(1).max(3).optional().default(1),
+      style: z.enum(['brainstorm', 'structured', 'detailed']).optional().default('brainstorm'),
+    })
+    .optional(),
 });
 
 const expandSchema = z.object({
@@ -50,80 +58,112 @@ const expandSchema = z.object({
       type: z.string(),
       content: z.string().nullable().optional(),
     }),
-    parent: z.object({
-      id: z.string(),
-      label: z.string(),
-    }).nullable().optional(),
-    siblings: z.array(z.object({
-      id: z.string(),
-      label: z.string(),
-    })).optional(),
+    parent: z
+      .object({
+        id: z.string(),
+        label: z.string(),
+      })
+      .nullable()
+      .optional(),
+    siblings: z
+      .array(
+        z.object({
+          id: z.string(),
+          label: z.string(),
+        })
+      )
+      .optional(),
     map_title: z.string().optional(),
   }),
-  options: z.object({
-    count: z.number().min(1).max(10).optional().default(4),
-    direction: z.enum(['deeper', 'related', 'both']).optional().default('deeper'),
-  }).optional(),
+  options: z
+    .object({
+      count: z.number().min(1).max(10).optional().default(4),
+      direction: z.enum(['deeper', 'related', 'both']).optional().default('deeper'),
+    })
+    .optional(),
 });
 
 const summarizeSchema = z.object({
   map_id: z.string().uuid('Invalid map ID'),
   node_ids: z.array(z.string().uuid()).min(1).max(50).optional(),
   context: z.object({
-    nodes: z.array(z.object({
-      id: z.string(),
-      label: z.string(),
-      type: z.string(),
-      content: z.string().nullable().optional(),
-      children: z.array(z.string()).optional(),
-    })),
+    nodes: z.array(
+      z.object({
+        id: z.string(),
+        label: z.string(),
+        type: z.string(),
+        content: z.string().nullable().optional(),
+        children: z.array(z.string()).optional(),
+      })
+    ),
     map_title: z.string().optional(),
   }),
-  options: z.object({
-    format: z.enum(['paragraph', 'bullets', 'executive']).optional().default('paragraph'),
-    length: z.enum(['short', 'medium', 'long']).optional().default('medium'),
-  }).optional(),
+  options: z
+    .object({
+      format: z.enum(['paragraph', 'bullets', 'executive']).optional().default('paragraph'),
+      length: z.enum(['short', 'medium', 'long']).optional().default('medium'),
+    })
+    .optional(),
 });
 
 const toTasksSchema = z.object({
   map_id: z.string().uuid('Invalid map ID'),
   node_ids: z.array(z.string().uuid()).min(1).max(20),
   context: z.object({
-    nodes: z.array(z.object({
-      id: z.string(),
-      label: z.string(),
-      type: z.string(),
-      content: z.string().nullable().optional(),
-    })),
-    team_members: z.array(z.object({
-      id: z.string(),
-      name: z.string(),
-    })).optional(),
+    nodes: z.array(
+      z.object({
+        id: z.string(),
+        label: z.string(),
+        type: z.string(),
+        content: z.string().nullable().optional(),
+      })
+    ),
+    team_members: z
+      .array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+        })
+      )
+      .optional(),
   }),
-  options: z.object({
-    include_subtasks: z.boolean().optional().default(true),
-    estimate_priority: z.boolean().optional().default(true),
-    suggest_assignees: z.boolean().optional().default(false),
-  }).optional(),
+  options: z
+    .object({
+      include_subtasks: z.boolean().optional().default(true),
+      estimate_priority: z.boolean().optional().default(true),
+      suggest_assignees: z.boolean().optional().default(false),
+    })
+    .optional(),
 });
 
 const chatSchema = z.object({
   map_id: z.string().uuid('Invalid map ID'),
   message: z.string().min(1, 'Message required').max(2000, 'Message too long'),
-  context: z.object({
-    nodes: z.array(z.object({
-      id: z.string(),
-      label: z.string(),
-      type: z.string(),
-      content: z.string().nullable().optional(),
-    })).optional(),
-    selected_node_id: z.string().uuid().nullable().optional(),
-    map_title: z.string().optional(),
-    conversation_history: z.array(z.object({
-      role: z.enum(['user', 'assistant']),
-      content: z.string(),
-    })).max(10).optional(),
-  }).optional(),
+  context: z
+    .object({
+      nodes: z
+        .array(
+          z.object({
+            id: z.string(),
+            label: z.string(),
+            type: z.string(),
+            content: z.string().nullable().optional(),
+          })
+        )
+        .optional(),
+      selected_node_id: z.string().uuid().nullable().optional(),
+      map_title: z.string().optional(),
+      conversation_history: z
+        .array(
+          z.object({
+            role: z.enum(['user', 'assistant']),
+            content: z.string(),
+          })
+        )
+        .max(10)
+        .optional(),
+    })
+    .optional(),
 });
 
 /**
@@ -141,7 +181,10 @@ router.post(
 
     const { map_id, prompt, parent_node_id, context, options } = parsed.data;
 
-    logger.info({ mapId: map_id, userId: req.user!.id, prompt: prompt.substring(0, 100) }, 'AI generate request');
+    logger.info(
+      { mapId: map_id, userId: req.user!.id, prompt: prompt.substring(0, 100) },
+      'AI generate request'
+    );
 
     const orchestrator = getOrchestrator();
     const result = await orchestrator.execute({
@@ -213,7 +256,10 @@ router.post(
 
     const { map_id, node_ids, context, options } = parsed.data;
 
-    logger.info({ mapId: map_id, nodeCount: node_ids?.length || context.nodes.length, userId: req.user!.id }, 'AI summarize request');
+    logger.info(
+      { mapId: map_id, nodeCount: node_ids?.length || context.nodes.length, userId: req.user!.id },
+      'AI summarize request'
+    );
 
     const orchestrator = getOrchestrator();
     const result = await orchestrator.execute({
@@ -280,7 +326,10 @@ router.post(
 
     const { map_id, message, context } = parsed.data;
 
-    logger.info({ mapId: map_id, userId: req.user!.id, message: message.substring(0, 100) }, 'AI chat request');
+    logger.info(
+      { mapId: map_id, userId: req.user!.id, message: message.substring(0, 100) },
+      'AI chat request'
+    );
 
     const orchestrator = getOrchestrator();
     const result = await orchestrator.execute({
@@ -312,9 +361,14 @@ router.get(
     const { mapId } = req.params;
     const { limit = '20', offset = '0' } = req.query;
 
-    const { data: runs, error, count } = await req.supabase!
-      .from('ai_runs')
-      .select(`
+    const {
+      data: runs,
+      error,
+      count,
+    } = await req
+      .supabase!.from('ai_runs')
+      .select(
+        `
         *,
         user:profiles!ai_runs_user_id_fkey (
           id,
@@ -322,7 +376,9 @@ router.get(
           avatar_url,
           color
         )
-      `, { count: 'exact' })
+      `,
+        { count: 'exact' }
+      )
       .eq('map_id', mapId)
       .order('created_at', { ascending: false })
       .range(Number(offset), Number(offset) + Number(limit) - 1);
@@ -354,9 +410,10 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const { runId } = req.params;
 
-    const { data: run, error } = await req.supabase!
-      .from('ai_runs')
-      .select(`
+    const { data: run, error } = await req
+      .supabase!.from('ai_runs')
+      .select(
+        `
         *,
         user:profiles!ai_runs_user_id_fkey (
           id,
@@ -364,7 +421,8 @@ router.get(
           avatar_url,
           color
         )
-      `)
+      `
+      )
       .eq('id', runId)
       .single();
 
@@ -391,8 +449,8 @@ router.post(
     const { selected_items } = req.body; // Array of indices to apply
 
     // Get the AI run
-    const { data: run, error } = await req.supabase!
-      .from('ai_runs')
+    const { data: run, error } = await req
+      .supabase!.from('ai_runs')
       .select('*')
       .eq('id', runId)
       .eq('status', 'completed')
@@ -419,8 +477,8 @@ router.post(
     if (run.agent_type === 'generate' || run.agent_type === 'expand') {
       // Create nodes
       for (const suggestion of suggestions) {
-        const { data: node } = await req.supabase!
-          .from('nodes')
+        const { data: node } = await req
+          .supabase!.from('nodes')
           .insert({
             map_id: run.map_id,
             parent_id: suggestion.parent_id || null,
@@ -451,8 +509,8 @@ router.post(
     } else if (run.agent_type === 'to_tasks') {
       // Create tasks
       for (const suggestion of suggestions) {
-        const { data: task } = await req.supabase!
-          .from('tasks')
+        const { data: task } = await req
+          .supabase!.from('tasks')
           .insert({
             node_id: suggestion.node_id,
             title: suggestion.title,
@@ -471,7 +529,10 @@ router.post(
       }
     }
 
-    logger.info({ runId, appliedCount: applied.length, userId: req.user!.id }, 'AI suggestions applied');
+    logger.info(
+      { runId, appliedCount: applied.length, userId: req.user!.id },
+      'AI suggestions applied'
+    );
 
     res.json({
       success: true,
@@ -511,8 +572,8 @@ router.get(
         startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    const { data: runs } = await req.supabase!
-      .from('ai_runs')
+    const { data: runs } = await req
+      .supabase!.from('ai_runs')
       .select('agent_type, tokens_input, tokens_output, duration_ms, status, created_at')
       .eq('user_id', req.user!.id)
       .gte('created_at', startDate.toISOString());
@@ -531,7 +592,7 @@ router.get(
 
     const stats = {
       totalRuns: runs.length,
-      successfulRuns: runs.filter(r => r.status === 'completed').length,
+      successfulRuns: runs.filter((r) => r.status === 'completed').length,
       totalTokensInput: runs.reduce((sum, r) => sum + (r.tokens_input || 0), 0),
       totalTokensOutput: runs.reduce((sum, r) => sum + (r.tokens_output || 0), 0),
       byAgentType: {} as Record<string, number>,
@@ -561,15 +622,19 @@ const agentSchema = z.object({
   model: z.string().optional(),
   mode: z.string().optional().default('agent'),
   systemPrompt: z.string().min(1),
-  messages: z.array(z.object({
-    role: z.enum(['user', 'assistant']),
-    content: z.string(),
-  })),
-  tools: z.array(z.object({
-    name: z.string(),
-    description: z.string(),
-    input_schema: z.any(),
-  })),
+  messages: z.array(
+    z.object({
+      role: z.enum(['user', 'assistant']),
+      content: z.string(),
+    })
+  ),
+  tools: z.array(
+    z.object({
+      name: z.string(),
+      description: z.string(),
+      input_schema: z.any(),
+    })
+  ),
   maxTokens: z.number().optional().default(4096),
   temperature: z.number().optional().default(0.7),
 });
@@ -580,7 +645,7 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const parsed = agentSchema.safeParse(req.body);
     if (!parsed.success) {
-      throw new ValidationError(parsed.error.errors.map(e => e.message).join(', '));
+      throw new ValidationError(parsed.error.errors.map((e) => e.message).join(', '));
     }
 
     const { model, mode, systemPrompt, messages, tools, maxTokens, temperature } = parsed.data;
@@ -590,24 +655,27 @@ router.post(
     // Auto intelligently chooses: Haiku (simple) → Sonnet 3.5 (balanced) → Opus (complex)
     const selectedModel = model || 'auto';
 
-    logger.info({
-      mode,
-      model: selectedModel,
-      messageCount: messages.length,
-      toolCount: tools.length,
-      userId: req.user?.id,
-    }, 'AI Agent request received');
+    logger.info(
+      {
+        mode,
+        model: selectedModel,
+        messageCount: messages.length,
+        toolCount: tools.length,
+        userId: req.user?.id,
+      },
+      'AI Agent request received'
+    );
 
     try {
       // Call Claude with tool-use support via the REAL callAgentRaw method
       const response = await aiOrchestrator.callAgentRaw({
         model: selectedModel,
         systemPrompt,
-        messages: messages.map(m => ({
+        messages: messages.map((m) => ({
           role: m.role,
           content: m.content,
         })),
-        tools: tools.map(t => ({
+        tools: tools.map((t) => ({
           name: t.name,
           description: t.description,
           input_schema: t.input_schema,
@@ -618,14 +686,17 @@ router.post(
 
       const durationMs = Date.now() - startTime;
 
-      logger.info({
-        model: selectedModel,
-        durationMs,
-        inputTokens: response.usage?.input_tokens,
-        outputTokens: response.usage?.output_tokens,
-        stopReason: response.stop_reason,
-        userId: req.user?.id,
-      }, 'AI Agent response completed');
+      logger.info(
+        {
+          model: selectedModel,
+          durationMs,
+          inputTokens: response.usage?.input_tokens,
+          outputTokens: response.usage?.output_tokens,
+          stopReason: response.stop_reason,
+          userId: req.user?.id,
+        },
+        'AI Agent response completed'
+      );
 
       // Return Claude response in structured format
       res.json({
@@ -646,12 +717,15 @@ router.post(
       const durationMs = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-      logger.error({
-        model: selectedModel,
-        error: errorMessage,
-        durationMs,
-        userId: req.user?.id,
-      }, 'AI Agent error');
+      logger.error(
+        {
+          model: selectedModel,
+          error: errorMessage,
+          durationMs,
+          userId: req.user?.id,
+        },
+        'AI Agent error'
+      );
 
       // Detect rate limit
       if (errorMessage.includes('rate_limit') || errorMessage.includes('429')) {
@@ -663,7 +737,11 @@ router.post(
       }
 
       // Detect invalid API key
-      if (errorMessage.includes('authentication') || errorMessage.includes('401') || errorMessage.includes('api_key')) {
+      if (
+        errorMessage.includes('authentication') ||
+        errorMessage.includes('401') ||
+        errorMessage.includes('api_key')
+      ) {
         return res.status(401).json({
           success: false,
           error: 'API key inválida. Configure CLAUDE_API_KEY no backend.',
@@ -688,18 +766,21 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const parsed = agentSchema.safeParse(req.body);
     if (!parsed.success) {
-      throw new ValidationError(parsed.error.errors.map(e => e.message).join(', '));
+      throw new ValidationError(parsed.error.errors.map((e) => e.message).join(', '));
     }
 
     const { model, mode, systemPrompt, messages, tools, maxTokens, temperature } = parsed.data;
     const selectedModel = model || 'auto';
 
-    logger.info({
-      mode,
-      model: selectedModel,
-      messageCount: messages.length,
-      userId: req.user?.id,
-    }, 'AI Agent STREAM request received');
+    logger.info(
+      {
+        mode,
+        model: selectedModel,
+        messageCount: messages.length,
+        userId: req.user?.id,
+      },
+      'AI Agent STREAM request received'
+    );
 
     // Set up SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
@@ -717,12 +798,16 @@ router.post(
         {
           model: selectedModel,
           systemPrompt,
-          messages: messages.map(m => ({ role: m.role, content: m.content })),
-          tools: tools.map(t => ({ name: t.name, description: t.description, input_schema: t.input_schema })),
+          messages: messages.map((m) => ({ role: m.role, content: m.content })),
+          tools: tools.map((t) => ({
+            name: t.name,
+            description: t.description,
+            input_schema: t.input_schema,
+          })),
           maxTokens,
           temperature,
         },
-        sendEvent,
+        sendEvent
       );
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -746,17 +831,24 @@ const neuralSchema = z.object({
   map_id: z.string().min(1, 'map_id is required'),
   agent_type: z.string().optional(),
   message: z.string().min(1).max(10000),
-  context: z.object({
-    nodes: z.array(z.any()).optional(),
-    edges: z.array(z.any()).optional(),
-    selected_node: z.any().optional(),
-    map_title: z.string().optional(),
-    map_description: z.string().nullable().optional(),
-    conversation_history: z.array(z.object({
-      role: z.enum(['user', 'assistant']),
-      content: z.string(),
-    })).max(50).optional(),
-  }).optional(),
+  context: z
+    .object({
+      nodes: z.array(z.any()).optional(),
+      edges: z.array(z.any()).optional(),
+      selected_node: z.any().optional(),
+      map_title: z.string().optional(),
+      map_description: z.string().nullable().optional(),
+      conversation_history: z
+        .array(
+          z.object({
+            role: z.enum(['user', 'assistant']),
+            content: z.string(),
+          })
+        )
+        .max(50)
+        .optional(),
+    })
+    .optional(),
   options: z.record(z.any()).optional(),
   model: z.string().optional(),
   stream: z.boolean().optional().default(false),
@@ -777,16 +869,19 @@ router.post(
 
     // Auto-detect agent type if not specified
     const detectedAgent = agent_type
-      ? agent_type as AgentType
+      ? (agent_type as AgentType)
       : orchestrator.detectAgentType(message);
 
-    logger.info({
-      mapId: map_id,
-      agentType: detectedAgent,
-      userId: req.user!.id,
-      stream,
-      message: message.substring(0, 100),
-    }, 'Neural agent request');
+    logger.info(
+      {
+        mapId: map_id,
+        agentType: detectedAgent,
+        userId: req.user!.id,
+        stream,
+        message: message.substring(0, 100),
+      },
+      'Neural agent request'
+    );
 
     const result = await orchestrator.execute({
       agentType: detectedAgent,
@@ -832,14 +927,17 @@ router.post(
 
     const orchestrator = getOrchestrator();
     const detectedAgent = agent_type
-      ? agent_type as AgentType
+      ? (agent_type as AgentType)
       : orchestrator.detectAgentType(message);
 
-    logger.info({
-      mapId: map_id,
-      agentType: detectedAgent,
-      userId: req.user!.id,
-    }, 'Neural stream request');
+    logger.info(
+      {
+        mapId: map_id,
+        agentType: detectedAgent,
+        userId: req.user!.id,
+      },
+      'Neural stream request'
+    );
 
     await orchestrator.execute({
       agentType: detectedAgent,
@@ -1020,7 +1118,7 @@ router.get(
   '/agents',
   authenticate,
   asyncHandler(async (_req: Request, res: Response) => {
-    const agents = getAvailableAgents().map(name => ({
+    const agents = getAvailableAgents().map((name) => ({
       name,
       ...getAgentInfo(name),
     }));

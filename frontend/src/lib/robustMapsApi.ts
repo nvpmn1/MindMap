@@ -7,6 +7,30 @@ import { mapsApi as baseApi } from '@/lib/api';
 import { mapPersistence } from '@/lib/mapPersistence';
 import { logger } from '@/lib/logger';
 
+interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string | null;
+  pagination?: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
+}
+
+interface MapRecord {
+  id: string;
+  workspace_id: string;
+  title: string;
+  description?: string | null;
+  is_template?: boolean;
+  settings?: Record<string, unknown> | null;
+  created_at?: string;
+  updated_at?: string;
+  nodes_count?: number;
+}
+
 class RobustMapsApi {
   /**
    * Create a map with guaranteed persistence
@@ -16,19 +40,16 @@ class RobustMapsApi {
     title: string;
     description?: string;
     is_template?: boolean;
-    settings?: any;
-  }) {
+    settings?: Record<string, unknown>;
+  }): Promise<ApiResponse<MapRecord>> {
     try {
       console.log('🔵 Creating map with robust persistence:', data);
 
       // Step 1: Try to save via backend API (which then saves to Supabase)
-      const response = await Promise.race([
+      const response = (await Promise.race([
         baseApi.create(data),
-        // Timeout after 5 seconds
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('API timeout')), 5000)
-        ),
-      ]);
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('API timeout')), 5000)),
+      ])) as ApiResponse<MapRecord>;
 
       console.log('✅ Map created and saved to Supabase via API:', response);
       return response;
@@ -36,15 +57,6 @@ class RobustMapsApi {
       console.warn('⚠️ API creation failed, using fallback:', apiError);
 
       // Fallback: Use robust persistence layer
-      const mapData = {
-        ...data,
-        id: crypto.randomUUID(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        nodes_count: 0,
-      };
-
-      // Save with guaranteed persistence
       const savedMap = await mapPersistence.saveMapCritical(data);
 
       logger.info('📋 Map saved to persistence layer:', savedMap);
@@ -62,22 +74,22 @@ class RobustMapsApi {
     workspace_id: string;
     limit?: number;
     offset?: number;
-  }) {
+  }): Promise<ApiResponse<MapRecord[]>> {
     try {
       console.log('📚 Fetching maps list:', query);
 
       // Try API first with timeout
-      const response = await Promise.race([
-        baseApi.list(query),
-        new Promise((_, reject) =>
+      const response: ApiResponse<MapRecord[]> = await Promise.race([
+        baseApi.list(query) as Promise<ApiResponse<MapRecord[]>>,
+        new Promise<ApiResponse<MapRecord[]>>((_, reject) =>
           setTimeout(() => reject(new Error('API timeout')), 5000)
         ),
       ]);
 
       console.log('✅ Maps fetched from Supabase:', response);
-      
+
       // Update localStorage cache
-      if (response.data) {
+      if (response.data && Array.isArray(response.data)) {
         localStorage.setItem('mindmap_maps', JSON.stringify(response.data));
       }
 
@@ -86,7 +98,17 @@ class RobustMapsApi {
       console.warn('⚠️ API fetch failed, using cache:', err);
 
       // Fallback to localStorage cache
-      const cached = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
+      let cached: MapRecord[] = [];
+      try {
+        const cached_raw = localStorage.getItem('mindmap_maps');
+        if (cached_raw) {
+          cached = JSON.parse(cached_raw) as MapRecord[];
+        }
+      } catch (parseErr) {
+        console.error('Error parsing cached maps:', parseErr);
+        cached = [];
+      }
+
       if (cached.length > 0) {
         console.log('📋 Using cached maps:', cached);
         return {
@@ -118,7 +140,7 @@ class RobustMapsApi {
   /**
    * Delete map with guaranteed sync and retry logic
    */
-  async delete(mapId: string) {
+  async delete(mapId: string): Promise<ApiResponse<null>> {
     let retries = 0;
     const MAX_RETRIES = 3;
 
@@ -126,20 +148,40 @@ class RobustMapsApi {
       try {
         console.log(`🗑️ Deleting map: ${mapId} (attempt ${retries + 1}/${MAX_RETRIES})`);
 
-        const response = await Promise.race([
+        const response = (await Promise.race([
           baseApi.delete(mapId),
-          new Promise((_, reject) =>
+          new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error('API timeout')), 5000)
           ),
-        ]);
+        ])) as ApiResponse<null>;
 
         // Success! Remove from localStorage AND return
-        const maps = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
-        const filtered = maps.filter((m: any) => m.id !== mapId);
+        let maps: MapRecord[] = [];
+        try {
+          const maps_raw = localStorage.getItem('mindmap_maps');
+          if (maps_raw) {
+            maps = JSON.parse(maps_raw) as MapRecord[];
+          }
+        } catch (parseErr) {
+          console.error('Error parsing maps for deletion:', parseErr);
+          maps = [];
+        }
+
+        const filtered = maps.filter((m) => m.id !== mapId);
         localStorage.setItem('mindmap_maps', JSON.stringify(filtered));
 
         // Remove from pending saves if exists
-        const pending = JSON.parse(localStorage.getItem('mindmap_pending_saves') || '[]');
+        let pending: unknown[] = [];
+        try {
+          const pending_raw = localStorage.getItem('mindmap_pending_saves');
+          if (pending_raw) {
+            pending = JSON.parse(pending_raw) as unknown[];
+          }
+        } catch (parseErr) {
+          console.error('Error parsing pending saves:', parseErr);
+          pending = [];
+        }
+
         const filteredPending = pending.filter((p: any) => p.id !== mapId);
         localStorage.setItem('mindmap_pending_saves', JSON.stringify(filteredPending));
 
@@ -151,19 +193,39 @@ class RobustMapsApi {
 
         if (retries < MAX_RETRIES) {
           // Wait before retry
-          await new Promise(r => setTimeout(r, 1000 * retries));
+          await new Promise((r) => setTimeout(r, 1000 * retries));
         }
       }
     }
 
     // Final fallback: at least remove from local cache
     console.error('❌ Delete failed after all retries, removing from cache anyway');
-    const maps = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
-    const filtered = maps.filter((m: any) => m.id !== mapId);
+    let maps: MapRecord[] = [];
+    try {
+      const maps_raw = localStorage.getItem('mindmap_maps');
+      if (maps_raw) {
+        maps = JSON.parse(maps_raw) as MapRecord[];
+      }
+    } catch (parseErr) {
+      console.error('Error parsing maps:', parseErr);
+      maps = [];
+    }
+
+    const filtered = maps.filter((m) => m.id !== mapId);
     localStorage.setItem('mindmap_maps', JSON.stringify(filtered));
 
     // Also remove from pending
-    const pending = JSON.parse(localStorage.getItem('mindmap_pending_saves') || '[]');
+    let pending: unknown[] = [];
+    try {
+      const pending_raw = localStorage.getItem('mindmap_pending_saves');
+      if (pending_raw) {
+        pending = JSON.parse(pending_raw) as unknown[];
+      }
+    } catch (parseErr) {
+      console.error('Error parsing pending saves:', parseErr);
+      pending = [];
+    }
+
     const filteredPending = pending.filter((p: any) => p.id !== mapId);
     localStorage.setItem('mindmap_pending_saves', JSON.stringify(filteredPending));
 
@@ -177,11 +239,11 @@ class RobustMapsApi {
   /**
    * Duplicate map
    */
-  async duplicate(mapId: string) {
+  async duplicate(mapId: string): Promise<ApiResponse<MapRecord>> {
     try {
       console.log('📋 Duplicating map:', mapId);
 
-      const response = await baseApi.duplicate(mapId);
+      const response = (await baseApi.duplicate(mapId)) as ApiResponse<MapRecord>;
       console.log('✅ Map duplicated:', response);
       return response;
     } catch (err) {
@@ -193,13 +255,13 @@ class RobustMapsApi {
   /**
    * Force sync pending changes
    */
-  async forceSyncPending() {
+  async forceSyncPending(): Promise<{ success: boolean; pending: number }> {
     console.log('🔄 Force syncing pending saves...');
     const pendingCount = mapPersistence.getPendingCount();
     if (pendingCount > 0) {
       console.log(`⏳ Waiting for ${pendingCount} saves to sync...`);
       // Give some time for sync to complete
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise((r) => setTimeout(r, 2000));
     }
     return { success: true, pending: pendingCount };
   }

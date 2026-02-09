@@ -6,19 +6,16 @@ import { Node, Edge } from '@xyflow/react';
 
 // ─── Node Types ─────────────────────────────────────────────────────────────
 
-export type NeuralNodeType = 
-  | 'central'    // Root/central topic
-  | 'idea'       // Creative ideas
-  | 'task'       // Actionable tasks  
-  | 'note'       // Text notes
-  | 'reference'  // External references/links
-  | 'research'   // Research & analysis
-  | 'data'       // Data visualization (charts/tables)
-  | 'group'      // Container group
-  | 'milestone'  // Project milestones
-  | 'question'   // Open questions/hypotheses
-  | 'decision'   // Decision points
-  | 'resource';  // Team/resource allocation
+export type NeuralNodeType =
+  | 'idea' // Root topic or creative ideas
+  | 'task' // Actionable tasks
+  | 'note' // Text notes
+  | 'reference' // External references/links
+  | 'research' // Research & analysis
+  | 'data' // Data visualization (charts/tables)
+  | 'group' // Container group
+  | 'question' // Open questions/hypotheses
+  | 'image'; // Image nodes
 
 export type NodeStatus = 'draft' | 'active' | 'in_progress' | 'review' | 'completed' | 'archived';
 export type NodePriority = 'low' | 'medium' | 'high' | 'urgent' | 'critical';
@@ -39,7 +36,11 @@ export interface ChartData {
 }
 
 export interface TableData {
-  columns: Array<{ key: string; label: string; type: 'text' | 'number' | 'date' | 'status' | 'avatar' }>;
+  columns: Array<{
+    key: string;
+    label: string;
+    type: 'text' | 'number' | 'date' | 'status' | 'avatar';
+  }>;
   rows: Array<Record<string, unknown>>;
 }
 
@@ -100,30 +101,30 @@ export interface NeuralNodeData {
   type: NeuralNodeType;
   description?: string;
   content?: string;
-  
+
   // Status & Progress
   status: NodeStatus;
   priority: NodePriority;
   progress: number; // 0-100
-  
+
   // Metrics
-  impact: number;    // 0-100
-  effort: number;    // 0-100
+  impact: number; // 0-100
+  effort: number; // 0-100
   confidence: number; // 0-100
-  
+
   // Visual
   color?: string;
   icon?: string;
   tags: string[];
   collapsed?: boolean;
   pinned?: boolean;
-  
+
   // Rich Content
   chart?: ChartData;
   table?: TableData;
   checklist?: ChecklistItem[];
   attachments?: Attachment[];
-  
+
   // Collaboration
   creator?: CollaboratorInfo;
   owner?: CollaboratorInfo;
@@ -131,10 +132,10 @@ export interface NeuralNodeData {
   comments?: NodeComment[];
   lastEditedBy?: CollaboratorInfo;
   lastEditedAt?: string;
-  
+
   // AI
   ai?: AIContext;
-  
+
   // Research specific
   sources?: Array<{
     id: string;
@@ -145,12 +146,12 @@ export interface NeuralNodeData {
     date?: string;
     excerpt?: string;
   }>;
-  
+
   // Task specific
   dueDate?: string;
   estimatedHours?: number;
   actualHours?: number;
-  
+
   // Question/Decision specific
   options?: Array<{
     id: string;
@@ -160,18 +161,18 @@ export interface NeuralNodeData {
     pros?: string[];
     cons?: string[];
   }>;
-  
+
   // Metadata
   createdAt?: string;
   updatedAt?: string;
   version?: number;
-  
+
   // Computed
   childCount?: number;
   connectionCount?: number;
   commentCount?: number;
   depth?: number;
-  
+
   [key: string]: unknown;
 }
 
@@ -245,11 +246,27 @@ export interface AIAgentMessage {
 }
 
 export interface AIAgentAction {
-  type: 'create_node' | 'update_node' | 'delete_node' | 'create_edge' | 'delete_edge' |
-        'batch_create_nodes' | 'batch_update_nodes' |
-        'rearrange' | 'analyze' | 'analyze_map' | 'research' | 'generate_chart' | 
-        'summarize' | 'expand' | 'suggest' | 'create_tasks' | 'hypothesize' |
-        'reorganize_map' | 'find_nodes' | string;
+  type:
+    | 'create_node'
+    | 'update_node'
+    | 'delete_node'
+    | 'create_edge'
+    | 'delete_edge'
+    | 'batch_create_nodes'
+    | 'batch_update_nodes'
+    | 'rearrange'
+    | 'analyze'
+    | 'analyze_map'
+    | 'research'
+    | 'generate_chart'
+    | 'summarize'
+    | 'expand'
+    | 'suggest'
+    | 'create_tasks'
+    | 'hypothesize'
+    | 'reorganize_map'
+    | 'find_nodes'
+    | string;
   description: string;
   data?: unknown;
   status: 'pending' | 'executing' | 'completed' | 'failed';

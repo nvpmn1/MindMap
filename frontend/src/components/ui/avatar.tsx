@@ -8,10 +8,7 @@ const Avatar = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AvatarPrimitive.Root
     ref={ref}
-    className={cn(
-      'relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full',
-      className
-    )}
+    className={cn('relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full', className)}
     {...props}
   />
 ));
@@ -48,7 +45,6 @@ AvatarFallback.displayName = AvatarPrimitive.Fallback.displayName;
 interface UserAvatarProps extends React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Root> {
   src?: string | null;
   name: string;
-  email?: string;
   showPresence?: boolean;
   isOnline?: boolean;
   size?: 'sm' | 'md' | 'lg';
@@ -95,46 +91,42 @@ function getColorFromName(name: string): string {
     'bg-pink-500',
     'bg-rose-500',
   ];
-  
+
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
-  
+
   return colors[Math.abs(hash) % colors.length];
 }
 
-const UserAvatar = React.forwardRef<
-  React.ElementRef<typeof AvatarPrimitive.Root>,
-  UserAvatarProps
->(({ className, src, name, showPresence = false, isOnline = false, size = 'md', ...props }, ref) => {
-  const initials = getInitials(name);
-  const bgColor = getColorFromName(name);
-  
-  return (
-    <div className="relative inline-flex">
-      <Avatar
-        ref={ref}
-        className={cn(sizeClasses[size], className)}
-        {...props}
-      >
-        {src && <AvatarImage src={src} alt={name} />}
-        <AvatarFallback className={cn(bgColor, 'text-white')}>
-          {initials}
-        </AvatarFallback>
-      </Avatar>
-      {showPresence && (
-        <span
-          className={cn(
-            'absolute bottom-0 right-0 rounded-full border-2 border-background',
-            presenceSizeClasses[size],
-            isOnline ? 'bg-green-500' : 'bg-gray-400'
-          )}
-        />
-      )}
-    </div>
-  );
-});
+const UserAvatar = React.forwardRef<React.ElementRef<typeof AvatarPrimitive.Root>, UserAvatarProps>(
+  (
+    { className, src, name, showPresence = false, isOnline = false, size = 'md', ...props },
+    ref
+  ) => {
+    const initials = getInitials(name);
+    const bgColor = getColorFromName(name);
+
+    return (
+      <div className="relative inline-flex">
+        <Avatar ref={ref} className={cn(sizeClasses[size], className)} {...props}>
+          {src && <AvatarImage src={src} alt={name} />}
+          <AvatarFallback className={cn(bgColor, 'text-white')}>{initials}</AvatarFallback>
+        </Avatar>
+        {showPresence && (
+          <span
+            className={cn(
+              'absolute bottom-0 right-0 rounded-full border-2 border-background',
+              presenceSizeClasses[size],
+              isOnline ? 'bg-green-500' : 'bg-gray-400'
+            )}
+          />
+        )}
+      </div>
+    );
+  }
+);
 UserAvatar.displayName = 'UserAvatar';
 
 // Avatar group for showing multiple collaborators
@@ -153,7 +145,7 @@ interface AvatarGroupProps {
 const AvatarGroup = ({ users, max = 4, size = 'md', showPresence = true }: AvatarGroupProps) => {
   const visibleUsers = users.slice(0, max);
   const remainingCount = users.length - max;
-  
+
   return (
     <div className="flex -space-x-2">
       {visibleUsers.map((user) => (

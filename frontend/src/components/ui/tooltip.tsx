@@ -62,12 +62,7 @@ interface KeyboardTooltipProps {
   side?: 'top' | 'right' | 'bottom' | 'left';
 }
 
-function KeyboardTooltip({
-  label,
-  shortcut,
-  children,
-  side = 'bottom',
-}: KeyboardTooltipProps) {
+function KeyboardTooltip({ label, shortcut, children, side = 'bottom' }: KeyboardTooltipProps) {
   return (
     <TooltipProvider>
       <Tooltip delayDuration={300}>
@@ -88,19 +83,12 @@ function KeyboardTooltip({
 // User tooltip for avatars
 interface UserTooltipProps {
   name: string;
-  email?: string;
   status?: 'online' | 'away' | 'offline';
   children: React.ReactNode;
   side?: 'top' | 'right' | 'bottom' | 'left';
 }
 
-function UserTooltip({
-  name,
-  email,
-  status,
-  children,
-  side = 'top',
-}: UserTooltipProps) {
+function UserTooltip({ name, status, children, side = 'top' }: UserTooltipProps) {
   const statusColors = {
     online: 'bg-green-500',
     away: 'bg-yellow-500',
@@ -120,14 +108,9 @@ function UserTooltip({
         <TooltipContent side={side} className="p-2">
           <div className="flex flex-col gap-1">
             <span className="font-medium">{name}</span>
-            {email && (
-              <span className="text-xs text-muted-foreground">{email}</span>
-            )}
             {status && (
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span
-                  className={cn('h-2 w-2 rounded-full', statusColors[status])}
-                />
+                <span className={cn('h-2 w-2 rounded-full', statusColors[status])} />
                 {statusLabels[status]}
               </div>
             )}

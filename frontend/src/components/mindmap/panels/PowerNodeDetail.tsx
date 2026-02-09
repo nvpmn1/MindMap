@@ -5,13 +5,39 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  X, ChevronRight, ChevronDown, Plus, Trash2, CheckCircle2, Circle,
-  BarChart3, FileText, MessageSquare, Paperclip, Clock, Users,
-  Sparkles, Edit3, ExternalLink, Target, GitBranch, Calendar,
-  Tag, ArrowUpDown, Eye, Maximize2, Minimize2
+  X,
+  ChevronRight,
+  ChevronDown,
+  Plus,
+  Trash2,
+  CheckCircle2,
+  Circle,
+  BarChart3,
+  FileText,
+  MessageSquare,
+  Paperclip,
+  Clock,
+  Users,
+  Sparkles,
+  Edit3,
+  ExternalLink,
+  Target,
+  GitBranch,
+  Calendar,
+  Tag,
+  ArrowUpDown,
+  Eye,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { NODE_TYPE_CONFIG, STATUS_CONFIG, PRIORITY_CONFIG } from '../editor/constants';
-import type { PowerNode, NeuralNodeData, ChecklistItem, NodeStatus, NodePriority } from '../editor/types';
+import type {
+  PowerNode,
+  NeuralNodeData,
+  ChecklistItem,
+  NodeStatus,
+  NodePriority,
+} from '../editor/types';
 import { useAuthStore } from '@/stores/authStore';
 
 interface NodeDetailPanelProps {
@@ -25,7 +51,11 @@ interface NodeDetailPanelProps {
 type DetailTab = 'overview' | 'metrics' | 'checklist' | 'attachments' | 'comments' | 'ai';
 
 export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
-  node, isOpen, onClose, onUpdate, onDelete
+  node,
+  isOpen,
+  onClose,
+  onUpdate,
+  onDelete,
 }) => {
   const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const [isExpanded, setIsExpanded] = useState(false);
@@ -62,9 +92,14 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
         {/* ─── Header ──────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-white/5">
           <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className={`w-8 h-8 rounded-xl flex items-center justify-center
-              bg-gradient-to-br ${config.gradient} border ${config.borderColor}`}>
-              {React.createElement(config.icon, { className: 'w-4 h-4', style: { color: config.color } })}
+            <div
+              className={`w-8 h-8 rounded-xl flex items-center justify-center
+              bg-gradient-to-br ${config.gradient} border ${config.borderColor}`}
+            >
+              {React.createElement(config.icon, {
+                className: 'w-4 h-4',
+                style: { color: config.color },
+              })}
             </div>
             <div className="flex-1 min-w-0">
               <input
@@ -85,29 +120,37 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={() => setIsExpanded(!isExpanded)}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5">
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5"
+            >
               {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </button>
-            <button onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5">
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5"
+            >
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
         {/* ─── Tabs ────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-0.5 px-4 py-1.5 border-b border-white/5 overflow-x-auto
-          scrollbar-none">
+        <div
+          className="flex items-center gap-0.5 px-4 py-1.5 border-b border-white/5 overflow-x-auto
+          scrollbar-none"
+        >
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
                 whitespace-nowrap transition-all
-                ${activeTab === tab.id 
-                  ? 'bg-white/[0.08] text-white' 
-                  : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]'}`}
+                ${
+                  activeTab === tab.id
+                    ? 'bg-white/[0.08] text-white'
+                    : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]'
+                }`}
             >
               {React.createElement(tab.icon, { className: 'w-3.5 h-3.5' })}
               {tab.label}
@@ -121,27 +164,16 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
         </div>
 
         {/* ─── Content ─────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 scrollbar-thin 
-          scrollbar-thumb-white/5 scrollbar-track-transparent">
-          
-          {activeTab === 'overview' && (
-            <OverviewTab node={node} onUpdate={onUpdate} />
-          )}
-          {activeTab === 'metrics' && (
-            <MetricsTab node={node} onUpdate={onUpdate} />
-          )}
-          {activeTab === 'checklist' && (
-            <ChecklistTab node={node} onUpdate={onUpdate} />
-          )}
-          {activeTab === 'attachments' && (
-            <AttachmentsTab node={node} onUpdate={onUpdate} />
-          )}
-          {activeTab === 'comments' && (
-            <CommentsTab node={node} onUpdate={onUpdate} />
-          )}
-          {activeTab === 'ai' && (
-            <AITab node={node} />
-          )}
+        <div
+          className="flex-1 overflow-y-auto px-5 py-4 space-y-4 scrollbar-thin 
+          scrollbar-thumb-white/5 scrollbar-track-transparent"
+        >
+          {activeTab === 'overview' && <OverviewTab node={node} onUpdate={onUpdate} />}
+          {activeTab === 'metrics' && <MetricsTab node={node} onUpdate={onUpdate} />}
+          {activeTab === 'checklist' && <ChecklistTab node={node} onUpdate={onUpdate} />}
+          {activeTab === 'attachments' && <AttachmentsTab node={node} onUpdate={onUpdate} />}
+          {activeTab === 'comments' && <CommentsTab node={node} onUpdate={onUpdate} />}
+          {activeTab === 'ai' && <AITab node={node} />}
         </div>
 
         {/* ─── Footer Actions ──────────────────────────────────────── */}
@@ -154,9 +186,7 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
             <Trash2 className="w-3.5 h-3.5" />
             Excluir Nó
           </button>
-          <div className="text-[10px] text-slate-600">
-            ID: {node.id.substring(0, 8)}...
-          </div>
+          <div className="text-[10px] text-slate-600">ID: {node.id.substring(0, 8)}...</div>
         </div>
       </motion.div>
     </AnimatePresence>
@@ -165,7 +195,10 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
 
 // ─── Overview Tab ───────────────────────────────────────────────────────────
 
-const OverviewTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: Partial<NeuralNodeData>) => void }> = ({ node, onUpdate }) => {
+const OverviewTab: React.FC<{
+  node: PowerNode;
+  onUpdate: (id: string, data: Partial<NeuralNodeData>) => void;
+}> = ({ node, onUpdate }) => {
   const data = node.data;
 
   return (
@@ -194,7 +227,9 @@ const OverviewTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: Part
               appearance-none cursor-pointer"
           >
             {Object.entries(STATUS_CONFIG).map(([key, config]) => (
-              <option key={key} value={key} className="bg-[#111827]">{config.label}</option>
+              <option key={key} value={key} className="bg-[#111827]">
+                {config.label}
+              </option>
             ))}
           </select>
         </FieldGroup>
@@ -208,7 +243,9 @@ const OverviewTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: Part
               appearance-none cursor-pointer"
           >
             {Object.entries(PRIORITY_CONFIG).map(([key, config]) => (
-              <option key={key} value={key} className="bg-[#111827]">{config.label}</option>
+              <option key={key} value={key} className="bg-[#111827]">
+                {config.label}
+              </option>
             ))}
           </select>
         </FieldGroup>
@@ -218,7 +255,9 @@ const OverviewTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: Part
       <FieldGroup label={`Progresso: ${data.progress || 0}%`}>
         <input
           type="range"
-          min={0} max={100} step={5}
+          min={0}
+          max={100}
+          step={5}
           value={data.progress || 0}
           onChange={(e) => onUpdate(node.id, { progress: parseInt(e.target.value) })}
           className="w-full accent-cyan-500"
@@ -227,10 +266,7 @@ const OverviewTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: Part
 
       {/* Tags */}
       <FieldGroup label="Tags">
-        <TagsEditor
-          tags={data.tags || []}
-          onChange={(tags) => onUpdate(node.id, { tags })}
-        />
+        <TagsEditor tags={data.tags || []} onChange={(tags) => onUpdate(node.id, { tags })} />
       </FieldGroup>
 
       {/* Due Date */}
@@ -251,7 +287,10 @@ const OverviewTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: Part
 
 // ─── Metrics Tab ────────────────────────────────────────────────────────────
 
-const MetricsTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: Partial<NeuralNodeData>) => void }> = ({ node, onUpdate }) => {
+const MetricsTab: React.FC<{
+  node: PowerNode;
+  onUpdate: (id: string, data: Partial<NeuralNodeData>) => void;
+}> = ({ node, onUpdate }) => {
   const data = node.data;
 
   return (
@@ -306,8 +345,10 @@ const MetricsTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: Parti
 
       {/* Priority Matrix */}
       <FieldGroup label="Matriz de Prioridade">
-        <div className="relative w-full aspect-square max-h-[200px] bg-white/[0.02] rounded-xl 
-          border border-white/[0.06] overflow-hidden">
+        <div
+          className="relative w-full aspect-square max-h-[200px] bg-white/[0.02] rounded-xl 
+          border border-white/[0.06] overflow-hidden"
+        >
           {/* Quadrants */}
           <div className="absolute inset-0 grid grid-cols-2 grid-rows-2">
             <div className="border-r border-b border-white/5 flex items-center justify-center">
@@ -340,7 +381,10 @@ const MetricsTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: Parti
 
 // ─── Checklist Tab ──────────────────────────────────────────────────────────
 
-const ChecklistTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: Partial<NeuralNodeData>) => void }> = ({ node, onUpdate }) => {
+const ChecklistTab: React.FC<{
+  node: PowerNode;
+  onUpdate: (id: string, data: Partial<NeuralNodeData>) => void;
+}> = ({ node, onUpdate }) => {
   const [newItem, setNewItem] = useState('');
   const items = node.data.checklist || [];
 
@@ -357,17 +401,18 @@ const ChecklistTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: Par
 
   const toggleItem = (itemId: string) => {
     onUpdate(node.id, {
-      checklist: items.map(i => i.id === itemId ? { ...i, completed: !i.completed } : i)
+      checklist: items.map((i) => (i.id === itemId ? { ...i, completed: !i.completed } : i)),
     });
   };
 
   const deleteItem = (itemId: string) => {
-    onUpdate(node.id, { checklist: items.filter(i => i.id !== itemId) });
+    onUpdate(node.id, { checklist: items.filter((i) => i.id !== itemId) });
   };
 
-  const progress = items.length > 0 
-    ? Math.round((items.filter(i => i.completed).length / items.length) * 100) 
-    : 0;
+  const progress =
+    items.length > 0
+      ? Math.round((items.filter((i) => i.completed).length / items.length) * 100)
+      : 0;
 
   return (
     <div className="space-y-3">
@@ -394,8 +439,10 @@ const ChecklistTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: Par
           className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-xl px-3 py-2
             text-sm text-white placeholder-slate-600 outline-none focus:border-cyan-500/30"
         />
-        <button onClick={addItem}
-          className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 transition-all">
+        <button
+          onClick={addItem}
+          className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 transition-all"
+        >
           <Plus className="w-4 h-4" />
         </button>
       </div>
@@ -410,15 +457,18 @@ const ChecklistTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: Par
               bg-white/[0.02] hover:bg-white/[0.04] transition-all group"
           >
             <button onClick={() => toggleItem(item.id)}>
-              {item.completed 
-                ? <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                : <Circle className="w-4 h-4 text-slate-500 hover:text-slate-300" />
-              }
+              {item.completed ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              ) : (
+                <Circle className="w-4 h-4 text-slate-500 hover:text-slate-300" />
+              )}
             </button>
-            <span className={`flex-1 text-sm ${item.completed ? 'text-slate-500 line-through' : 'text-slate-200'}`}>
+            <span
+              className={`flex-1 text-sm ${item.completed ? 'text-slate-500 line-through' : 'text-slate-200'}`}
+            >
               {item.text}
             </span>
-            <button 
+            <button
               onClick={() => deleteItem(item.id)}
               className="opacity-0 group-hover:opacity-100 p-1 rounded-lg 
                 text-slate-500 hover:text-red-400 transition-all"
@@ -430,9 +480,7 @@ const ChecklistTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: Par
       </div>
 
       {items.length === 0 && (
-        <div className="text-center py-8 text-slate-500 text-sm">
-          Nenhum item na checklist
-        </div>
+        <div className="text-center py-8 text-slate-500 text-sm">Nenhum item na checklist</div>
       )}
     </div>
   );
@@ -440,14 +488,17 @@ const ChecklistTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: Par
 
 // ─── Attachments Tab ────────────────────────────────────────────────────────
 
-const AttachmentsTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: Partial<NeuralNodeData>) => void }> = ({ node, onUpdate }) => {
+const AttachmentsTab: React.FC<{
+  node: PowerNode;
+  onUpdate: (id: string, data: Partial<NeuralNodeData>) => void;
+}> = ({ node, onUpdate }) => {
   const attachments = node.data.attachments || [];
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (files: FileList | null) => {
     if (!files) return;
     const newAttachments = [...attachments];
-    Array.from(files).forEach(file => {
+    Array.from(files).forEach((file) => {
       if (file.size > 10 * 1024 * 1024) return; // 10MB limit
       const reader = new FileReader();
       reader.onload = () => {
@@ -466,7 +517,7 @@ const AttachmentsTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: P
   };
 
   const handleDeleteAttachment = (attId: string) => {
-    onUpdate(node.id, { attachments: attachments.filter(a => a.id !== attId) });
+    onUpdate(node.id, { attachments: attachments.filter((a) => a.id !== attId) });
   };
 
   return (
@@ -482,8 +533,15 @@ const AttachmentsTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: P
       />
       <div
         onClick={() => fileInputRef.current?.click()}
-        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleFileSelect(e.dataTransfer.files); }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handleFileSelect(e.dataTransfer.files);
+        }}
         className="border-2 border-dashed border-white/[0.08] rounded-xl p-6 text-center
           hover:border-cyan-500/30 transition-all cursor-pointer"
       >
@@ -494,8 +552,11 @@ const AttachmentsTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: P
 
       {/* Attachments list */}
       {attachments.map((att) => (
-        <div key={att.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl
-          bg-white/[0.02] hover:bg-white/[0.04] transition-all group">
+        <div
+          key={att.id}
+          className="flex items-center gap-3 px-3 py-2.5 rounded-xl
+          bg-white/[0.02] hover:bg-white/[0.04] transition-all group"
+        >
           <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center">
             <FileText className="w-5 h-5 text-slate-400" />
           </div>
@@ -504,8 +565,12 @@ const AttachmentsTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: P
             <div className="text-[10px] text-slate-500">{att.type}</div>
           </div>
           {att.url && (
-            <a href={att.url} target="_blank" rel="noopener" 
-              className="p-1.5 rounded-lg text-slate-500 hover:text-cyan-400 transition-colors">
+            <a
+              href={att.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-1.5 rounded-lg text-slate-500 hover:text-cyan-400 transition-colors"
+            >
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           )}
@@ -519,9 +584,7 @@ const AttachmentsTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: P
       ))}
 
       {attachments.length === 0 && (
-        <div className="text-center py-4 text-slate-500 text-sm">
-          Nenhum anexo
-        </div>
+        <div className="text-center py-4 text-slate-500 text-sm">Nenhum anexo</div>
       )}
     </div>
   );
@@ -529,7 +592,10 @@ const AttachmentsTab: React.FC<{ node: PowerNode; onUpdate: (id: string, data: P
 
 // ─── Comments Tab ───────────────────────────────────────────────────────────
 
-const CommentsTab: React.FC<{ node: PowerNode; onUpdate?: (id: string, data: Partial<NeuralNodeData>) => void }> = ({ node, onUpdate }) => {
+const CommentsTab: React.FC<{
+  node: PowerNode;
+  onUpdate?: (id: string, data: Partial<NeuralNodeData>) => void;
+}> = ({ node, onUpdate }) => {
   const { profile, user } = useAuthStore();
   const [newComment, setNewComment] = useState('');
   const comments = node.data.comments || [];
@@ -537,7 +603,7 @@ const CommentsTab: React.FC<{ node: PowerNode; onUpdate?: (id: string, data: Par
   const handleAddComment = () => {
     if (!newComment.trim() || !onUpdate) return;
     const userId = profile?.id || user?.id || 'local-user';
-    const userName = profile?.display_name || user?.display_name || profile?.email || user?.email || 'Você';
+    const userName = profile?.display_name || user?.display_name || 'Você';
     const userColor = profile?.color || user?.color || '#06b6d4';
     const comment = {
       id: `comment_${Date.now()}`,
@@ -547,7 +613,10 @@ const CommentsTab: React.FC<{ node: PowerNode; onUpdate?: (id: string, data: Par
       userColor,
       createdAt: new Date().toISOString(),
     };
-    onUpdate(node.id, { comments: [...comments, comment], commentCount: (node.data.commentCount || 0) + 1 });
+    onUpdate(node.id, {
+      comments: [...comments, comment],
+      commentCount: (node.data.commentCount || 0) + 1,
+    });
     setNewComment('');
   };
 
@@ -555,8 +624,10 @@ const CommentsTab: React.FC<{ node: PowerNode; onUpdate?: (id: string, data: Par
     <div className="space-y-3">
       {/* Comment input */}
       <div className="flex items-start gap-2">
-        <div className="w-7 h-7 rounded-full bg-cyan-500/20 flex items-center justify-center
-          text-[10px] font-bold text-cyan-400 flex-shrink-0 mt-1">
+        <div
+          className="w-7 h-7 rounded-full bg-cyan-500/20 flex items-center justify-center
+          text-[10px] font-bold text-cyan-400 flex-shrink-0 mt-1"
+        >
           U
         </div>
         <div className="flex-1">
@@ -586,8 +657,10 @@ const CommentsTab: React.FC<{ node: PowerNode; onUpdate?: (id: string, data: Par
       {/* Comments list */}
       {comments.map((comment) => (
         <div key={comment.id} className="flex items-start gap-2">
-          <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
-            style={{ backgroundColor: comment.userColor }}>
+          <div
+            className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+            style={{ backgroundColor: comment.userColor }}
+          >
             {comment.userName?.charAt(0).toUpperCase() || 'U'}
           </div>
           <div className="flex-1">
@@ -603,9 +676,7 @@ const CommentsTab: React.FC<{ node: PowerNode; onUpdate?: (id: string, data: Par
       ))}
 
       {comments.length === 0 && (
-        <div className="text-center py-6 text-slate-500 text-sm">
-          Nenhum comentário ainda
-        </div>
+        <div className="text-center py-6 text-slate-500 text-sm">Nenhum comentário ainda</div>
       )}
     </div>
   );
@@ -632,10 +703,14 @@ const AITab: React.FC<{ node: PowerNode }> = ({ node }) => {
             <FieldGroup label="Confiança da IA">
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
-                  <div className="h-full bg-purple-400 rounded-full"
-                    style={{ width: `${aiData.confidence * 100}%` }} />
+                  <div
+                    className="h-full bg-purple-400 rounded-full"
+                    style={{ width: `${aiData.confidence * 100}%` }}
+                  />
                 </div>
-                <span className="text-xs text-purple-300">{Math.round(aiData.confidence * 100)}%</span>
+                <span className="text-xs text-purple-300">
+                  {Math.round(aiData.confidence * 100)}%
+                </span>
               </div>
             </FieldGroup>
           )}
@@ -652,7 +727,10 @@ const AITab: React.FC<{ node: PowerNode }> = ({ node }) => {
             <FieldGroup label="Hipóteses">
               <div className="space-y-2">
                 {aiData.hypotheses.map((h, i) => (
-                  <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.02]">
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.02]"
+                  >
                     <div className="flex-1 text-sm text-slate-300">{h.text}</div>
                     <span className="text-[10px] text-amber-400 font-medium">
                       {Math.round(h.probability * 100)}%
@@ -680,7 +758,9 @@ const AITab: React.FC<{ node: PowerNode }> = ({ node }) => {
         <div className="text-center py-8">
           <Sparkles className="w-10 h-10 text-slate-600 mx-auto mb-3" />
           <p className="text-sm text-slate-400">Este nó não foi gerado por IA</p>
-          <p className="text-xs text-slate-600 mt-1">Use o Agent Panel para gerar conteúdo inteligente</p>
+          <p className="text-xs text-slate-600 mt-1">
+            Use o Agent Panel para gerar conteúdo inteligente
+          </p>
         </div>
       )}
     </div>
@@ -689,7 +769,10 @@ const AITab: React.FC<{ node: PowerNode }> = ({ node }) => {
 
 // ─── Shared Components ──────────────────────────────────────────────────────
 
-const FieldGroup: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+const FieldGroup: React.FC<{ label: string; children: React.ReactNode }> = ({
+  label,
+  children,
+}) => (
   <div>
     <label className="text-[11px] font-medium text-slate-500 uppercase tracking-wider mb-1.5 block">
       {label}
@@ -698,15 +781,22 @@ const FieldGroup: React.FC<{ label: string; children: React.ReactNode }> = ({ la
   </div>
 );
 
-const MetricSlider: React.FC<{ label: string; value: number; onChange: (v: number) => void; color: string }> = ({
-  label, value, onChange, color
-}) => (
+const MetricSlider: React.FC<{
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  color: string;
+}> = ({ label, value, onChange, color }) => (
   <div className="text-center">
     <div className="text-[10px] text-slate-500 mb-1">{label}</div>
-    <div className="text-lg font-bold" style={{ color }}>{value}</div>
+    <div className="text-lg font-bold" style={{ color }}>
+      {value}
+    </div>
     <input
       type="range"
-      min={0} max={100} step={5}
+      min={0}
+      max={100}
+      step={5}
       value={value}
       onChange={(e) => onChange(parseInt(e.target.value))}
       className="w-full mt-1"
@@ -715,7 +805,10 @@ const MetricSlider: React.FC<{ label: string; value: number; onChange: (v: numbe
   </div>
 );
 
-const TagsEditor: React.FC<{ tags: string[]; onChange: (tags: string[]) => void }> = ({ tags, onChange }) => {
+const TagsEditor: React.FC<{ tags: string[]; onChange: (tags: string[]) => void }> = ({
+  tags,
+  onChange,
+}) => {
   const [input, setInput] = useState('');
 
   const addTag = () => {
@@ -728,11 +821,16 @@ const TagsEditor: React.FC<{ tags: string[]; onChange: (tags: string[]) => void 
     <div>
       <div className="flex flex-wrap gap-1.5 mb-2">
         {tags.map((tag, i) => (
-          <span key={i} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs
-            bg-white/5 text-slate-300 border border-white/[0.06]">
+          <span
+            key={i}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs
+            bg-white/5 text-slate-300 border border-white/[0.06]"
+          >
             {tag}
-            <button onClick={() => onChange(tags.filter((_, j) => j !== i))}
-              className="text-slate-500 hover:text-red-400">
+            <button
+              onClick={() => onChange(tags.filter((_, j) => j !== i))}
+              className="text-slate-500 hover:text-red-400"
+            >
               <X className="w-2.5 h-2.5" />
             </button>
           </span>
@@ -747,8 +845,10 @@ const TagsEditor: React.FC<{ tags: string[]; onChange: (tags: string[]) => void 
           className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-2.5 py-1.5
             text-xs text-white placeholder-slate-600 outline-none focus:border-cyan-500/30"
         />
-        <button onClick={addTag}
-          className="px-2 rounded-lg bg-white/5 text-slate-400 hover:text-white text-xs">
+        <button
+          onClick={addTag}
+          className="px-2 rounded-lg bg-white/5 text-slate-400 hover:text-white text-xs"
+        >
           <Plus className="w-3 h-3" />
         </button>
       </div>

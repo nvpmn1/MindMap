@@ -1,6 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { authenticate, requireWorkspaceMember, requireWorkspaceEditor, asyncHandler } from '../middleware';
+import {
+  authenticate,
+  requireWorkspaceMember,
+  requireWorkspaceEditor,
+  asyncHandler,
+} from '../middleware';
 import { ValidationError, NotFoundError } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { env } from '../utils/env';
@@ -28,7 +33,10 @@ const updateMapSchema = z.object({
 
 const listMapsQuerySchema = z.object({
   workspace_id: z.string().uuid().optional(),
-  is_template: z.string().transform(v => v === 'true').optional(),
+  is_template: z
+    .string()
+    .transform((v) => v === 'true')
+    .optional(),
   search: z.string().optional(),
   limit: z.string().transform(Number).pipe(z.number().min(1).max(100)).optional().default('20'),
   offset: z.string().transform(Number).pipe(z.number().min(0)).optional().default('0'),
@@ -50,11 +58,14 @@ router.get(
     const { workspace_id, is_template, search, limit, offset } = parsed.data;
 
     const buildBaseQuery = () =>
-      req.supabase!
-        .from('maps')
-        .select(`
+      req
+        .supabase!.from('maps')
+        .select(
+          `
           *
-        `, { count: 'exact' })
+        `,
+          { count: 'exact' }
+        )
         .order('updated_at', { ascending: false });
 
     const applyCommonFilters = (queryToFilter: any) => {
@@ -77,7 +88,10 @@ router.get(
     let { data: maps, error, count } = await query;
 
     if (error && error.message?.includes('maps.workspace_id')) {
-      logger.warn({ error: error.message }, 'Workspace column missing; retrying without workspace filter');
+      logger.warn(
+        { error: error.message },
+        'Workspace column missing; retrying without workspace filter'
+      );
       const retryQuery = applyCommonFilters(buildBaseQuery());
       const retry = await retryQuery;
       maps = retry.data;
@@ -114,60 +128,19 @@ router.get(
     const { mapId } = req.params;
 
     // Fetch map with related data
-    const { data: map, error } = await req.supabase!
-      .from('maps')
-      .select(`
+    const { data: map, error } = await req
+      .supabase!.from('maps')
+      .select(
+        `
         *
-      `)
+      `
+      )
       .eq('id', mapId)
       .single();
 
     if (error || !map) {
-      logger.warn({ mapId, error: error?.message }, 'Map not found, creating default...');
-      
-      // Auto-create map if doesn't exist
-      const newMapData = {
-        id: mapId,
-        workspace_id: '11111111-1111-1111-1111-111111111111',
-        title: 'Novo Mapa Neural',
-        description: 'Seu mapa mental vazio',
-        is_template: false,
-        settings: {},
-        created_by: req.user!.id,
-        updated_at: new Date().toISOString(),
-      };
-
-      let { data: newMap, error: createError } = await req.supabase!
-        .from('maps')
-        .insert(newMapData)
-        .select(`
-          *
-        `)
-        .single();
-
-      if (createError && createError.message?.includes('maps.workspace_id')) {
-        const { workspace_id: _workspaceId, ...fallbackData } = newMapData as any;
-        const retry = await req.supabase!
-          .from('maps')
-          .insert(fallbackData)
-          .select(`
-            *
-          `)
-          .single();
-        newMap = retry.data;
-        createError = retry.error;
-      }
-
-      if (createError) {
-        logger.error({ mapId, error: createError.message }, 'Failed to create map');
-        throw new NotFoundError(`Map creation failed: ${createError.message}`);
-      }
-
-      logger.info({ mapId }, 'Default map created successfully');
-      return res.status(201).json({
-        success: true,
-        data: newMap || { id: mapId, nodes: [], edges: [], title: 'Novo Mapa' },
-      });
+      logger.warn({ mapId, error: error?.message }, 'Map not found');
+      throw new NotFoundError(`Map not found: ${mapId}`);
     }
 
     // Log activity
@@ -205,22 +178,26 @@ router.post(
     };
 
     // Create map using RLS-enabled client
-    let { data: map, error } = await req.supabase!
-      .from('maps')
+    let { data: map, error } = await req
+      .supabase!.from('maps')
       .insert(mapData)
-      .select(`
+      .select(
+        `
         *
-      `)
+      `
+      )
       .single();
 
     if (error && error.message?.includes('maps.workspace_id')) {
       const { workspace_id: _workspaceId, ...fallbackData } = mapData as any;
-      const retry = await req.supabase!
-        .from('maps')
+      const retry = await req
+        .supabase!.from('maps')
         .insert(fallbackData)
-        .select(`
+        .select(
+          `
           *
-        `)
+        `
+        )
         .single();
       map = retry.data;
       error = retry.error;
@@ -243,7 +220,13 @@ router.post(
 
     // Log activity
     const activityWorkspaceId = (map as any)?.workspace_id || env.DEFAULT_WORKSPACE_ID;
-    await logActivity(req.user!.id, activityWorkspaceId, map.id, 'map_created', `Created map "${map.title}"`);
+    await logActivity(
+      req.user!.id,
+      activityWorkspaceId,
+      map.id,
+      'map_created',
+      `Created map "${map.title}"`
+    );
 
     logger.info({ mapId: map.id, userId: req.user!.id }, 'Map created');
 
@@ -274,13 +257,15 @@ router.patch(
       updated_at: new Date().toISOString(),
     };
 
-    const { data: map, error } = await req.supabase!
-      .from('maps')
+    const { data: map, error } = await req
+      .supabase!.from('maps')
       .update(updateData)
       .eq('id', mapId)
-      .select(`
+      .select(
+        `
         *
-      `)
+      `
+      )
       .single();
 
     if (error || !map) {
@@ -289,7 +274,13 @@ router.patch(
 
     // Log activity
     const activityWorkspaceId = (map as any)?.workspace_id || env.DEFAULT_WORKSPACE_ID;
-    await logActivity(req.user!.id, activityWorkspaceId, map.id, 'map_updated', `Updated map "${map.title}"`);
+    await logActivity(
+      req.user!.id,
+      activityWorkspaceId,
+      map.id,
+      'map_updated',
+      `Updated map "${map.title}"`
+    );
 
     logger.info({ mapId, userId: req.user!.id }, 'Map updated');
 
@@ -311,8 +302,8 @@ router.delete(
     const { mapId } = req.params;
 
     // Get map for activity log
-    const { data: map } = await req.supabase!
-      .from('maps')
+    const { data: map } = await req
+      .supabase!.from('maps')
       .select('title, workspace_id')
       .eq('id', mapId)
       .single();
@@ -322,10 +313,7 @@ router.delete(
     }
 
     // Delete map (cascades to nodes, edges, etc.)
-    const { error } = await req.supabase!
-      .from('maps')
-      .delete()
-      .eq('id', mapId);
+    const { error } = await req.supabase!.from('maps').delete().eq('id', mapId);
 
     if (error) {
       logger.error({ error: error.message, mapId }, 'Failed to delete map');
@@ -334,7 +322,13 @@ router.delete(
 
     // Log activity
     const activityWorkspaceId = (map as any)?.workspace_id || env.DEFAULT_WORKSPACE_ID;
-    await logActivity(req.user!.id, activityWorkspaceId, null, 'map_deleted', `Deleted map "${map.title}"`);
+    await logActivity(
+      req.user!.id,
+      activityWorkspaceId,
+      null,
+      'map_deleted',
+      `Deleted map "${map.title}"`
+    );
 
     logger.info({ mapId, userId: req.user!.id }, 'Map deleted');
 
@@ -357,13 +351,15 @@ router.post(
     const { title } = req.body;
 
     // Get original map with nodes and edges
-    const { data: original, error: fetchError } = await req.supabase!
-      .from('maps')
-      .select(`
+    const { data: original, error: fetchError } = await req
+      .supabase!.from('maps')
+      .select(
+        `
         *,
         nodes (*),
         edges (*)
-      `)
+      `
+      )
       .eq('id', mapId)
       .single();
 
@@ -372,8 +368,8 @@ router.post(
     }
 
     // Create new map
-    const { data: newMap, error: createError } = await req.supabase!
-      .from('maps')
+    const { data: newMap, error: createError } = await req
+      .supabase!.from('maps')
       .insert({
         workspace_id: original.workspace_id,
         title: title || `${original.title} (Copy)`,
@@ -397,7 +393,7 @@ router.post(
       const newNodes = original.nodes.map((node: any) => {
         const newNodeId = crypto.randomUUID();
         nodeIdMap.set(node.id, newNodeId);
-        
+
         return {
           id: newNodeId,
           map_id: newMap.id,
@@ -429,15 +425,17 @@ router.post(
 
     // Copy edges
     if (original.edges && original.edges.length > 0) {
-      const newEdges = original.edges.map((edge: any) => ({
-        map_id: newMap.id,
-        source_id: nodeIdMap.get(edge.source_id),
-        target_id: nodeIdMap.get(edge.target_id),
-        type: edge.type,
-        label: edge.label,
-        style: edge.style,
-        animated: edge.animated,
-      })).filter((e: any) => e.source_id && e.target_id);
+      const newEdges = original.edges
+        .map((edge: any) => ({
+          map_id: newMap.id,
+          source_id: nodeIdMap.get(edge.source_id),
+          target_id: nodeIdMap.get(edge.target_id),
+          type: edge.type,
+          label: edge.label,
+          style: edge.style,
+          animated: edge.animated,
+        }))
+        .filter((e: any) => e.source_id && e.target_id);
 
       if (newEdges.length > 0) {
         await req.supabase!.from('edges').insert(newEdges);
@@ -454,7 +452,10 @@ router.post(
       `Duplicated map from "${original.title}"`
     );
 
-    logger.info({ originalMapId: mapId, newMapId: newMap.id, userId: req.user!.id }, 'Map duplicated');
+    logger.info(
+      { originalMapId: mapId, newMapId: newMap.id, userId: req.user!.id },
+      'Map duplicated'
+    );
 
     res.status(201).json({
       success: true,
@@ -483,7 +484,7 @@ async function logActivity(
       description,
       metadata,
     };
-    
+
     await supabaseAdmin.from('activity_events').insert(activityData);
   } catch (error) {
     logger.warn({ error, eventType }, 'Failed to log activity');

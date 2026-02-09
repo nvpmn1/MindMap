@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '@/stores/authStore';
 import { mapsApi } from '@/lib/api';
+import { robustMapsApi } from '@/lib/robustMapsApi';
 import { formatRelativeTime } from '@/lib/utils';
 import { MapCardCompact } from '@/components/MapCardCompact';
 import {
@@ -49,38 +50,55 @@ export function DashboardPage() {
 
   useEffect(() => {
     const loadMaps = async () => {
-      setIsLoading(true);
-      const workspaceId = workspaces[0]?.id;
-      console.log('📍 Loading maps for workspace:', workspaceId);
+      try {
+        setIsLoading(true);
+        const workspaceId = workspaces[0]?.id;
+        console.log('📍 Loading maps for workspace:', workspaceId);
 
-      if (workspaceId) {
+        if (workspaceId) {
+          try {
+            // Use robust API that falls back to localStorage
+            const response = await robustMapsApi.list({
+              workspace_id: workspaceId,
+              limit: 50,
+              offset: 0,
+            });
+            console.log('📡 API Response:', response);
+            const data = (response.data as any[]) || [];
+            console.log('📊 Parsed maps data:', data);
+            const normalized = data.map((map) => ({
+              id: map.id,
+              title: map.title,
+              description: map.description || null,
+              created_at: map.created_at || map.updated_at || new Date().toISOString(),
+              updated_at: map.updated_at || map.created_at || new Date().toISOString(),
+              nodes_count: map._count?.count || map.nodes_count || 0,
+            })) as MapItem[];
+            console.log('✅ Normalized maps:', normalized);
+            setMaps(normalized);
+            setIsLoading(false);
+            return;
+          } catch (error) {
+            console.error('❌ Error loading maps from API:', error);
+            // fallback below
+          }
+        }
+
+        // Fallback: load from localStorage
+        const stored = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
+        console.log('💾 Fallback maps from localStorage:', stored);
+        setMaps(stored);
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Critical error loading maps:', error);
+        // Fallback to empty array on critical error
         try {
-          const response = await mapsApi.list({ workspace_id: workspaceId, limit: 50, offset: 0 });
-          console.log('📡 API Response:', response);
-          const data = (response.data as any[]) || [];
-          console.log('📊 Parsed maps data:', data);
-          const normalized = data.map((map) => ({
-            id: map.id,
-            title: map.title,
-            description: map.description || null,
-            created_at: map.created_at || map.updated_at || new Date().toISOString(),
-            updated_at: map.updated_at || map.created_at || new Date().toISOString(),
-            nodes_count: map._count?.count || map.nodes_count || 0,
-          })) as MapItem[];
-          console.log('✅ Normalized maps:', normalized);
-          setMaps(normalized);
+          setMaps([]);
           setIsLoading(false);
-          return;
-        } catch (error) {
-          console.error('❌ Error loading maps:', error);
-          // fallback
+        } catch (setError) {
+          console.error('Error setting empty maps:', setError);
         }
       }
-
-      const stored = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
-      console.log('💾 Fallback maps from localStorage:', stored);
-      setMaps(stored);
-      setIsLoading(false);
     };
 
     loadMaps();
@@ -89,12 +107,10 @@ export function DashboardPage() {
   const stats = useMemo(() => {
     const totalMaps = maps.length;
     const totalNodes = maps.reduce((acc, m) => acc + m.nodes_count, 0);
-    
+
     let lastUpdate = 'Nenhum';
     if (maps.length > 0) {
-      const dates = maps
-        .map((m) => new Date(m.updated_at).getTime())
-        .filter((t) => !isNaN(t));
+      const dates = maps.map((m) => new Date(m.updated_at).getTime()).filter((t) => !isNaN(t));
       if (dates.length > 0) {
         lastUpdate = formatRelativeTime(new Date(Math.max(...dates)));
       }
@@ -117,35 +133,57 @@ export function DashboardPage() {
 
   const handleCreateMap = async () => {
     const workspaceId = workspaces[0]?.id;
-    if (workspaceId) {
-      try {
-        const response = await mapsApi.create({
-          workspace_id: workspaceId,
-          title: 'Novo Mapa Mental',
-          description: '',
-        });
-        const map = response.data as any;
-        toast.success('Mapa criado com sucesso!', { duration: 3500 });
-        navigate(`/map/${map.id}`);
-        return;
-      } catch {
-        // fallback
-      }
+    if (!workspaceId) {
+      toast.error('No workspace found', { duration: 3000 });
+      return;
     }
 
-    const newMap: MapItem = {
-      id: crypto.randomUUID(),
-      title: 'Novo Mapa Mental',
-      description: '',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      nodes_count: 1,
-    };
+    try {
+      // Use backend API to create map - ensures proper database persistence
+      const response = await mapsApi.create({
+        workspace_id: workspaceId,
+        title: 'Novo Mapa Mental',
+        description: '',
+      });
 
-    const existing = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
-    localStorage.setItem('mindmap_maps', JSON.stringify([newMap, ...existing]));
-    toast.success('Mapa criado com sucesso!');
-    navigate(`/map/${newMap.id}`);
+      const newMap = (response as any)?.data;
+      if (!newMap?.id) {
+        toast.error('Falha ao criar mapa', { duration: 3000 });
+        return;
+      }
+
+      console.log('✅ Map created:', newMap);
+      toast.success('Mapa criado com sucesso!', { duration: 3500 });
+
+      // Reload maps list so new map appears
+      try {
+        const response = await robustMapsApi.list({
+          workspace_id: workspaceId,
+          limit: 50,
+          offset: 0,
+        });
+        const data = (response.data as any[]) || [];
+        const normalized = data.map((map) => ({
+          id: map.id,
+          title: map.title,
+          description: map.description || null,
+          created_at: map.created_at || map.updated_at || new Date().toISOString(),
+          updated_at: map.updated_at || map.created_at || new Date().toISOString(),
+          nodes_count: map._count?.count || map.nodes_count || 0,
+        })) as MapItem[];
+        setMaps(normalized);
+      } catch (error) {
+        console.warn('Failed to reload maps list:', error);
+        const stored = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
+        setMaps(stored);
+      }
+
+      // Navigate to new map
+      navigate(`/map/${newMap.id}`);
+    } catch (error) {
+      console.error('Error creating map:', error);
+      toast.error('Erro ao criar mapa', { duration: 3000 });
+    }
   };
 
   const getGreeting = () => {
@@ -333,7 +371,9 @@ function StatCard({
   };
 
   return (
-    <div className={`rounded-xl border ${colorMap[color]} p-4 hover:bg-opacity-20 transition-all group`}>
+    <div
+      className={`rounded-xl border ${colorMap[color]} p-4 hover:bg-opacity-20 transition-all group`}
+    >
       <div className="flex items-center justify-between mb-3">
         <span className="text-[12px] text-slate-400 font-medium uppercase tracking-wide">
           {label}
@@ -406,9 +446,7 @@ function ActivityTimeline({ maps }: { maps: MapItem[] }) {
         <div key={map.id} className="flex items-start gap-3 group">
           <div className="relative flex flex-col items-center">
             <div className="w-2 h-2 rounded-full bg-cyan-400/60 mt-1.5" />
-            {i < maps.length - 1 && (
-              <div className="w-px flex-1 bg-white/[0.04] mt-1" />
-            )}
+            {i < maps.length - 1 && <div className="w-px flex-1 bg-white/[0.04] mt-1" />}
           </div>
           <div className="flex-1 min-w-0 pb-3">
             <p className="text-[13px] text-white truncate">{map.title}</p>

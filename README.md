@@ -4,7 +4,7 @@ Uma aplicação web moderna para visualizar, organizar e colaborar em mapas ment
 
 ## 📁 Estrutura do Projeto
 
-```
+```tree
 MindMap/
 ├── frontend/          # React + Vite + TypeScript (Vercel)
 │   └── src/           # Código fonte
@@ -21,16 +21,19 @@ MindMap/
 ## 🚀 Quick Start
 
 ### Pré-requisitos
+
 - Node.js >= 20.0.0
 - npm >= 9.0.0
 
 ### 1. Instalar dependências (raiz)
+
 ```bash
 npm install                    # Instala concurrently
 npm run install:all            # Instala deps do backend e frontend
 ```
 
 ### 2. Configurar variáveis de ambiente
+
 ```bash
 # Backend
 cp backend/.env.example backend/.env
@@ -42,44 +45,49 @@ cp frontend/.env.example frontend/.env.local
 ```
 
 ### 3. Rodar em desenvolvimento
+
 ```bash
 npm run dev                    # Inicia backend e frontend juntos
 ```
 
 Ou separadamente:
+
 ```bash
 npm run dev:backend            # Backend em http://localhost:3001
 npm run dev:frontend           # Frontend em http://localhost:5173
 ```
 
 ### Scripts disponíveis
-| Script | Descrição |
-|--------|-----------|
+
+| Script                | Descrição                                  |
+| --------------------- | ------------------------------------------ |
 | `npm run install:all` | Instala dependências do backend e frontend |
-| `npm run dev` | Inicia backend e frontend em paralelo |
-| `npm run build` | Compila backend e frontend |
-| `npm run typecheck` | Verifica tipos TypeScript |
-| `npm run lint` | Executa linter em todo o projeto |
-| `npm run clean` | Remove node_modules e dist |
+| `npm run dev`         | Inicia backend e frontend em paralelo      |
+| `npm run build`       | Compila backend e frontend                 |
+| `npm run typecheck`   | Verifica tipos TypeScript                  |
+| `npm run lint`        | Executa linter em todo o projeto           |
+| `npm run clean`       | Remove node_modules e dist                 |
 
 ## 🌐 Deploy
 
-| Serviço | Uso |
-|---------|-----|
-| **Vercel** | Frontend (React) |
-| **Render** | Backend (Node.js) |
-| **Supabase** | Database + Auth + Realtime |
-| **Anthropic** | Claude AI API |
+| Serviço       | Uso                        |
+| ------------- | -------------------------- |
+| **Vercel**    | Frontend (React)           |
+| **Render**    | Backend (Node.js)          |
+| **Supabase**  | Database + Auth + Realtime |
+| **Anthropic** | Claude AI API              |
 
 ### Variáveis de Ambiente (Vercel)
-```
+
+```bash
 VITE_SUPABASE_URL=https://xxx.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJ...
 VITE_API_URL=https://seu-backend.onrender.com
 ```
 
 ### Variáveis de Ambiente (Render)
-```
+
+```bash
 SUPABASE_URL=https://xxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
 CLAUDE_API_KEY=sk-ant-...
@@ -88,6 +96,7 @@ CLAUDE_API_KEY=sk-ant-...
 ## 📚 Documentação
 
 Veja a pasta `/docs` para documentação completa:
+
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) - Arquitetura técnica
 - [DEPLOYMENT.md](docs/DEPLOYMENT.md) - Guia de deploy
 - [DATABASE.md](docs/DATABASE.md) - Schema do banco
@@ -96,21 +105,25 @@ Veja a pasta `/docs` para documentação completa:
 ## 🌟 Recursos Principais
 
 ### 📊 Visualizações
+
 - **Mapa Mental**: Visualização interativa com @xyflow/react
 - **Kanban**: Quadro de tarefas com drag-and-drop
 - **Lista**: Visão hierárquica expandível
 
 ### 🤖 Inteligência Artificial (Claude)
+
 - Geração automática de mapas mentais
 - Expansão de ideias com sugestões inteligentes
 - Assistente de chat para brainstorming
 
 ### 👥 Colaboração em Tempo Real
+
 - Sincronização instantânea via Supabase Realtime
 - Indicador de usuários online
 - Histórico de atividades
 
 ### ✅ Gestão de Tarefas
+
 - Converter ideias em tarefas
 - Status (A fazer, Fazendo, Concluído)
 - Prioridades (Baixa, Média, Alta)
@@ -119,7 +132,7 @@ Veja a pasta `/docs` para documentação completa:
 
 ## 🏗️ Arquitetura
 
-```
+```tree
 MindMap/
 ├── backend/                 # API Node.js + Express
 │   ├── server.js           # Servidor principal
@@ -151,6 +164,7 @@ MindMap/
 ## 🚀 Como Executar
 
 ### Pré-requisitos
+
 - Node.js 18+
 - Conta Supabase (ou PostgreSQL local)
 - Chave API da Anthropic (Claude)
@@ -196,6 +210,7 @@ npm run dev
 ## 📡 Endpoints da API
 
 ### Mapas Mentais
+
 - `GET /api/mindmaps` - Listar todos os mapas
 - `POST /api/mindmaps` - Criar novo mapa
 - `GET /api/mindmaps/:id` - Obter mapa específico
@@ -203,17 +218,20 @@ npm run dev
 - `DELETE /api/mindmaps/:id` - Excluir mapa
 
 ### Nós
+
 - `GET /api/nodes/mindmap/:id` - Nós de um mapa
 - `POST /api/nodes` - Criar nó
 - `PUT /api/nodes/:id` - Atualizar nó
 - `DELETE /api/nodes/:id` - Excluir nó
 
 ### Tarefas
+
 - `GET /api/tasks` - Listar tarefas
 - `PUT /api/tasks/:id/status` - Atualizar status
 - `PUT /api/tasks/:id/assign` - Atribuir responsável
 
 ### IA
+
 - `POST /api/ai/generate-map` - Gerar mapa com IA
 - `POST /api/ai/expand-node` - Expandir nó
 - `POST /api/ai/summarize` - Resumir conteúdo
@@ -223,6 +241,7 @@ npm run dev
 ## 🎨 Tecnologias
 
 ### Frontend
+
 - **React 18** - Framework UI
 - **Vite** - Build tool
 - **Tailwind CSS** - Estilização
@@ -232,6 +251,7 @@ npm run dev
 - **@dnd-kit** - Drag and drop
 
 ### Backend
+
 - **Node.js** - Runtime
 - **Express** - Framework web
 - **Supabase** - BaaS (Database + Realtime + Auth)
@@ -239,11 +259,11 @@ npm run dev
 
 ## 👤 Usuários Predefinidos
 
-| Nome | Email | Cor | Papel |
-|------|-------|-----|-------|
-| Guilherme | guilherme@mindmap.com | Índigo | Admin |
-| Helen | helen@mindmap.com | Rosa | Membro |
-| Pablo | pablo@mindmap.com | Verde | Membro |
+| Nome      | Email                 | Cor    | Papel  |
+| --------- | --------------------- | ------ | ------ |
+| Guilherme | guilherme@mindmap.com | Índigo | Admin  |
+| Helen     | helen@mindmap.com     | Rosa   | Membro |
+| Pablo     | pablo@mindmap.com     | Verde  | Membro |
 
 ## 🔧 Configuração do Supabase
 

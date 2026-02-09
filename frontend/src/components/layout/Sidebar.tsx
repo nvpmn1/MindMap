@@ -13,6 +13,7 @@ import {
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -128,17 +129,14 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
           )}
           title={collapsed ? user?.display_name || 'Perfil' : undefined}
         >
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500/20 to-purple-500/20 flex items-center justify-center overflow-hidden border border-white/10 flex-shrink-0">
-            {user?.avatar_url ? (
-              <img 
-                src={user.avatar_url} 
-                alt="Avatar"
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  console.error('Avatar failed to load in Sidebar, using fallback');
-                  (e.currentTarget as HTMLImageElement).style.display = 'none';
-                  (e.currentTarget as HTMLImageElement).parentElement!.textContent = user?.display_name?.charAt(0)?.toUpperCase() || 'U';
-                }}
+          {/* Avatar with automatic fallback */}
+          <div className="flex items-center justify-center">
+            {user ? (
+              <UserAvatar
+                url={user.avatar_url}
+                displayName={user.display_name}
+                size="sm"
+                className="border border-white/10"
               />
             ) : (
               <User className="w-4 h-4 text-slate-400" />

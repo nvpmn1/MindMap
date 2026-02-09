@@ -42,19 +42,33 @@ const allowedOrigins = Array.from(
 );
 
 const corsOptions = {
-  origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
-    // Allow localhost and configured origins for development
-    const isAllowed =
-      !origin || // Browser requests (like file://, data:)
-      allowedOrigins.includes(origin) ||
-      origin?.includes('localhost') ||
-      origin?.includes('127.0.0.1');
-
-    if (isAllowed) {
-      callback(null, true);
+  origin: function (
+    origin: string | undefined,
+    callback: (err: Error | null, allow?: boolean) => void
+  ) {
+    // In production, only allow configured origins
+    if (env.NODE_ENV === 'production') {
+      const isAllowed = !origin || allowedOrigins.includes(origin);
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        logger.warn({ origin }, '[CORS] Blocked request from disallowed origin');
+        callback(new Error('Not allowed by CORS policy'));
+      }
     } else {
-      logger.warn({ origin }, '[CORS] Request from disallowed origin');
-      callback(new Error('Not allowed by CORS policy'));
+      // In development, also allow localhost
+      const isAllowed =
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        origin?.includes('localhost') ||
+        origin?.includes('127.0.0.1');
+
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        logger.warn({ origin }, '[CORS] Request from disallowed origin');
+        callback(new Error('Not allowed by CORS policy'));
+      }
     }
   },
   credentials: true,
@@ -113,7 +127,7 @@ app.use('/api/reset', resetRoutes);
 app.use((req: Request, res: Response) => {
   res.status(404).json({
     success: false,
-    error: { code: 'NOT_FOUND', message: 'Endpoint not found' }
+    error: { code: 'NOT_FOUND', message: 'Endpoint not found' },
   });
 });
 

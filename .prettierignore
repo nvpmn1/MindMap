@@ -1,0 +1,17 @@
+node_modules
+dist
+build
+.vite
+.next
+coverage
+.vercel
+.env
+.env.local
+.env.*.local
+*.lock
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+.DS_Store
+.cache
+.turbo

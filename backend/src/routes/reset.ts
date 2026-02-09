@@ -28,47 +28,7 @@ router.post(
     logger.warn({ userId }, '🔥 FACTORY RESET INITIATED');
 
     try {
-      // 1. Delete all maps for this user
-      const { error: mapsError } = await supabaseAdmin
-        .from('maps')
-        .delete()
-        .eq('workspace_id', userId);
-
-      if (mapsError) {
-        logger.error({ error: mapsError, userId }, 'Failed to delete maps');
-        throw mapsError;
-      }
-      logger.info({ userId }, '✅ Maps deleted');
-
-      // 2. Delete all nodes (cascade should handle this, but be explicit)
-      const { error: nodesError } = await supabaseAdmin
-        .from('nodes')
-        .delete()
-        .eq('map_id', (
-          // Try to find all maps for this user first
-          await supabaseAdmin
-            .from('maps')
-            .select('id')
-            .eq('workspace_id', userId)
-        ).data?.map((m: any) => m.id).join(',') || 'NULL');
-
-      if (nodesError && nodesError.message !== 'No rows matched the criteria') {
-        logger.warn({ error: nodesError, userId }, 'Warning deleting nodes');
-      }
-      logger.info({ userId }, '✅ Nodes deleted');
-
-      // 3. Delete all edges
-      const { error: edgesError } = await supabaseAdmin
-        .from('edges')
-        .delete()
-        .eq('created_by', userId);
-
-      if (edgesError && edgesError.message !== 'No rows matched the criteria') {
-        logger.warn({ error: edgesError, userId }, 'Warning deleting edges');
-      }
-      logger.info({ userId }, '✅ Edges deleted');
-
-      // 4. Delete all tasks
+      // 1. Delete all tasks for this user first
       const { error: tasksError } = await supabaseAdmin
         .from('tasks')
         .delete()
@@ -79,7 +39,19 @@ router.post(
       }
       logger.info({ userId }, '✅ Tasks deleted');
 
-      // 5. Delete profile data
+      // 2. Delete all maps (cascading deletes will remove nodes, edges, etc.)
+      const { error: mapsError } = await supabaseAdmin
+        .from('maps')
+        .delete()
+        .eq('workspace_id', userId);
+
+      if (mapsError) {
+        logger.error({ error: mapsError, userId }, 'Failed to delete maps');
+        throw mapsError;
+      }
+      logger.info({ userId }, '✅ Maps deleted (nodes/edges cascade-deleted)');
+
+      // 4. Delete profile data
       const { error: profileError } = await supabaseAdmin
         .from('profiles')
         .delete()
@@ -90,7 +62,7 @@ router.post(
       }
       logger.info({ userId }, '✅ Profile deleted');
 
-      // 6. Delete workspaces
+      // 5. Delete workspaces
       const { error: workspacesError } = await supabaseAdmin
         .from('workspaces')
         .delete()
@@ -101,18 +73,18 @@ router.post(
       }
       logger.info({ userId }, '✅ Workspaces deleted');
 
-      // 7. Delete activity logs
+      // 6. Delete activity events
       const { error: activityError } = await supabaseAdmin
-        .from('activity_logs')
+        .from('activity_events')
         .delete()
         .eq('user_id', userId);
 
       if (activityError && activityError.message !== 'No rows matched the criteria') {
-        logger.warn({ error: activityError, userId }, 'Warning deleting activity logs');
+        logger.warn({ error: activityError, userId }, 'Warning deleting activity events');
       }
-      logger.info({ userId }, '✅ Activity logs deleted');
+      logger.info({ userId }, '✅ Activity events deleted');
 
-      // 8. Finally, delete the user account from Supabase Auth
+      // 7. Finally, delete the user account from Supabase Auth
       const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
 
       if (authError) {
@@ -128,10 +100,7 @@ router.post(
         message: 'All user data has been permanently deleted',
       });
     } catch (error) {
-      logger.error(
-        { error, userId },
-        '❌ Factory reset failed'
-      );
+      logger.error({ error, userId }, '❌ Factory reset failed');
 
       return res.status(500).json({
         success: false,

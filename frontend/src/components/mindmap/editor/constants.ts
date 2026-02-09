@@ -2,10 +2,20 @@
 // NeuralMap Editor - Constants & Configuration
 // ============================================================================
 
-import { 
-  Brain, Lightbulb, CheckSquare, FileText, Link2, Search, 
-  BarChart3, Grid3X3, Milestone, HelpCircle, GitBranch, Users,
-  type LucideIcon
+import {
+  Brain,
+  Lightbulb,
+  CheckSquare,
+  FileText,
+  Link2,
+  Search,
+  BarChart3,
+  Grid3X3,
+  Milestone,
+  HelpCircle,
+  GitBranch,
+  Users,
+  type LucideIcon,
 } from 'lucide-react';
 import type { NeuralNodeType, NodeStatus, NodePriority, ConnectionStyle, ViewMode } from './types';
 
@@ -26,7 +36,7 @@ export interface NodeTypeConfig {
 
 export const NODE_TYPE_CONFIG: Record<NeuralNodeType, NodeTypeConfig> = {
   central: {
-    type: 'central',
+    type: 'idea',
     label: 'Central',
     icon: Brain,
     color: '#a855f7',
@@ -35,7 +45,7 @@ export const NODE_TYPE_CONFIG: Record<NeuralNodeType, NodeTypeConfig> = {
     bgColor: 'bg-purple-500/10',
     borderColor: 'border-purple-500/40',
     shortcut: 'C',
-    description: 'Tema central do mapa'
+    description: 'Tema central do mapa',
   },
   idea: {
     type: 'idea',
@@ -47,7 +57,7 @@ export const NODE_TYPE_CONFIG: Record<NeuralNodeType, NodeTypeConfig> = {
     bgColor: 'bg-amber-500/10',
     borderColor: 'border-amber-500/40',
     shortcut: 'I',
-    description: 'Ideias criativas e insights'
+    description: 'Ideias criativas e insights',
   },
   task: {
     type: 'task',
@@ -59,7 +69,7 @@ export const NODE_TYPE_CONFIG: Record<NeuralNodeType, NodeTypeConfig> = {
     bgColor: 'bg-emerald-500/10',
     borderColor: 'border-emerald-500/40',
     shortcut: 'T',
-    description: 'Tarefas e ações'
+    description: 'Tarefas e ações',
   },
   note: {
     type: 'note',
@@ -71,7 +81,7 @@ export const NODE_TYPE_CONFIG: Record<NeuralNodeType, NodeTypeConfig> = {
     bgColor: 'bg-blue-500/10',
     borderColor: 'border-blue-500/40',
     shortcut: 'N',
-    description: 'Notas e anotações'
+    description: 'Notas e anotações',
   },
   reference: {
     type: 'reference',
@@ -83,7 +93,7 @@ export const NODE_TYPE_CONFIG: Record<NeuralNodeType, NodeTypeConfig> = {
     bgColor: 'bg-cyan-500/10',
     borderColor: 'border-cyan-500/40',
     shortcut: 'R',
-    description: 'Links e referências externas'
+    description: 'Links e referências externas',
   },
   research: {
     type: 'research',
@@ -95,7 +105,7 @@ export const NODE_TYPE_CONFIG: Record<NeuralNodeType, NodeTypeConfig> = {
     bgColor: 'bg-violet-500/10',
     borderColor: 'border-violet-500/40',
     shortcut: 'P',
-    description: 'Pesquisa e análise'
+    description: 'Pesquisa e análise',
   },
   data: {
     type: 'data',
@@ -107,7 +117,7 @@ export const NODE_TYPE_CONFIG: Record<NeuralNodeType, NodeTypeConfig> = {
     bgColor: 'bg-pink-500/10',
     borderColor: 'border-pink-500/40',
     shortcut: 'D',
-    description: 'Gráficos e visualização de dados'
+    description: 'Gráficos e visualização de dados',
   },
   group: {
     type: 'group',
@@ -119,7 +129,7 @@ export const NODE_TYPE_CONFIG: Record<NeuralNodeType, NodeTypeConfig> = {
     bgColor: 'bg-indigo-500/10',
     borderColor: 'border-indigo-500/40',
     shortcut: 'G',
-    description: 'Agrupamento de nós'
+    description: 'Agrupamento de nós',
   },
   milestone: {
     type: 'milestone',
@@ -131,7 +141,7 @@ export const NODE_TYPE_CONFIG: Record<NeuralNodeType, NodeTypeConfig> = {
     bgColor: 'bg-orange-500/10',
     borderColor: 'border-orange-500/40',
     shortcut: 'M',
-    description: 'Marcos e objetivos'
+    description: 'Marcos e objetivos',
   },
   question: {
     type: 'question',
@@ -143,7 +153,7 @@ export const NODE_TYPE_CONFIG: Record<NeuralNodeType, NodeTypeConfig> = {
     bgColor: 'bg-yellow-500/10',
     borderColor: 'border-yellow-500/40',
     shortcut: 'Q',
-    description: 'Perguntas e hipóteses'
+    description: 'Perguntas e hipóteses',
   },
   decision: {
     type: 'decision',
@@ -155,7 +165,7 @@ export const NODE_TYPE_CONFIG: Record<NeuralNodeType, NodeTypeConfig> = {
     bgColor: 'bg-red-500/10',
     borderColor: 'border-red-500/40',
     shortcut: 'X',
-    description: 'Pontos de decisão'
+    description: 'Pontos de decisão',
   },
   resource: {
     type: 'resource',
@@ -167,8 +177,8 @@ export const NODE_TYPE_CONFIG: Record<NeuralNodeType, NodeTypeConfig> = {
     bgColor: 'bg-teal-500/10',
     borderColor: 'border-teal-500/40',
     shortcut: 'U',
-    description: 'Recursos e equipe'
-  }
+    description: 'Recursos e equipe',
+  },
 };
 
 // ─── Status Config ──────────────────────────────────────────────────────────
@@ -179,17 +189,20 @@ export const STATUS_CONFIG: Record<NodeStatus, { label: string; color: string; b
   in_progress: { label: 'Em Progresso', color: 'text-blue-400', bg: 'bg-blue-500/20' },
   review: { label: 'Em Revisão', color: 'text-amber-400', bg: 'bg-amber-500/20' },
   completed: { label: 'Concluído', color: 'text-emerald-400', bg: 'bg-emerald-500/20' },
-  archived: { label: 'Arquivado', color: 'text-gray-400', bg: 'bg-gray-500/20' }
+  archived: { label: 'Arquivado', color: 'text-gray-400', bg: 'bg-gray-500/20' },
 };
 
 // ─── Priority Config ────────────────────────────────────────────────────────
 
-export const PRIORITY_CONFIG: Record<NodePriority, { label: string; color: string; bg: string; icon: string }> = {
+export const PRIORITY_CONFIG: Record<
+  NodePriority,
+  { label: string; color: string; bg: string; icon: string }
+> = {
   low: { label: 'Baixa', color: 'text-slate-400', bg: 'bg-slate-500/20', icon: '▽' },
   medium: { label: 'Média', color: 'text-blue-400', bg: 'bg-blue-500/20', icon: '◇' },
   high: { label: 'Alta', color: 'text-amber-400', bg: 'bg-amber-500/20', icon: '△' },
   urgent: { label: 'Urgente', color: 'text-orange-400', bg: 'bg-orange-500/20', icon: '▲' },
-  critical: { label: 'Crítica', color: 'text-red-400', bg: 'bg-red-500/20', icon: '⬆' }
+  critical: { label: 'Crítica', color: 'text-red-400', bg: 'bg-red-500/20', icon: '⬆' },
 };
 
 // ─── View Modes ─────────────────────────────────────────────────────────────
@@ -199,7 +212,7 @@ export const VIEW_MODE_CONFIG: Record<ViewMode, { label: string; icon: string }>
   list: { label: 'Lista', icon: 'list' },
   kanban: { label: 'Kanban', icon: 'columns' },
   timeline: { label: 'Timeline', icon: 'calendar' },
-  analytics: { label: 'Analytics', icon: 'chart' }
+  analytics: { label: 'Analytics', icon: 'chart' },
 };
 
 // ─── Connection Styles ──────────────────────────────────────────────────────
@@ -209,7 +222,7 @@ export const CONNECTION_STYLES: Record<ConnectionStyle, { label: string; descrip
   bezier: { label: 'Bezier', description: 'Curvas suaves' },
   straight: { label: 'Reta', description: 'Linhas retas diretas' },
   step: { label: 'Step', description: 'Ângulos retos' },
-  animated: { label: 'Animada', description: 'Fluxo animado contínuo' }
+  animated: { label: 'Animada', description: 'Fluxo animado contínuo' },
 };
 
 // ─── Default Values ─────────────────────────────────────────────────────────
@@ -241,8 +254,16 @@ export const DEFAULT_EDITOR_SETTINGS = {
 // ─── Collaboration Colors ───────────────────────────────────────────────────
 
 export const COLLABORATOR_COLORS = [
-  '#06b6d4', '#a855f7', '#f59e0b', '#ef4444', '#10b981',
-  '#ec4899', '#8b5cf6', '#f97316', '#14b8a6', '#6366f1'
+  '#06b6d4',
+  '#a855f7',
+  '#f59e0b',
+  '#ef4444',
+  '#10b981',
+  '#ec4899',
+  '#8b5cf6',
+  '#f97316',
+  '#14b8a6',
+  '#6366f1',
 ];
 
 // ─── AI Models ──────────────────────────────────────────────────────────────
@@ -278,18 +299,18 @@ export const AI_MODELS = {
 
 export const KEYBOARD_SHORTCUTS = {
   // Node creation
-  'i': { action: 'createNode', type: 'idea', label: 'Nova Ideia' },
-  't': { action: 'createNode', type: 'task', label: 'Nova Tarefa' },
-  'n': { action: 'createNode', type: 'note', label: 'Nova Nota' },
-  'r': { action: 'createNode', type: 'reference', label: 'Nova Referência' },
-  'p': { action: 'createNode', type: 'research', label: 'Nova Pesquisa' },
-  'd': { action: 'createNode', type: 'data', label: 'Novos Dados' },
-  'q': { action: 'createNode', type: 'question', label: 'Nova Questão' },
-  
+  i: { action: 'createNode', type: 'idea', label: 'Nova Ideia' },
+  t: { action: 'createNode', type: 'task', label: 'Nova Tarefa' },
+  n: { action: 'createNode', type: 'note', label: 'Nova Nota' },
+  r: { action: 'createNode', type: 'reference', label: 'Nova Referência' },
+  p: { action: 'createNode', type: 'research', label: 'Nova Pesquisa' },
+  d: { action: 'createNode', type: 'data', label: 'Novos Dados' },
+  q: { action: 'createNode', type: 'question', label: 'Nova Questão' },
+
   // Editor actions
-  'Delete': { action: 'deleteSelected', label: 'Excluir Selecionado' },
-  'Backspace': { action: 'deleteSelected', label: 'Excluir Selecionado' },
-  'Escape': { action: 'clearSelection', label: 'Limpar Seleção' },
+  Delete: { action: 'deleteSelected', label: 'Excluir Selecionado' },
+  Backspace: { action: 'deleteSelected', label: 'Excluir Selecionado' },
+  Escape: { action: 'clearSelection', label: 'Limpar Seleção' },
   'ctrl+z': { action: 'undo', label: 'Desfazer' },
   'ctrl+shift+z': { action: 'redo', label: 'Refazer' },
   'ctrl+y': { action: 'redo', label: 'Refazer' },
@@ -299,8 +320,8 @@ export const KEYBOARD_SHORTCUTS = {
   'ctrl+shift+a': { action: 'toggleAI', label: 'Abrir IA' },
   'ctrl+e': { action: 'toggleExport', label: 'Exportar' },
   'ctrl+f': { action: 'search', label: 'Buscar no Mapa' },
-  'f': { action: 'fitView', label: 'Ajustar Visualização' },
-  'l': { action: 'toggleLock', label: 'Alternar Bloqueio' },
-  'g': { action: 'toggleGrid', label: 'Alternar Grade' },
-  'space': { action: 'quickAdd', label: 'Adição Rápida' },
+  f: { action: 'fitView', label: 'Ajustar Visualização' },
+  l: { action: 'toggleLock', label: 'Alternar Bloqueio' },
+  g: { action: 'toggleGrid', label: 'Alternar Grade' },
+  space: { action: 'quickAdd', label: 'Adição Rápida' },
 } as const;

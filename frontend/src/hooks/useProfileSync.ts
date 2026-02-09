@@ -6,9 +6,15 @@ import { useAuthStore } from '@/stores/authStore';
  * Validates avatar URLs and ensures localStorage is persisted
  */
 export function useProfileSync() {
-  const { user, profile, loginWithProfile } = useAuthStore();
+  const { user, profile } = useAuthStore();
   const syncTimeoutRef = useRef<NodeJS.Timeout>();
   const lastSyncRef = useRef<string>('');
+  const userRef = useRef(user);
+  const profileRef = useRef(profile);
+
+  // Keep refs updated but don't trigger syncProfile recreation
+  userRef.current = user;
+  profileRef.current = profile;
 
   const validateAvatarUrl = useCallback((url: string | null | undefined): boolean => {
     if (!url) return true;
@@ -20,7 +26,12 @@ export function useProfileSync() {
     return true; // Accept everything else
   }, []);
 
+  // Create syncProfile without user/profile in dependencies
+  // Use refs instead to avoid recreation on every state change
   const syncProfile = useCallback(() => {
+    const user = userRef.current;
+    const profile = profileRef.current;
+
     if (!user) return;
 
     // Only sync if user data actually changed
@@ -46,7 +57,7 @@ export function useProfileSync() {
     } catch (error) {
       console.error('Profile sync error:', error);
     }
-  }, [user, profile, validateAvatarUrl, loginWithProfile]);
+  }, []); // Empty dependencies - syncProfile never recreates
 
   // Sync profile periodically (every 5 seconds)
   useEffect(() => {
@@ -59,7 +70,7 @@ export function useProfileSync() {
         clearInterval(syncTimeoutRef.current);
       }
     };
-  }, [syncProfile]);
+  }, [syncProfile]); // syncProfile now only created once
 
   // Sync on visibility change (when user comes back to tab)
   useEffect(() => {
@@ -78,4 +89,3 @@ export function useProfileSync() {
 
   return { user, profile, isProfileValid: validateAvatarUrl(user?.avatar_url) };
 }
-

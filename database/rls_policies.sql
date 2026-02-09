@@ -140,15 +140,15 @@ CREATE POLICY "profiles_select_authenticated"
 
 CREATE POLICY "profiles_insert_own"
     ON profiles FOR INSERT
-    WITH CHECK (auth.uid() = user_id);
+    WITH CHECK (auth.uid() = id);
 
 CREATE POLICY "profiles_update_own"
     ON profiles FOR UPDATE
-    USING (auth.uid() = user_id);
+    USING (auth.uid() = id);
 
 CREATE POLICY "profiles_delete_own"
     ON profiles FOR DELETE
-    USING (auth.uid() = user_id);
+    USING (auth.uid() = id);
 
 -- ============================================
 -- RLS: maps

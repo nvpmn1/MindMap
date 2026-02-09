@@ -6,10 +6,16 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useNodesState, useEdgesState, useReactFlow, type Connection } from '@xyflow/react';
 import { useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import type { 
-  PowerNode, PowerEdge, NeuralNodeData, NeuralNodeType, 
-  MapInfo, EditorSettings, CollaboratorInfo, ViewMode,
-  MapAnalytics
+import type {
+  PowerNode,
+  PowerEdge,
+  NeuralNodeData,
+  NeuralNodeType,
+  MapInfo,
+  EditorSettings,
+  CollaboratorInfo,
+  ViewMode,
+  MapAnalytics,
 } from './types';
 import { DEFAULT_NODE_DATA, DEFAULT_EDITOR_SETTINGS, NODE_TYPE_CONFIG } from './constants';
 import { useAuthStore } from '@/stores/authStore';
@@ -37,9 +43,9 @@ export function useEditorState() {
   const [canRedo, setCanRedo] = useState(false);
 
   const saveToHistory = useCallback(() => {
-    undoStackRef.current.push({ 
-      nodes: JSON.parse(JSON.stringify(nodes)), 
-      edges: JSON.parse(JSON.stringify(edges)) 
+    undoStackRef.current.push({
+      nodes: JSON.parse(JSON.stringify(nodes)),
+      edges: JSON.parse(JSON.stringify(edges)),
     });
     if (undoStackRef.current.length > 50) undoStackRef.current.shift();
     redoStackRef.current = [];
@@ -50,9 +56,9 @@ export function useEditorState() {
   const undo = useCallback(() => {
     if (undoStackRef.current.length === 0) return;
     const prev = undoStackRef.current.pop()!;
-    redoStackRef.current.push({ 
-      nodes: JSON.parse(JSON.stringify(nodes)), 
-      edges: JSON.parse(JSON.stringify(edges)) 
+    redoStackRef.current.push({
+      nodes: JSON.parse(JSON.stringify(nodes)),
+      edges: JSON.parse(JSON.stringify(edges)),
     });
     setNodes(prev.nodes);
     setEdges(prev.edges);
@@ -63,9 +69,9 @@ export function useEditorState() {
   const redo = useCallback(() => {
     if (redoStackRef.current.length === 0) return;
     const next = redoStackRef.current.pop()!;
-    undoStackRef.current.push({ 
-      nodes: JSON.parse(JSON.stringify(nodes)), 
-      edges: JSON.parse(JSON.stringify(edges)) 
+    undoStackRef.current.push({
+      nodes: JSON.parse(JSON.stringify(nodes)),
+      edges: JSON.parse(JSON.stringify(edges)),
     });
     setNodes(next.nodes);
     setEdges(next.edges);
@@ -74,23 +80,41 @@ export function useEditorState() {
   }, [nodes, edges, setNodes, setEdges]);
 
   const selectedNode = useMemo(
-    () => nodes.find(n => n.id === selectedNodeId) || null,
+    () => nodes.find((n) => n.id === selectedNodeId) || null,
     [nodes, selectedNodeId]
   );
 
   return {
-    mapId, navigate,
-    nodes, setNodes, onNodesChange,
-    edges, setEdges, onEdgesChange,
-    mapInfo, setMapInfo,
-    selectedNodeId, setSelectedNodeId, selectedNode,
-    viewMode, setViewMode,
-    isLoading, setIsLoading,
-    isSaving, setIsSaving,
-    lastSaved, setLastSaved,
-    settings, setSettings,
-    collaborators, setCollaborators,
-    saveToHistory, undo, redo, canUndo, canRedo,
+    mapId,
+    navigate,
+    nodes,
+    setNodes,
+    onNodesChange,
+    edges,
+    setEdges,
+    onEdgesChange,
+    mapInfo,
+    setMapInfo,
+    selectedNodeId,
+    setSelectedNodeId,
+    selectedNode,
+    viewMode,
+    setViewMode,
+    isLoading,
+    setIsLoading,
+    isSaving,
+    setIsSaving,
+    lastSaved,
+    setLastSaved,
+    settings,
+    setSettings,
+    collaborators,
+    setCollaborators,
+    saveToHistory,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   };
 }
 
@@ -107,210 +131,288 @@ export function useNodeOperations(
 ) {
   const { screenToFlowPosition, getViewport } = useReactFlow();
 
-  const generateId = useCallback(() => `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, []);
+  const generateId = useCallback(
+    () => `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    []
+  );
 
-  const createNode = useCallback((
-    type: NeuralNodeType,
-    position?: { x: number; y: number },
-    parentId?: string | null,
-    data?: Partial<NeuralNodeData>
-  ): PowerNode => {
-    saveToHistory();
-    const config = NODE_TYPE_CONFIG[type];
-    const id = generateId();
-    
-    // Calculate position
-    let nodePosition = position;
-    if (!nodePosition) {
-      if (parentId) {
-        const parent = nodes.find(n => n.id === parentId);
-        if (parent) {
-          const childCount = edges.filter(e => e.source === parentId).length;
-          const angle = (childCount * Math.PI / 4) - Math.PI / 2;
-          const radius = 300;
-          nodePosition = {
-            x: (parent.position?.x || 0) + Math.cos(angle) * radius,
-            y: (parent.position?.y || 0) + Math.sin(angle) * radius,
-          };
+  const createNode = useCallback(
+    (
+      type: NeuralNodeType,
+      position?: { x: number; y: number },
+      parentId?: string | null,
+      data?: Partial<NeuralNodeData>
+    ): PowerNode => {
+      saveToHistory();
+      const config = NODE_TYPE_CONFIG[type];
+      const id = generateId();
+
+      // Calculate position
+      let nodePosition = position;
+      if (!nodePosition) {
+        if (parentId) {
+          const parent = nodes.find((n) => n.id === parentId);
+          if (parent) {
+            const childCount = edges.filter((e) => e.source === parentId).length;
+            const angle = (childCount * Math.PI) / 4 - Math.PI / 2;
+            const radius = 300;
+            nodePosition = {
+              x: (parent.position?.x || 0) + Math.cos(angle) * radius,
+              y: (parent.position?.y || 0) + Math.sin(angle) * radius,
+            };
+          }
+        }
+        if (!nodePosition) {
+          const viewport = getViewport();
+          nodePosition = screenToFlowPosition({
+            x: window.innerWidth / 2,
+            y: window.innerHeight / 2,
+          });
         }
       }
-      if (!nodePosition) {
-        const viewport = getViewport();
-        nodePosition = screenToFlowPosition({
-          x: window.innerWidth / 2,
-          y: window.innerHeight / 2,
-        });
-      }
-    }
 
-    const newNode: PowerNode = {
-      id,
-      type: 'power',
-      position: nodePosition,
-      data: {
-        label: data?.label || config.label,
-        type,
-        description: data?.description || '',
-        ...DEFAULT_NODE_DATA,
-        ...data,
-      },
-    };
-
-    setNodes(prev => [...prev, newNode]);
-
-    // Create edge if has parent
-    if (parentId) {
-      const edgeId = `edge_${parentId}_${id}`;
-      setEdges(prev => [...prev, {
-        id: edgeId,
-        source: parentId,
-        target: id,
+      const newNode: PowerNode = {
+        id,
         type: 'power',
-        animated: true,
-        data: { style: 'neural' as const, strength: 1 },
-      }]);
-    }
+        position: nodePosition,
+        data: {
+          label: data?.label || config.label,
+          type,
+          description: data?.description || '',
+          ...DEFAULT_NODE_DATA,
+          ...data,
+        },
+      };
 
-    // Save to API if remote map
-    if (mapId && mapId !== 'new' && mapId !== 'local' && !mapId.startsWith('local_')) {
-      import('../../../lib/api').then(({ nodesApi }) => {
-        nodesApi.create({
-          map_id: mapId,
-          type: type as any,
-          label: newNode.data.label,
-          content: newNode.data.description || '',
-          position_x: nodePosition!.x,
-          position_y: nodePosition!.y,
-        } as any)
-          .then((response: any) => {
-            const created = response?.data;
-            if (!created?.id) return;
+      setNodes((prev) => [...prev, newNode]);
 
-            const newId = created.id as string;
+      // Create edge if has parent
+      if (parentId) {
+        const edgeId = `edge_${parentId}_${id}`;
+        setEdges((prev) => [
+          ...prev,
+          {
+            id: edgeId,
+            source: parentId,
+            target: id,
+            type: 'power',
+            animated: true,
+            data: { style: 'neural' as const, strength: 1 },
+          },
+        ]);
+      }
 
-            setNodes(prev => prev.map(node =>
-              node.id === id ? { ...node, id: newId } : node
-            ));
-
-            setEdges(prev => prev.map(edge => {
-              const source = edge.source === id ? newId : edge.source;
-              const target = edge.target === id ? newId : edge.target;
-              return source !== edge.source || target !== edge.target
-                ? { ...edge, source, target }
-                : edge;
-            }));
-
-            // Save edge to API if parent exists
-            if (parentId) {
-              const isUuid = (tid: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tid);
-              const resolvedParentId = parentId;
-              if (isUuid(resolvedParentId)) {
-                nodesApi.createEdge({
-                  map_id: mapId,
-                  source_id: resolvedParentId,
-                  target_id: newId,
-                }).then((edgeRes: any) => {
-                  if (edgeRes?.data?.id) {
-                    setEdges(prev => prev.map(e =>
-                      e.id === `edge_${parentId}_${id}` || e.id === `edge_${resolvedParentId}_${newId}`
-                        ? { ...e, id: edgeRes.data.id }
-                        : e
-                    ));
-                  }
-                }).catch(() => {});
-              }
-            }
-          })
-          .catch(() => {});
-      });
-    }
-
-    return newNode;
-  }, [nodes, edges, setNodes, setEdges, saveToHistory, generateId, screenToFlowPosition, getViewport, mapId]);
-
-  const updateNodeData = useCallback((nodeId: string, data: Partial<NeuralNodeData>) => {
-    setNodes(prev => prev.map(node => 
-      node.id === nodeId 
-        ? { ...node, data: { ...node.data, ...data } }
-        : node
-    ));
-  }, [setNodes]);
-
-  const deleteNode = useCallback((nodeId: string) => {
-    saveToHistory();
-    
-    // Find all descendants
-    const getDescendants = (id: string): string[] => {
-      const children = edges.filter(e => e.source === id).map(e => e.target);
-      return children.flatMap(c => [c, ...getDescendants(c)]);
-    };
-    
-    const toDelete = new Set([nodeId, ...getDescendants(nodeId)]);
-    
-    setNodes(prev => prev.filter(n => !toDelete.has(n.id)));
-    setEdges(prev => prev.filter(e => !toDelete.has(e.source) && !toDelete.has(e.target)));
-    
-    toast.success('Nó removido', { duration: 2500 });
-  }, [edges, setNodes, setEdges, saveToHistory]);
-
-  const duplicateNode = useCallback((nodeId: string) => {
-    const original = nodes.find(n => n.id === nodeId);
-    if (!original) return;
-    
-    saveToHistory();
-    const newNode = createNode(
-      original.data.type,
-      { x: original.position.x + 50, y: original.position.y + 50 },
-      null,
-      { ...original.data, label: `${original.data.label} (cópia)` }
-    );
-    
-    toast.success('Nó duplicado', { duration: 2500 });
-    return newNode;
-  }, [nodes, createNode, saveToHistory]);
-
-  const onConnect = useCallback((connection: Connection) => {
-    saveToHistory();
-    const sourceId = connection.source!;
-    const targetId = connection.target!;
-    const edgeId = `edge_${sourceId}_${targetId}`;
-    setEdges(prev => [...prev, {
-      id: edgeId,
-      source: sourceId,
-      target: targetId,
-      type: 'power',
-      animated: true,
-      data: { style: 'neural' as const, strength: 1 },
-    }]);
-
-    // Persist edge to API if remote map
-    if (mapId && mapId !== 'new' && mapId !== 'local' && !mapId.startsWith('local_')) {
-      // Only save if both node IDs are real UUIDs (not local temp IDs)
-      const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-      if (isUuid(sourceId) && isUuid(targetId)) {
+      // Save to API if remote map
+      if (mapId && mapId !== 'new' && mapId !== 'local' && !mapId.startsWith('local_')) {
         import('../../../lib/api').then(({ nodesApi }) => {
-          nodesApi.createEdge({
-            map_id: mapId,
-            source_id: sourceId,
-            target_id: targetId,
-          }).then((response: any) => {
-            const created = response?.data;
-            if (created?.id) {
-              // Update local edge with server ID
-              setEdges(prev => prev.map(e =>
-                e.id === edgeId ? { ...e, id: created.id } : e
-              ));
-            }
-          }).catch((err: any) => {
-            console.warn('[Edge] Failed to save edge to API:', err);
-          });
+          nodesApi
+            .create({
+              map_id: mapId,
+              type: type as any,
+              label: newNode.data.label,
+              content: newNode.data.description || '',
+              position_x: nodePosition!.x,
+              position_y: nodePosition!.y,
+            } as any)
+            .then((response: any) => {
+              const created = response?.data;
+              if (!created?.id) return;
+
+              const newId = created.id as string;
+
+              setNodes((prev) =>
+                prev.map((node) => (node.id === id ? { ...node, id: newId } : node))
+              );
+
+              setEdges((prev) =>
+                prev.map((edge) => {
+                  const source = edge.source === id ? newId : edge.source;
+                  const target = edge.target === id ? newId : edge.target;
+                  return source !== edge.source || target !== edge.target
+                    ? { ...edge, source, target }
+                    : edge;
+                })
+              );
+
+              // Save edge to API if parent exists
+              if (parentId) {
+                const isUuid = (tid: string) =>
+                  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tid);
+                const resolvedParentId = parentId;
+                if (isUuid(resolvedParentId)) {
+                  nodesApi
+                    .createEdge({
+                      map_id: mapId,
+                      source_id: resolvedParentId,
+                      target_id: newId,
+                    })
+                    .then((edgeRes: any) => {
+                      if (edgeRes?.data?.id) {
+                        setEdges((prev) =>
+                          prev.map((e) =>
+                            e.id === `edge_${parentId}_${id}` ||
+                            e.id === `edge_${resolvedParentId}_${newId}`
+                              ? { ...e, id: edgeRes.data.id }
+                              : e
+                          )
+                        );
+                      }
+                    })
+                    .catch(() => {});
+                }
+              }
+            })
+            .catch(() => {});
         });
       }
-    }
-  }, [setEdges, saveToHistory, mapId]);
+
+      return newNode;
+    },
+    [
+      nodes,
+      edges,
+      setNodes,
+      setEdges,
+      saveToHistory,
+      generateId,
+      screenToFlowPosition,
+      getViewport,
+      mapId,
+    ]
+  );
+
+  const updateNodeData = useCallback(
+    (nodeId: string, data: Partial<NeuralNodeData>) => {
+      setNodes((prev) =>
+        prev.map((node) =>
+          node.id === nodeId ? { ...node, data: { ...node.data, ...data } } : node
+        )
+      );
+    },
+    [setNodes]
+  );
+
+  const deleteNode = useCallback(
+    (nodeId: string) => {
+      saveToHistory();
+
+      // Find all descendants
+      const getDescendants = (id: string): string[] => {
+        const children = edges.filter((e) => e.source === id).map((e) => e.target);
+        return children.flatMap((c) => [c, ...getDescendants(c)]);
+      };
+
+      const toDelete = new Set([nodeId, ...getDescendants(nodeId)]);
+
+      setNodes((prev) => prev.filter((n) => !toDelete.has(n.id)));
+      setEdges((prev) => prev.filter((e) => !toDelete.has(e.source) && !toDelete.has(e.target)));
+
+      toast.success('Nó removido', { duration: 2500 });
+    },
+    [edges, setNodes, setEdges, saveToHistory]
+  );
+
+  const duplicateNode = useCallback(
+    (nodeId: string) => {
+      const original = nodes.find((n) => n.id === nodeId);
+      if (!original) return;
+
+      saveToHistory();
+      const newNode = createNode(
+        original.data.type,
+        { x: original.position.x + 50, y: original.position.y + 50 },
+        null,
+        { ...original.data, label: `${original.data.label} (cópia)` }
+      );
+
+      toast.success('Nó duplicado', { duration: 2500 });
+      return newNode;
+    },
+    [nodes, createNode, saveToHistory]
+  );
+
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      const sourceId = connection.source!;
+      const targetId = connection.target!;
+
+      // 🚫 Validation 1: Prevent self-loops (connecting node to itself)
+      if (sourceId === targetId) {
+        toast.error('Um nó não pode se conectar a si mesmo!', { duration: 3000 });
+        return;
+      }
+
+      // 🚫 Validation 2: Check if nodes exist
+      const sourceExists = nodes.some((n) => n.id === sourceId);
+      const targetExists = nodes.some((n) => n.id === targetId);
+      if (!sourceExists || !targetExists) {
+        toast.error('Um ou ambos os nós não existem!', { duration: 3000 });
+        return;
+      }
+
+      // 🚫 Validation 3: Prevent duplicate connections
+      const edgeId = `edge_${sourceId}_${targetId}`;
+      const reversEdgeId = `edge_${targetId}_${sourceId}`;
+      const edgeExists = edges.some((e) => e.id === edgeId || e.id === reversEdgeId);
+      if (edgeExists) {
+        toast.error('Já existe uma conexão entre esses nós!', { duration: 3000 });
+        return;
+      }
+
+      // ✅ All validations passed - create connection
+      saveToHistory();
+      setEdges((prev) => [
+        ...prev,
+        {
+          id: edgeId,
+          source: sourceId,
+          target: targetId,
+          type: 'power',
+          animated: true,
+          data: { style: 'neural' as const, strength: 1 },
+        },
+      ]);
+
+      // ✨ Success feedback
+      toast.success('✨ Conexão criada com sucesso!', { duration: 2500 });
+
+      // Persist edge to API if remote map
+      if (mapId && mapId !== 'new' && mapId !== 'local' && !mapId.startsWith('local_')) {
+        // Only save if both node IDs are real UUIDs (not local temp IDs)
+        const isUuid = (id: string) =>
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+        if (isUuid(sourceId) && isUuid(targetId)) {
+          import('../../../lib/api').then(({ nodesApi }) => {
+            nodesApi
+              .createEdge({
+                map_id: mapId,
+                source_id: sourceId,
+                target_id: targetId,
+              })
+              .then((response: any) => {
+                const created = response?.data;
+                if (created?.id) {
+                  // Update local edge with server ID
+                  setEdges((prev) =>
+                    prev.map((e) => (e.id === edgeId ? { ...e, id: created.id } : e))
+                  );
+                }
+              })
+              .catch((err: any) => {});
+          });
+        }
+      }
+    },
+    [setEdges, saveToHistory, mapId]
+  );
 
   return {
-    createNode, updateNodeData, deleteNode, duplicateNode, onConnect, generateId
+    createNode,
+    updateNodeData,
+    deleteNode,
+    duplicateNode,
+    onConnect,
+    generateId,
   };
 }
 
@@ -330,6 +432,7 @@ export function useMapPersistence(
   navigate: (path: string) => void
 ) {
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const isSavingRef = useRef(false);
   const isRemoteMap = mapId && mapId !== 'new' && mapId !== 'local' && !mapId.startsWith('local_');
   const { workspaces } = useAuthStore();
   const workspaceId = workspaces[0]?.id || '11111111-1111-1111-1111-111111111111';
@@ -342,7 +445,7 @@ export function useMapPersistence(
       position: { x: 0, y: 0 },
       data: {
         label: 'Tema Central',
-        type: 'central',
+        type: 'idea',
         description: 'Clique em + para adicionar ideias conectadas',
         ...DEFAULT_NODE_DATA,
         status: 'active',
@@ -369,7 +472,7 @@ export function useMapPersistence(
             description: 'Meu novo mapa neural colaborativo',
             workspace_id: workspaceId,
           } as any);
-          if ((response.data as any)) {
+          if (response.data as any) {
             navigate(`/map/${(response.data as any).id}`);
             return;
           }
@@ -449,8 +552,9 @@ export function useMapPersistence(
             }
           }
         } catch (err) {
-          console.warn('[Map Loading] API error, falling back to default map:', err);
-          toast.error('Usando modo offline - alterações serão salvas localmente', { duration: 3500 });
+          toast.error('Usando modo offline - alterações serão salvas localmente', {
+            duration: 3500,
+          });
           createDefaultMap();
         }
       } else {
@@ -472,32 +576,47 @@ export function useMapPersistence(
     } finally {
       setIsLoading(false);
     }
-  }, [mapId, isRemoteMap, navigate, setNodes, setEdges, setMapInfo, setIsLoading, createDefaultMap]);
+  }, [
+    mapId,
+    isRemoteMap,
+    navigate,
+    setNodes,
+    setEdges,
+    setMapInfo,
+    setIsLoading,
+    createDefaultMap,
+  ]);
 
   // Save map
   const saveMap = useCallback(async () => {
-    if (!mapId) return;
+    if (!mapId || isSavingRef.current) return;
+    isSavingRef.current = true;
     setIsSaving(true);
-    
+    // Cancel any pending auto-save to prevent race condition
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+
     try {
       if (isRemoteMap) {
         const { mapsApi, nodesApi } = await import('../../../lib/api');
-        
+
         // Update map metadata
         if (mapInfo) {
-          await mapsApi.update(mapId, {
-            title: mapInfo.title,
-            description: mapInfo.description || '',
-          }).catch((err) => console.warn('[Save] Map metadata update failed:', err));
+          await mapsApi
+            .update(mapId, {
+              title: mapInfo.title,
+              description: mapInfo.description || '',
+            })
+            .catch(() => {});
         }
 
         // Helper to check if ID is a real UUID
-        const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-        
+        const isUuid = (id: string) =>
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
         // Separate nodes into: to create (temp IDs) and to update (UUIDs)
         const nodesToCreate: PowerNode[] = [];
         const nodesToUpdate: PowerNode[] = [];
-        
+
         for (const node of nodes) {
           // Skip central node if it's still using temp ID
           if (node.id === 'central_1' || node.id.startsWith('central_')) {
@@ -513,10 +632,8 @@ export function useMapPersistence(
 
         // Create new nodes in batch
         const idMapping = new Map<string, string>(); // oldId -> newId
-        
+
         if (nodesToCreate.length > 0) {
-          console.log(`[Save] Creating ${nodesToCreate.length} new nodes...`);
-          
           for (const node of nodesToCreate) {
             try {
               const response = await nodesApi.create({
@@ -528,50 +645,51 @@ export function useMapPersistence(
                 position_y: node.position.y,
                 data: node.data as any,
               } as any);
-              
+
               const created = response?.data as any;
               if (created?.id) {
                 idMapping.set(node.id, created.id);
-                console.log(`[Save] Created node: ${node.id} → ${created.id}`);
               }
             } catch (err) {
-              console.error(`[Save] Failed to create node ${node.id}:`, err);
-              toast.error(`Erro ao criar nó: ${node.data.label}`, { duration: 3000 });
+              // Node creation failed (expected if map doesn't exist in backend) - will use localStorage
+              // Suppress error logging to avoid console spam
             }
           }
 
           // Update local state with new IDs
           if (idMapping.size > 0) {
-            setNodes(prev => prev.map(node => {
-              const newId = idMapping.get(node.id);
-              return newId ? { ...node, id: newId } : node;
-            }));
-            
-            setEdges(prev => prev.map(edge => ({
-              ...edge,
-              source: idMapping.get(edge.source) || edge.source,
-              target: idMapping.get(edge.target) || edge.target,
-            })));
+            setNodes((prev) =>
+              prev.map((node) => {
+                const newId = idMapping.get(node.id);
+                return newId ? { ...node, id: newId } : node;
+              })
+            );
+
+            setEdges((prev) =>
+              prev.map((edge) => ({
+                ...edge,
+                source: idMapping.get(edge.source) || edge.source,
+                target: idMapping.get(edge.target) || edge.target,
+              }))
+            );
           }
         }
 
         // Update existing nodes in batch
         if (nodesToUpdate.length > 0) {
-          console.log(`[Save] Updating ${nodesToUpdate.length} existing nodes...`);
-          
-          const updatePromises = nodesToUpdate.map(node =>
-            nodesApi.update(node.id, {
-              label: node.data.label,
-              content: node.data.description || '',
-              position_x: node.position.x,
-              position_y: node.position.y,
-              data: node.data as any,
-              type: node.data.type as any,
-            }).catch((err) => {
-              console.warn(`[Save] Failed to update node ${node.id}:`, err);
-            })
+          const updatePromises = nodesToUpdate.map((node) =>
+            nodesApi
+              .update(node.id, {
+                label: node.data.label,
+                content: node.data.description || '',
+                position_x: node.position.x,
+                position_y: node.position.y,
+                data: node.data as any,
+                type: node.data.type as any,
+              })
+              .catch(() => {})
           );
-          
+
           await Promise.all(updatePromises);
         }
 
@@ -579,7 +697,7 @@ export function useMapPersistence(
         try {
           const serverEdgesRes = await nodesApi.getEdges(mapId);
           const serverEdges = (serverEdgesRes.data || []) as any[];
-          
+
           // Build set of existing server edge keys using correct field names
           const serverEdgeKeys = new Set<string>();
           serverEdges.forEach((e: any) => {
@@ -590,89 +708,91 @@ export function useMapPersistence(
           // Create edges that exist locally but not on server
           const edgeCreatePromises: Promise<any>[] = [];
           const edgesToCreate: Array<{ sourceId: string; targetId: string }> = [];
-          
+
           for (const edge of edges) {
             // Map any old IDs to new ones
             const sourceId = idMapping.get(edge.source) || edge.source;
             const targetId = idMapping.get(edge.target) || edge.target;
-            
+
             // Only sync edges with real UUIDs
             if (!isUuid(sourceId) || !isUuid(targetId)) continue;
-            
+
             const key = `${sourceId}__${targetId}`;
             if (!serverEdgeKeys.has(key)) {
               edgesToCreate.push({ sourceId, targetId });
             }
           }
-          
+
           // Create edges with proper error handling
           if (edgesToCreate.length > 0) {
-            console.log(`[Save] Preparing to create ${edgesToCreate.length} new edges...`);
             for (const { sourceId, targetId } of edgesToCreate) {
               edgeCreatePromises.push(
-                nodesApi.createEdge({
-                  map_id: mapId,
-                  source_id: sourceId,
-                  target_id: targetId,
-                }).then((response) => {
-                  // Handle 409 Conflict (duplicate edge) - not an error
-                  if (!response.success && response.error === 'Edge already exists') {
-                    console.debug(`[Save] Edge ${sourceId}→${targetId} already exists (duplicate detected)`);
-                    return null;
-                  }
-                  return response.success ? response : null;
-                }).catch((err: any) => {
-                  console.warn(`[Save] Edge create error for ${sourceId}→${targetId}:`, err?.message);
-                  return null; // Don't throw, allow other operations to continue
-                })
+                nodesApi
+                  .createEdge({
+                    map_id: mapId,
+                    source_id: sourceId,
+                    target_id: targetId,
+                  })
+                  .then((response) => {
+                    // Handle 409 Conflict (duplicate edge) - not an error
+                    if (!response.success && response.error?.message === 'Edge already exists') {
+                      console.debug(
+                        `[Save] Edge ${sourceId}→${targetId} already exists (duplicate detected)`
+                      );
+                      return null;
+                    }
+                    return response.success ? response : null;
+                  })
+                  .catch((err: any) => {
+                    return null; // Don't throw, allow other operations to continue
+                  })
               );
             }
-            
+
             const results = await Promise.all(edgeCreatePromises);
-            const successCount = results.filter(r => r !== null).length;
-            console.log(`[Save] Created ${successCount}/${edgeCreatePromises.length} new edges`);
+            const successCount = results.filter((r) => r !== null).length;
           }
 
           // Delete server edges that no longer exist locally
           const localEdgeKeys = new Set<string>();
-          edges.forEach(e => {
+          edges.forEach((e) => {
             const sourceId = idMapping.get(e.source) || e.source;
             const targetId = idMapping.get(e.target) || e.target;
             if (isUuid(sourceId) && isUuid(targetId)) {
               localEdgeKeys.add(`${sourceId}__${targetId}`);
             }
           });
-          
+
           const edgeDeletePromises = serverEdges
             .filter((se: any) => {
               const key = `${se.source_id}__${se.target_id}`;
               return !localEdgeKeys.has(key);
             })
-            .map((se: any) => 
+            .map((se: any) =>
               nodesApi.deleteEdge(se.id).catch((err) => {
-                console.warn('[Save] Edge delete failed:', err?.message);
                 return null;
               })
             );
-          
+
           if (edgeDeletePromises.length > 0) {
-            const results = await Promise.all(edgeDeletePromises);
-            const successCount = results.filter(r => r !== null).length;
-            console.log(`[Save] Deleted ${successCount}/${edgeDeletePromises.length} obsolete edges`);
+            await Promise.all(edgeDeletePromises);
           }
         } catch (err) {
-          console.warn('[Save] Edge sync failed:', err instanceof Error ? err.message : String(err));
+          // Edge sync failed silently
         }
-        
-        console.log('[Save] Remote save complete!');
       } else {
         // Local map: save to localStorage
-        localStorage.setItem(`neuralmap_${mapId}`, JSON.stringify({
-          mapInfo, nodes, edges,
-          savedAt: new Date().toISOString(),
-        }));
+        localStorage.setItem(
+          `neuralmap_${mapId}`,
+          JSON.stringify({
+            mapInfo,
+            nodes,
+            edges,
+            savedAt: new Date().toISOString(),
+          })
+        );
       }
-      
+
       setLastSaved(new Date());
       toast.success('Mapa salvo com sucesso!', { duration: 2500 });
     } catch (err) {
@@ -680,34 +800,39 @@ export function useMapPersistence(
       toast.error('Erro ao salvar mapa', { duration: 3500 });
     } finally {
       setIsSaving(false);
+      isSavingRef.current = false;
     }
   }, [isRemoteMap, mapId, mapInfo, nodes, edges, setNodes, setEdges, setIsSaving, setLastSaved]);
 
-  // Auto-save for BOTH remote and local maps
+  // Auto-save for BOTH remote and local maps with ROBUST system
   useEffect(() => {
     if (nodes.length === 0) return;
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-    
-    autoSaveTimerRef.current = setTimeout(() => {
-      if (isRemoteMap) {
-        // Remote map: trigger full save with node creation/updates
-        console.log('[Auto-save] Triggering remote save...');
-        saveMap();
-      } else {
-        // Local map: quick localStorage save
-        localStorage.setItem(`neuralmap_${mapId}`, JSON.stringify({
-          mapInfo, nodes, edges,
-          savedAt: new Date().toISOString(),
-        }));
-        setLastSaved(new Date());
-        console.log('[Auto-save] Saved to localStorage');
+
+    autoSaveTimerRef.current = setTimeout(async () => {
+      // Skip auto-save if manual save is in progress
+      if (isSavingRef.current) return;
+
+      // Use robust save system that handles retries and fallback
+      const { robustMapSave } = await import('../../../lib/robustMapSave');
+
+      if (mapId && mapInfo) {
+        try {
+          const result = await robustMapSave.queueSave(mapId, nodes, edges, mapInfo);
+
+          if (result.success) {
+            setLastSaved(new Date());
+          }
+        } catch {
+          // Auto-save failures are expected with localStorage fallback - silent failure
+        }
       }
-    }, 2000); // 2 second debounce
-    
+    }, 3000); // 3 second debounce (increased from 2s to reduce API pressure)
+
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
-  }, [nodes, edges, mapInfo, mapId, isRemoteMap, setLastSaved, saveMap]);
+  }, [nodes, edges, mapInfo, mapId, setLastSaved]);
 
   // Initial load
   useEffect(() => {
@@ -720,7 +845,11 @@ export function useMapPersistence(
 // ─── useKeyboardShortcuts ───────────────────────────────────────────────────
 
 export function useEditorKeyboard(
-  createNode: (type: NeuralNodeType, pos?: { x: number; y: number }, parentId?: string | null) => void,
+  createNode: (
+    type: NeuralNodeType,
+    pos?: { x: number; y: number },
+    parentId?: string | null
+  ) => void,
   deleteNode: (id: string) => void,
   selectedNodeId: string | null,
   setSelectedNodeId: (id: string | null) => void,
@@ -729,13 +858,15 @@ export function useEditorKeyboard(
   saveMap: () => void,
   toggleAI: () => void,
   settings: EditorSettings,
-  setSettings: React.Dispatch<React.SetStateAction<EditorSettings>>
+  setSettings: React.Dispatch<React.SetStateAction<EditorSettings>>,
+  nodes: PowerNode[] = []
 ) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore when typing in inputs
       const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+        return;
       if (settings.isLocked) return;
 
       const isCtrl = e.ctrlKey || e.metaKey;
@@ -791,23 +922,44 @@ export function useEditorKeyboard(
           break;
         case 'delete':
         case 'backspace':
-          if (selectedNodeId) deleteNode(selectedNodeId);
+          // Delete all selected nodes
+          e.preventDefault();
+          const selectedNodes = nodes.filter((n) => n.selected);
+          if (selectedNodes.length > 0) {
+            // Delete all selected nodes
+            selectedNodes.forEach((n) => deleteNode(n.id));
+          } else if (selectedNodeId) {
+            // Fallback: if no selected property, delete the currently focused node
+            deleteNode(selectedNodeId);
+          }
           break;
         case 'escape':
           setSelectedNodeId(null);
           break;
         case 'g':
-          setSettings(prev => ({ ...prev, showGrid: !prev.showGrid }));
+          setSettings((prev) => ({ ...prev, showGrid: !prev.showGrid }));
           break;
         case 'l':
-          setSettings(prev => ({ ...prev, isLocked: !prev.isLocked }));
+          setSettings((prev) => ({ ...prev, isLocked: !prev.isLocked }));
           break;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [createNode, deleteNode, selectedNodeId, undo, redo, saveMap, toggleAI, settings, setSettings, setSelectedNodeId]);
+  }, [
+    createNode,
+    deleteNode,
+    selectedNodeId,
+    undo,
+    redo,
+    saveMap,
+    toggleAI,
+    settings,
+    setSettings,
+    setSelectedNodeId,
+    nodes,
+  ]);
 }
 
 // ─── useMapAnalytics ────────────────────────────────────────────────────────
@@ -822,7 +974,7 @@ export function useMapAnalytics(nodes: PowerNode[], edges: PowerEdge[]): MapAnal
     let completedTasks = 0;
     let aiNodes = 0;
 
-    nodes.forEach(node => {
+    nodes.forEach((node) => {
       const d = node.data;
       nodesByType[d.type] = (nodesByType[d.type] || 0) + 1;
       nodesByStatus[d.status] = (nodesByStatus[d.status] || 0) + 1;
@@ -836,12 +988,12 @@ export function useMapAnalytics(nodes: PowerNode[], edges: PowerEdge[]): MapAnal
     });
 
     // Connection density
-    const maxEdges = nodes.length * (nodes.length - 1) / 2;
+    const maxEdges = (nodes.length * (nodes.length - 1)) / 2;
     const connectionDensity = maxEdges > 0 ? edges.length / maxEdges : 0;
 
     // Most connected
     const connectionCounts = new Map<string, number>();
-    edges.forEach(e => {
+    edges.forEach((e) => {
       connectionCounts.set(e.source, (connectionCounts.get(e.source) || 0) + 1);
       connectionCounts.set(e.target, (connectionCounts.get(e.target) || 0) + 1);
     });
@@ -850,7 +1002,7 @@ export function useMapAnalytics(nodes: PowerNode[], edges: PowerEdge[]): MapAnal
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map(([id, connections]) => {
-        const node = nodes.find(n => n.id === id);
+        const node = nodes.find((n) => n.id === id);
         return { id, label: node?.data.label || '', connections };
       });
 

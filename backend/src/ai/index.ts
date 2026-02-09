@@ -2,7 +2,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * NeuralMap AI Engine — Main Module Exports
  * ═══════════════════════════════════════════════════════════════════════════
- * 
+ *
  * Complete AI engine with:
  * - 12 specialized agents (generate, expand, summarize, analyze, organize,
  *   research, hypothesize, task_convert, chat, critique, connect, visualize)
@@ -40,7 +40,12 @@ export { BaseAgent, createAgent, getAvailableAgents, getAgentInfo } from './agen
 export type { AgentInput, AgentOutput, ToolCallResult } from './agents';
 
 // ═══ Tools ═══
-export { getToolsForAgent, getAllTools, getToolsByCategory, TOOL_REGISTRY } from './tools/definitions';
+export {
+  getToolsForAgent,
+  getAllTools,
+  getToolsByCategory,
+  TOOL_REGISTRY,
+} from './tools/definitions';
 
 // ═══ Prompts ═══
 export { buildSystemPrompt, buildUserPrompt, buildMapContext } from './prompts/index';
@@ -58,9 +63,14 @@ export {
 } from './memory';
 
 // ═══ Middleware ═══
-export { aiMiddleware, aiRateLimiter, contentFilter, costTracker, validateAIRequest } from './middleware';
+export {
+  aiMiddleware,
+  aiRateLimiter,
+  contentFilter,
+  costTracker,
+  validateAIRequest,
+} from './middleware';
 
 // ═══ Legacy compatibility ═══
 // Re-export the old orchestrator for backward compatibility during migration
-export { aiOrchestrator, AIAgentType } from './orchestrator.legacy';
-
+export { aiOrchestrator, AIAgentType } from './orchestrator';

@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/stores/authStore';
 import { robustMapsApi } from '@/lib/robustMapsApi';
+import { robustMapDelete } from '@/lib/robustMapDelete';
 import { formatRelativeTime } from '@/lib/utils';
 import { mapPersistence } from '@/lib/mapPersistence';
+import { DeleteStatusIndicator } from '@/components/mindmap/layout/DeleteStatusIndicator';
 import { MapCard } from '@/components/MapCard';
 import {
   Network,
@@ -62,37 +64,52 @@ export function MapsPage() {
     const checkSync = setInterval(() => {
       setSyncStatus(mapPersistence.getPendingCount());
     }, 2000);
-    
+
     return () => clearInterval(checkSync);
   }, []);
 
   const loadMaps = async () => {
-    setIsLoading(true);
-    const workspaceId = workspaces[0]?.id;
+    try {
+      setIsLoading(true);
+      const workspaceId = workspaces[0]?.id;
 
-    if (workspaceId) {
+      if (workspaceId) {
+        try {
+          const response = await robustMapsApi.list({
+            workspace_id: workspaceId,
+            limit: 100,
+            offset: 0,
+          });
+          const data = (response.data as any[]) || [];
+          const normalized = data.map((map) => ({
+            id: map.id,
+            title: map.title,
+            description: map.description || null,
+            created_at: map.created_at || map.updated_at || new Date().toISOString(),
+            updated_at: map.updated_at || map.created_at || new Date().toISOString(),
+            nodes_count: map._count?.count || map.nodes_count || 0,
+          })) as MapItem[];
+          setMaps(normalized);
+          setIsLoading(false);
+          return;
+        } catch (error) {
+          console.warn('Failed to load from API, trying localStorage:', error);
+        }
+      }
+
+      const stored = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
+      setMaps(stored);
+      setIsLoading(false);
+    } catch (error) {
+      console.error('Critical error loading maps:', error);
+      // Fallback to empty array on critical error
       try {
-        const response = await robustMapsApi.list({ workspace_id: workspaceId, limit: 100, offset: 0 });
-        const data = (response.data as any[]) || [];
-        const normalized = data.map((map) => ({
-          id: map.id,
-          title: map.title,
-          description: map.description || null,
-          created_at: map.created_at || map.updated_at || new Date().toISOString(),
-          updated_at: map.updated_at || map.created_at || new Date().toISOString(),
-          nodes_count: map._count?.count || map.nodes_count || 0,
-        })) as MapItem[];
-        setMaps(normalized);
+        setMaps([]);
         setIsLoading(false);
-        return;
-      } catch {
-        console.warn('Failed to load from API, trying localStorage');
+      } catch (setError) {
+        console.error('Error setting empty maps:', setError);
       }
     }
-
-    const stored = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
-    setMaps(stored);
-    setIsLoading(false);
   };
 
   const handleCreateMap = async () => {
@@ -105,10 +122,10 @@ export function MapsPage() {
           title: 'Novo Mapa Mental',
           description: '',
         });
-        
+
         // Auto-reload maps list
         loadMaps();
-        
+
         toast.success('Mapa criado com sucesso!', { duration: 3500 });
         navigate(`/map/${newMap.id}`);
         return;
@@ -120,22 +137,30 @@ export function MapsPage() {
   };
 
   const handleDeleteMap = async (mapId: string) => {
-    console.log('🗑️ Starting delete for map:', mapId);
-    
-    try {
-      // Call API with retry logic
-      const result = await robustMapsApi.delete(mapId);
-      console.log('🗑️ Delete API result:', result);
+    console.log('🗑️ User initiated delete for map:', mapId);
 
-      // IMPORTANT: Reload the list from API to verify deletion
-      await loadMaps();
-      
-      toast.success('Mapa excluído com sucesso!');
+    try {
+      // IMMEDIATELY remove from local state (instant UI feedback)
+      setMaps((prev) => prev.filter((m) => m.id !== mapId));
+
+      // Use robust delete system (removes from localStorage AND syncs backend with retry)
+      const result = await robustMapDelete.queueDelete(mapId);
+
+      if (!result.success) {
+        console.error('❌ Delete queueing failed:', result.error);
+        toast.error('Erro ao excluir: ' + (result.error || 'tente novamente'));
+        // Reload to restore state
+        await loadMaps();
+        return;
+      }
+
+      console.log('✅ Delete queued successfully - UI updated immediately');
+      toast.success('Mapa excluído com sucesso!', { duration: 3000 });
     } catch (err) {
-      console.error('❌ Error deleting map:', err);
+      console.error('❌ Error in delete handler:', err);
       toast.error('Erro ao excluir mapa');
-      
-      // Reload to sync state
+
+      // Reload to restore state
       await loadMaps();
     }
   };
@@ -157,8 +182,7 @@ export function MapsPage() {
     let list = q
       ? maps.filter(
           (m) =>
-            m.title.toLowerCase().includes(q) ||
-            (m.description ?? '').toLowerCase().includes(q)
+            m.title.toLowerCase().includes(q) || (m.description ?? '').toLowerCase().includes(q)
         )
       : maps;
 
@@ -195,26 +219,35 @@ export function MapsPage() {
         className="max-w-6xl mx-auto px-6 py-8 space-y-6"
       >
         {/* Title + Create */}
-        <motion.div variants={fadeUp} className="flex items-center justify-between">
-          <div>
+        <motion.div
+          variants={fadeUp}
+          className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+        >
+          <div className="flex-1">
             <h1 className="text-2xl font-semibold text-white tracking-tight">Meus Mapas</h1>
-            <p className="text-sm text-slate-400 mt-1">
-              {maps.length} {maps.length === 1 ? 'mapa' : 'mapas'} no total
+            <p className="text-sm text-slate-400 mt-1 flex flex-wrap items-center gap-2">
+              <span>
+                {maps.length} {maps.length === 1 ? 'mapa' : 'mapas'} no total
+              </span>
               {syncStatus > 0 && (
-                <span className="ml-2 inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500/20 text-amber-300 text-xs">
+                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500/20 text-amber-300 text-xs">
                   <Zap className="w-3 h-3 animate-pulse" />
                   {syncStatus} sincronizando...
                 </span>
               )}
             </p>
           </div>
-          <button
-            onClick={handleCreateMap}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-[13px] font-medium hover:from-cyan-500 hover:to-blue-500 transition-all shadow-lg shadow-cyan-500/15"
-          >
-            <Plus className="w-4 h-4" />
-            Novo Mapa
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Delete Status Indicator */}
+            <DeleteStatusIndicator compact={true} />
+            <button
+              onClick={handleCreateMap}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-[13px] font-medium hover:from-cyan-500 hover:to-blue-500 transition-all shadow-lg shadow-cyan-500/15"
+            >
+              <Plus className="w-4 h-4" />
+              Novo Mapa
+            </button>
+          </div>
         </motion.div>
 
         {/* Toolbar */}
@@ -257,7 +290,9 @@ export function MapsPage() {
               <button
                 onClick={() => setViewMode('grid')}
                 className={`px-2.5 rounded-lg transition-all ${
-                  viewMode === 'grid' ? 'bg-cyan-500/15 text-cyan-400' : 'text-slate-500 hover:text-white'
+                  viewMode === 'grid'
+                    ? 'bg-cyan-500/15 text-cyan-400'
+                    : 'text-slate-500 hover:text-white'
                 }`}
               >
                 <LayoutGrid className="w-4 h-4" />
@@ -265,7 +300,9 @@ export function MapsPage() {
               <button
                 onClick={() => setViewMode('list')}
                 className={`px-2.5 rounded-lg transition-all ${
-                  viewMode === 'list' ? 'bg-cyan-500/15 text-cyan-400' : 'text-slate-500 hover:text-white'
+                  viewMode === 'list'
+                    ? 'bg-cyan-500/15 text-cyan-400'
+                    : 'text-slate-500 hover:text-white'
                 }`}
               >
                 <List className="w-4 h-4" />
@@ -276,13 +313,25 @@ export function MapsPage() {
 
         {/* Content */}
         {isLoading ? (
-          <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3' : 'space-y-2'}>
+          <div
+            className={
+              viewMode === 'grid'
+                ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'
+                : 'space-y-2'
+            }
+          >
             {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className={`rounded-xl bg-white/[0.02] animate-pulse ${viewMode === 'grid' ? 'h-[130px]' : 'h-[72px]'}`} />
+              <div
+                key={i}
+                className={`rounded-xl bg-white/[0.02] animate-pulse ${viewMode === 'grid' ? 'h-[130px]' : 'h-[72px]'}`}
+              />
             ))}
           </div>
         ) : filteredMaps.length === 0 ? (
-          <motion.div variants={fadeUp} className="text-center py-16 rounded-2xl border border-dashed border-white/[0.06] bg-white/[0.01]">
+          <motion.div
+            variants={fadeUp}
+            className="text-center py-16 rounded-2xl border border-dashed border-white/[0.06] bg-white/[0.01]"
+          >
             <Network className="w-10 h-10 text-slate-700 mx-auto mb-3" />
             <p className="text-[14px] text-slate-400 mb-1">
               {query ? 'Nenhum mapa encontrado' : 'Nenhum mapa ainda'}
@@ -326,19 +375,16 @@ export function MapsPage() {
           </motion.div>
         ) : (
           /* List View */
-          <motion.div
-            variants={container}
-            initial="hidden"
-            animate="show"
-            className="space-y-1"
-          >
+          <motion.div variants={container} initial="hidden" animate="show" className="space-y-1">
             {filteredMaps.map((map, i) => (
               <motion.div key={map.id} variants={fadeUp} className="relative group">
                 <button
                   onClick={() => navigate(`/map/${map.id}`)}
                   className="w-full flex items-center gap-4 px-4 py-3 rounded-xl border border-transparent hover:border-white/[0.04] bg-transparent hover:bg-white/[0.02] transition-all duration-200"
                 >
-                  <div className={`w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-500/20 to-blue-600/20 flex items-center justify-center flex-shrink-0`}>
+                  <div
+                    className={`w-9 h-9 rounded-lg bg-gradient-to-br from-cyan-500/20 to-blue-600/20 flex items-center justify-center flex-shrink-0`}
+                  >
                     <Layers className="w-4 h-4 text-cyan-400" />
                   </div>
                   <div className="flex-1 min-w-0 text-left">
@@ -346,7 +392,9 @@ export function MapsPage() {
                       {map.title}
                     </h3>
                     {map.description && (
-                      <p className="text-[11px] text-slate-500 truncate mt-0.5">{map.description}</p>
+                      <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                        {map.description}
+                      </p>
                     )}
                   </div>
                   <span className="text-[11px] text-slate-500 flex items-center gap-1 flex-shrink-0">

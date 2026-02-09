@@ -2,16 +2,40 @@
 // NeuralMap - Editor Header (Top Bar)
 // ============================================================================
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowLeft, Brain, Save, Share2, Sparkles, Users, 
-  MoreHorizontal, Map, List, Columns, Calendar, Activity,
-  Download, Upload, Undo2, Redo2, Lock, Unlock, Grid3X3,
-  Maximize, Trash2, HelpCircle, Loader2, Cloud, CloudOff,
-  Eye, Search
+  ArrowLeft,
+  Brain,
+  Save,
+  Share2,
+  Sparkles,
+  Users,
+  MoreHorizontal,
+  Map,
+  List,
+  Columns,
+  Calendar,
+  Activity,
+  Download,
+  Upload,
+  Undo2,
+  Redo2,
+  Lock,
+  Unlock,
+  Grid3X3,
+  Maximize,
+  Trash2,
+  HelpCircle,
+  Loader2,
+  Cloud,
+  CloudOff,
+  Eye,
+  Search,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import { SaveStatusIndicator } from './SaveStatusIndicator';
 import type { MapInfo, ViewMode, CollaboratorInfo, EditorSettings } from '../editor/types';
 
 interface EditorHeaderProps {
@@ -49,18 +73,81 @@ const VIEW_MODES: Array<{ id: ViewMode; label: string; icon: React.FC<any> }> = 
 ];
 
 export const EditorHeader: React.FC<EditorHeaderProps> = ({
-  mapInfo, onUpdateMapInfo,
-  viewMode, onViewModeChange,
-  collaborators, isSaving, lastSaved,
-  onSave, onShare, onToggleAI, onToggleAnalytics,
-  settings, onSettingsChange,
-  canUndo, canRedo, onUndo, onRedo,
-  nodeCount, edgeCount,
-  onExportPNG, onExportJSON, onImport, onDeleteMap
+  mapInfo,
+  onUpdateMapInfo,
+  viewMode,
+  onViewModeChange,
+  collaborators,
+  isSaving,
+  lastSaved,
+  onSave,
+  onShare,
+  onToggleAI,
+  onToggleAnalytics,
+  settings,
+  onSettingsChange,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
+  nodeCount,
+  edgeCount,
+  onExportPNG,
+  onExportJSON,
+  onImport,
+  onDeleteMap,
 }) => {
   const navigate = useNavigate();
   const [showMenu, setShowMenu] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [currentTitle, setCurrentTitle] = useState(mapInfo?.title || '');
+  const titleSaveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
+
+  // Sync currentTitle when mapInfo changes
+  useEffect(() => {
+    setCurrentTitle(mapInfo?.title || '');
+  }, [mapInfo?.title]);
+
+  // Debounced title save
+  useEffect(() => {
+    if (!mapInfo?.id || !isEditingTitle) return;
+    if (currentTitle === mapInfo.title) return; // No change
+
+    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current);
+
+    titleSaveTimerRef.current = setTimeout(async () => {
+      if (currentTitle.trim() === '') {
+        toast.error('O título não pode ser vazio', { duration: 2500 });
+        setCurrentTitle(mapInfo.title || '');
+        return;
+      }
+
+      try {
+        setIsSavingTitle(true);
+        const toastId = toast.loading('Salvando título...', { duration: 5000 });
+
+        // Call API to update map title
+        const { mapsApi } = await import('@/lib/api');
+        await mapsApi.update(mapInfo.id, {
+          title: currentTitle,
+        });
+
+        toast.dismiss(toastId);
+        toast.success('Título salvo com sucesso!', { duration: 2000 });
+        setIsSavingTitle(false);
+      } catch (error) {
+        console.error('[Header] Failed to save title:', error);
+        toast.error('Erro ao salvar título', { duration: 2500 });
+        setCurrentTitle(mapInfo.title || '');
+        setIsSavingTitle(false);
+      }
+    }, 1500); // 1.5 second debounce
+
+    return () => {
+      if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current);
+    };
+  }, [currentTitle, mapInfo?.id, mapInfo?.title, isEditingTitle]);
 
   const formatSavedTime = useCallback(() => {
     if (isSaving) return 'Salvando...';
@@ -72,24 +159,46 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
     return `Salvo às ${lastSaved.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
   }, [isSaving, lastSaved]);
 
+  // Enhanced save handler with validation
+  const handleSave = useCallback(() => {
+    // Validate map has content
+    if (!mapInfo?.title || mapInfo.title.trim() === '') {
+      console.warn('[Header] Cannot save: Map title is empty');
+      return;
+    }
+
+    // Trigger save
+    onSave();
+  }, [mapInfo, onSave]);
+
+  // Close menu helper
+  const closeMenu = useCallback(() => {
+    setShowMenu(false);
+  }, []);
+
   return (
-    <div className="h-14 bg-[#080d16]/90 backdrop-blur-xl border-b border-white/[0.04]
-      flex items-center justify-between px-4 z-30 relative">
-      
+    <div
+      className="h-14 bg-[#080d16]/90 backdrop-blur-xl border-b border-white/[0.04]
+      flex items-center justify-between px-4 z-30 relative"
+    >
       {/* ─── Left Section ──────────────────────────────────────────── */}
       <div className="flex items-center gap-3">
         {/* Back */}
         <button
           onClick={() => navigate('/maps')}
           className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all"
+          title="Voltar para mapas"
+          aria-label="Voltar para lista de mapas"
         >
           <ArrowLeft className="w-4 h-4" />
         </button>
 
         {/* Logo */}
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500/20 to-purple-500/20 
-            flex items-center justify-center border border-cyan-500/20">
+          <div
+            className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500/20 to-purple-500/20 
+            flex items-center justify-center border border-cyan-500/20"
+          >
             <Brain className="w-4 h-4 text-cyan-400" />
           </div>
         </div>
@@ -99,8 +208,11 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
           {isEditingTitle ? (
             <input
               autoFocus
-              value={mapInfo?.title || ''}
-              onChange={(e) => onUpdateMapInfo({ title: e.target.value })}
+              value={currentTitle}
+              onChange={(e) => {
+                setCurrentTitle(e.target.value);
+                onUpdateMapInfo({ title: e.target.value });
+              }}
               onBlur={() => setIsEditingTitle(false)}
               onKeyDown={(e) => e.key === 'Enter' && setIsEditingTitle(false)}
               className="bg-transparent text-sm font-semibold text-white outline-none
@@ -120,7 +232,9 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
             <span>{edgeCount} conexões</span>
             <span>•</span>
             <span className="flex items-center gap-1">
-              {isSaving ? (
+              {isSavingTitle ? (
+                <Loader2 className="w-2.5 h-2.5 animate-spin text-cyan-400" />
+              ) : isSaving ? (
                 <Loader2 className="w-2.5 h-2.5 animate-spin" />
               ) : lastSaved ? (
                 <Cloud className="w-2.5 h-2.5 text-emerald-400" />
@@ -134,16 +248,20 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
       </div>
 
       {/* ─── Center Section - View Modes ───────────────────────────── */}
-      <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-0.5 
-        bg-white/[0.03] rounded-xl border border-white/[0.06] p-1">
+      <div
+        className="absolute left-1/2 -translate-x-1/2 flex items-center gap-0.5 
+        bg-white/[0.03] rounded-xl border border-white/[0.06] p-1"
+      >
         {VIEW_MODES.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => onViewModeChange(id)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
-              transition-all ${viewMode === id 
-                ? 'bg-white/[0.08] text-white shadow-sm' 
-                : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]'}`}
+              transition-all ${
+                viewMode === id
+                  ? 'bg-white/[0.08] text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-300 hover:bg-white/[0.03]'
+              }`}
           >
             <Icon className="w-3.5 h-3.5" />
             <span className="hidden lg:inline">{label}</span>
@@ -152,19 +270,30 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
       </div>
 
       {/* ─── Right Section ─────────────────────────────────────────── */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
+        {/* Save Status Indicator */}
+        <SaveStatusIndicator mapId={mapInfo?.id} />
+
         {/* Undo/Redo */}
         <div className="flex items-center gap-0.5 mr-1">
-          <button onClick={onUndo} disabled={!canUndo}
+          <button
+            onClick={onUndo}
+            disabled={!canUndo}
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 
               disabled:opacity-20 disabled:cursor-not-allowed transition-all"
-            title="Desfazer (Ctrl+Z)">
+            title="Desfazer (Ctrl+Z)"
+            aria-label="Undo (Ctrl+Z)"
+          >
             <Undo2 className="w-3.5 h-3.5" />
           </button>
-          <button onClick={onRedo} disabled={!canRedo}
+          <button
+            onClick={onRedo}
+            disabled={!canRedo}
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 
               disabled:opacity-20 disabled:cursor-not-allowed transition-all"
-            title="Refazer (Ctrl+Y)">
+            title="Refazer (Ctrl+Y)"
+            aria-label="Redo (Ctrl+Y)"
+          >
             <Redo2 className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -181,19 +310,27 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
                 title={c.displayName}
               >
                 {c.avatarUrl ? (
-                  <img src={c.avatarUrl} alt={c.displayName} className="w-full h-full rounded-full object-cover" />
+                  <img
+                    src={c.avatarUrl}
+                    alt={c.displayName}
+                    className="w-full h-full rounded-full object-cover"
+                  />
                 ) : (
                   c.displayName?.charAt(0).toUpperCase() || 'U'
                 )}
                 {c.isOnline && (
-                  <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 
-                    rounded-full border-2 border-[#080d16]" />
+                  <div
+                    className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 
+                    rounded-full border-2 border-[#080d16]"
+                  />
                 )}
               </div>
             ))}
             {collaborators.length > 4 && (
-              <div className="w-7 h-7 rounded-full border-2 border-[#080d16] bg-white/10
-                flex items-center justify-center text-[10px] text-slate-300">
+              <div
+                className="w-7 h-7 rounded-full border-2 border-[#080d16] bg-white/10
+                flex items-center justify-center text-[10px] text-slate-300"
+              >
                 +{collaborators.length - 4}
               </div>
             )}
@@ -201,49 +338,71 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
         )}
 
         {/* Analytics */}
-        <button onClick={onToggleAnalytics}
+        <button
+          onClick={onToggleAnalytics}
           className="p-2 rounded-xl text-slate-400 hover:text-pink-400 hover:bg-pink-500/10 transition-all"
-          title="Analytics">
+          title="Mostrar analítica do mapa"
+          aria-label="Toggle analytics panel"
+        >
           <Activity className="w-4 h-4" />
         </button>
 
         {/* AI Button */}
-        <button onClick={onToggleAI}
+        <button
+          onClick={onToggleAI}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium
             text-purple-300 bg-purple-500/10 hover:bg-purple-500/20 
             border border-purple-500/20 hover:border-purple-500/30 transition-all
             shadow-[0_0_12px_rgba(139,92,246,0.1)]"
+          title="Abrir painel de IA"
+          aria-label="Toggle AI agent panel (Ctrl+K)"
         >
           <Sparkles className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">AI Agent</span>
         </button>
 
         {/* Share */}
-        <button onClick={onShare}
+        <button
+          onClick={onShare}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium
-            text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 transition-all">
+            text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 transition-all"
+          title="Compartilhar este mapa"
+          aria-label="Share map"
+        >
           <Share2 className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">Compartilhar</span>
         </button>
 
         {/* Save */}
-        <button 
-          onClick={onSave}
-          disabled={isSaving}
+        <button
+          onClick={handleSave}
+          disabled={isSaving || !mapInfo?.title}
           className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-semibold
             bg-gradient-to-r from-cyan-500 to-blue-600 text-white
             hover:from-cyan-400 hover:to-blue-500
-            disabled:opacity-50 transition-all
+            disabled:opacity-50 disabled:cursor-not-allowed transition-all
             shadow-[0_2px_12px_rgba(6,182,212,0.3)]"
+          title={isSaving ? 'Salvando...' : 'Salvar mapa'}
+          aria-label="Salvar mapa"
         >
-          {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+          {isSaving ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Save className="w-3.5 h-3.5" />
+          )}
           Salvar
         </button>
 
         {/* More Menu */}
         <div className="relative">
-          <button onClick={() => setShowMenu(!showMenu)}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all">
+          <button
+            onClick={() => setShowMenu(!showMenu)}
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all"
+            title="Mais opções"
+            aria-label="More options menu"
+            aria-expanded={showMenu}
+            aria-haspopup="menu"
+          >
             <MoreHorizontal className="w-4 h-4" />
           </button>
 
@@ -256,29 +415,86 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
                 className="absolute right-0 top-full mt-1 w-56 bg-[#111827] border border-white/10 
                   rounded-xl shadow-2xl z-50 overflow-hidden py-1"
                 onMouseLeave={() => setShowMenu(false)}
+                role="menu"
               >
                 <MenuSection label="Visualização">
-                  <MenuItem icon={Grid3X3} label="Grade" 
+                  <MenuItem
+                    icon={Grid3X3}
+                    label="Grade"
                     active={settings.showGrid}
-                    onClick={() => onSettingsChange({ showGrid: !settings.showGrid })} />
-                  <MenuItem icon={Eye} label="Minimap" 
+                    onClick={() => {
+                      onSettingsChange({ showGrid: !settings.showGrid });
+                      closeMenu();
+                    }}
+                  />
+                  <MenuItem
+                    icon={Eye}
+                    label="Minimap"
                     active={settings.showMinimap}
-                    onClick={() => onSettingsChange({ showMinimap: !settings.showMinimap })} />
-                  <MenuItem icon={settings.isLocked ? Lock : Unlock} 
-                    label={settings.isLocked ? 'Desbloquear' : 'Bloquear'} 
-                    onClick={() => onSettingsChange({ isLocked: !settings.isLocked })} />
-                  <MenuItem icon={Maximize} label="Tela Cheia" 
-                    onClick={() => document.documentElement.requestFullscreen()} />
+                    onClick={() => {
+                      onSettingsChange({ showMinimap: !settings.showMinimap });
+                      closeMenu();
+                    }}
+                  />
+                  <MenuItem
+                    icon={settings.isLocked ? Lock : Unlock}
+                    label={settings.isLocked ? 'Desbloquear' : 'Bloquear'}
+                    onClick={() => {
+                      onSettingsChange({ isLocked: !settings.isLocked });
+                      closeMenu();
+                    }}
+                  />
+                  <MenuItem
+                    icon={Maximize}
+                    label="Tela Cheia"
+                    onClick={() => {
+                      try {
+                        document.documentElement.requestFullscreen();
+                        closeMenu();
+                      } catch (err) {
+                        toast.error('Tela cheia não disponível');
+                      }
+                    }}
+                  />
                 </MenuSection>
 
                 <MenuSection label="Arquivo">
-                  <MenuItem icon={Download} label="Exportar PNG" onClick={() => { onExportPNG?.(); setShowMenu(false); }} />
-                  <MenuItem icon={Download} label="Exportar JSON" onClick={() => { onExportJSON?.(); setShowMenu(false); }} />
-                  <MenuItem icon={Upload} label="Importar" onClick={() => { onImport?.(); setShowMenu(false); }} />
+                  <MenuItem
+                    icon={Download}
+                    label="Exportar PNG"
+                    onClick={() => {
+                      onExportPNG?.();
+                      closeMenu();
+                    }}
+                  />
+                  <MenuItem
+                    icon={Download}
+                    label="Exportar JSON"
+                    onClick={() => {
+                      onExportJSON?.();
+                      closeMenu();
+                    }}
+                  />
+                  <MenuItem
+                    icon={Upload}
+                    label="Importar"
+                    onClick={() => {
+                      onImport?.();
+                      closeMenu();
+                    }}
+                  />
                 </MenuSection>
 
                 <MenuSection label="Zona de Perigo">
-                  <MenuItem icon={Trash2} label="Excluir Mapa" danger onClick={() => { onDeleteMap?.(); setShowMenu(false); }} />
+                  <MenuItem
+                    icon={Trash2}
+                    label="Excluir Mapa"
+                    danger
+                    onClick={() => {
+                      onDeleteMap?.();
+                      closeMenu();
+                    }}
+                  />
                 </MenuSection>
               </motion.div>
             )}
@@ -291,7 +507,10 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
 
 // ─── Menu Components ────────────────────────────────────────────────────────
 
-const MenuSection: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+const MenuSection: React.FC<{ label: string; children: React.ReactNode }> = ({
+  label,
+  children,
+}) => (
   <div className="py-1">
     <div className="px-3 py-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
       {label}
@@ -310,16 +529,20 @@ const MenuItem: React.FC<{
   <button
     onClick={onClick}
     className={`flex items-center gap-2.5 w-full px-3 py-2 text-xs transition-all
-      ${danger 
-        ? 'text-red-400 hover:bg-red-500/10' 
-        : active 
-          ? 'text-cyan-400 bg-cyan-500/5' 
-          : 'text-slate-300 hover:bg-white/5'}`}
+      ${
+        danger
+          ? 'text-red-400 hover:bg-red-500/10'
+          : active
+            ? 'text-cyan-400 bg-cyan-500/5'
+            : 'text-slate-300 hover:bg-white/5'
+      }`}
   >
     <Icon className="w-3.5 h-3.5" />
     {label}
     {active !== undefined && (
-      <div className={`ml-auto w-1.5 h-1.5 rounded-full ${active ? 'bg-cyan-400' : 'bg-slate-600'}`} />
+      <div
+        className={`ml-auto w-1.5 h-1.5 rounded-full ${active ? 'bg-cyan-400' : 'bg-slate-600'}`}
+      />
     )}
   </button>
 );

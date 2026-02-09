@@ -2,6 +2,9 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useProfileSync } from '@/hooks/useProfileSync';
 
+// Error Boundary
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+
 // Layouts
 import { AppLayout } from '@/components/layout/AppLayout';
 import { AuthLayout } from '@/components/layout/AuthLayout';
@@ -65,52 +68,54 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 
 function App() {
   return (
-    <ProfileSyncProvider>
-      <Routes>
-        {/* Public routes */}
-        <Route element={<AuthLayout />}>
+    <ErrorBoundary>
+      <ProfileSyncProvider>
+        <Routes>
+          {/* Public routes */}
+          <Route element={<AuthLayout />}>
+            <Route
+              path="/login"
+              element={
+                <PublicRoute>
+                  <LoginPage />
+                </PublicRoute>
+              }
+            />
+          </Route>
+
+          {/* Map Editor - Full screen sem sidebar */}
           <Route
-            path="/login"
+            path="/map/:mapId"
             element={
-              <PublicRoute>
-                <LoginPage />
-              </PublicRoute>
+              <ProtectedRoute>
+                <NeuralMapEditorPage />
+              </ProtectedRoute>
             }
           />
-        </Route>
 
-        {/* Map Editor - Full screen sem sidebar */}
-        <Route
-          path="/map/:mapId"
-          element={
-            <ProtectedRoute>
-              <NeuralMapEditorPage />
-            </ProtectedRoute>
-          }
-        />
+          {/* Protected routes com layout */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <AppLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/maps" element={<MapsPage />} />
+            <Route path="/tasks" element={<TasksPage />} />
+            <Route path="/kanban" element={<KanbanPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Route>
 
-        {/* Protected routes com layout */}
-        <Route
-          element={
-            <ProtectedRoute>
-              <AppLayout />
-            </ProtectedRoute>
-          }
-        >
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/maps" element={<MapsPage />} />
-          <Route path="/tasks" element={<TasksPage />} />
-          <Route path="/kanban" element={<KanbanPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-        </Route>
+          {/* Redirects */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-        {/* Redirects */}
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-
-        {/* 404 */}
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
-    </ProfileSyncProvider>
+          {/* 404 */}
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </ProfileSyncProvider>
+    </ErrorBoundary>
   );
 }
 

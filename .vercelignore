@@ -1,20 +1,22 @@
-# Backend - não é necessário no Vercel (vai para Render)
+# Backend (deployed to Render)
 backend/
 
 # Database scripts
 database/
 
-# Docs
+# Documentation
 docs/
+*.md
+!frontend/README.md
 
-# Node modules (instalação limpa)
+# Dependencies
 node_modules/
 **/node_modules/
 
 # Git
 .git/
 
-# Env files
+# Environment
 .env
 .env.local
 .env.*.local
