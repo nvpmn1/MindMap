@@ -50,12 +50,11 @@ if (!claudeApiKey) {
   process.exit(1);
 }
 
-// Security: force ALLOW_PROFILE_AUTH=false in production
-const allowProfileAuth =
-  parsed.data.NODE_ENV === 'production' ? false : parsed.data.ALLOW_PROFILE_AUTH;
+// Allow profile-based auth only when explicitly enabled
+const allowProfileAuth = parsed.data.ALLOW_PROFILE_AUTH;
 
-if (parsed.data.NODE_ENV === 'production' && parsed.data.ALLOW_PROFILE_AUTH) {
-  console.warn('⚠️ ALLOW_PROFILE_AUTH is forced to false in production for security.');
+if (parsed.data.NODE_ENV === 'production' && allowProfileAuth) {
+  console.warn('⚠️ ALLOW_PROFILE_AUTH is enabled in production. Ensure you trust all clients.');
 }
 
 export const env = {
