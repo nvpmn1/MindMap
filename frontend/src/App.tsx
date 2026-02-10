@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { useAuthStore } from '@/stores/authStore';
 import { useProfileSync } from '@/hooks/useProfileSync';
 import { overlayManager } from '@/lib/overlay-manager';
@@ -90,6 +91,7 @@ function App() {
 
   return (
     <ErrorBoundary>
+      <SpeedInsights />
       <ProfileSyncProvider>
         <Routes>
           {/* Public routes */}

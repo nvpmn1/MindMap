@@ -42,7 +42,7 @@ export function FactoryResetModal({ isOpen, onClose, onConfirm }: FactoryResetMo
     if (step !== 'confirmation' || countdown === 0) return;
 
     const timer = setTimeout(() => {
-      setCountdown(c => c - 1);
+      setCountdown((c) => c - 1);
     }, 1000);
 
     return () => clearTimeout(timer);
@@ -110,7 +110,7 @@ export function FactoryResetModal({ isOpen, onClose, onConfirm }: FactoryResetMo
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
             transition={{ duration: 0.15 }}
-            onClick={e => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
             className="w-full max-w-md bg-slate-900 border border-orange-500/20 rounded-2xl overflow-hidden"
           >
             {/* Header */}
@@ -141,9 +141,11 @@ export function FactoryResetModal({ isOpen, onClose, onConfirm }: FactoryResetMo
                 >
                   <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl p-4 space-y-3">
                     <h3 className="text-sm font-semibold text-orange-300">⚠️ AVISO CRÍTICO</h3>
-                    
+
                     <div className="space-y-2 text-sm text-slate-300">
-                      <p>Esta ação vai deletar <strong>PERMANENTEMENTE</strong>:</p>
+                      <p>
+                        Esta ação vai deletar <strong>PERMANENTEMENTE</strong>:
+                      </p>
                       <ul className="list-disc list-inside space-y-1 ml-2">
                         <li>✂️ Todos os seus mapas mentais</li>
                         <li>✂️ Todos os nós e conexões</li>
@@ -189,7 +191,7 @@ export function FactoryResetModal({ isOpen, onClose, onConfirm }: FactoryResetMo
                 >
                   <div className="bg-red-500/5 border border-red-500/30 rounded-xl p-4 space-y-3">
                     <h3 className="text-sm font-semibold text-red-300">🔐 CONFIRMAÇÃO FINAL</h3>
-                    
+
                     <p className="text-sm text-slate-300">
                       Para confirmar, digite exatamente: <br />
                       <strong className="text-red-400">DELETAR TUDO</strong>
@@ -198,7 +200,7 @@ export function FactoryResetModal({ isOpen, onClose, onConfirm }: FactoryResetMo
                     <input
                       type="text"
                       value={confirmText}
-                      onChange={e => setConfirmText(e.target.value.toUpperCase())}
+                      onChange={(e) => setConfirmText(e.target.value.toUpperCase())}
                       placeholder="DELETAR TUDO"
                       disabled={isLoading || countdown > 0}
                       className="w-full px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-red-500/50 disabled:opacity-50 font-mono text-center"
@@ -207,9 +209,7 @@ export function FactoryResetModal({ isOpen, onClose, onConfirm }: FactoryResetMo
                     {countdown > 0 && (
                       <div className="text-center py-3">
                         <p className="text-sm text-slate-400">Aguarde para continuar:</p>
-                        <p className="text-3xl font-bold text-orange-400 mt-2">
-                          {countdown}
-                        </p>
+                        <p className="text-3xl font-bold text-orange-400 mt-2">{countdown}</p>
                       </div>
                     )}
                   </div>
@@ -217,11 +217,7 @@ export function FactoryResetModal({ isOpen, onClose, onConfirm }: FactoryResetMo
                   <div className="space-y-3">
                     <button
                       onClick={handleFinalReset}
-                      disabled={
-                        isLoading ||
-                        confirmText !== 'DELETAR TUDO' ||
-                        countdown > 0
-                      }
+                      disabled={isLoading || confirmText !== 'DELETAR TUDO' || countdown > 0}
                       className="w-full px-4 py-3 rounded-xl bg-red-600/80 border border-red-500/40 text-white font-semibold hover:bg-red-600 transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       <Trash2 className="w-4 h-4" />

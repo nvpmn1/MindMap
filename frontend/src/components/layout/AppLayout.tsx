@@ -44,7 +44,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   return (
     <div className="flex h-screen bg-[#060910] overflow-hidden">
       <Sidebar collapsed={sidebarCollapsed} onCollapsedChange={setSidebarCollapsed} />
-      
+
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
         <main className="flex-1 overflow-y-auto overflow-x-hidden">
