@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, AlertTriangle, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { overlayManager } from '@/lib/overlay-manager';
 
 interface FactoryResetModalProps {
   isOpen: boolean;
@@ -14,6 +15,18 @@ export function FactoryResetModal({ isOpen, onClose, onConfirm }: FactoryResetMo
   const [confirmText, setConfirmText] = useState('');
   const [countdown, setCountdown] = useState(5);
   const [isLoading, setIsLoading] = useState(false);
+  const modalIdRef = useRef('factory-reset-modal-' + Math.random().toString(36));
+
+  // Track overlay lifecycle
+  useEffect(() => {
+    if (isOpen) {
+      overlayManager.registerOverlay(modalIdRef.current, 'factory-reset');
+    }
+
+    return () => {
+      overlayManager.unregisterOverlay(modalIdRef.current, 'factory-reset');
+    };
+  }, [isOpen]);
 
   // Reset estados ao fechar
   useEffect(() => {
@@ -34,6 +47,13 @@ export function FactoryResetModal({ isOpen, onClose, onConfirm }: FactoryResetMo
 
     return () => clearTimeout(timer);
   }, [step, countdown]);
+
+  const handleClose = () => {
+    // Always close immediately
+    onClose();
+    // Force cleanup
+    overlayManager.unregisterOverlay(modalIdRef.current, 'factory-reset');
+  };
 
   const handleConfirmStep = () => {
     setStep('confirmation');
@@ -56,12 +76,12 @@ export function FactoryResetModal({ isOpen, onClose, onConfirm }: FactoryResetMo
 
     try {
       await onConfirm();
-      
+
       toast.success('Todos os dados foram deletados. Redirecionando...', { duration: 4000 });
-      
-      // Aguarda um pouco antes de fechar
+
+      // Wait before closing to allow redirect
       setTimeout(() => {
-        onClose();
+        handleClose();
       }, 1500);
     } catch (error) {
       toast.error('Erro ao deletar dados', { duration: 3500 });
@@ -71,19 +91,25 @@ export function FactoryResetModal({ isOpen, onClose, onConfirm }: FactoryResetMo
   };
 
   return (
-    <AnimatePresence>
+    <AnimatePresence mode="wait">
       {isOpen && (
         <motion.div
+          key="factory-reset-overlay"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          onClick={onClose}
+          transition={{ duration: 0.15 }}
+          onClick={handleClose}
           className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          data-overlay="factory-reset"
+          style={{ willChange: 'opacity' }}
         >
           <motion.div
+            key="factory-reset-content"
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
+            transition={{ duration: 0.15 }}
             onClick={e => e.stopPropagation()}
             className="w-full max-w-md bg-slate-900 border border-orange-500/20 rounded-2xl overflow-hidden"
           >
@@ -96,7 +122,7 @@ export function FactoryResetModal({ isOpen, onClose, onConfirm }: FactoryResetMo
                 <h2 className="text-lg font-semibold text-white">Factory Reset</h2>
               </div>
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 disabled={isLoading}
                 className="p-1 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-50"
               >
@@ -144,7 +170,7 @@ export function FactoryResetModal({ isOpen, onClose, onConfirm }: FactoryResetMo
                     </button>
 
                     <button
-                      onClick={onClose}
+                      onClick={handleClose}
                       disabled={isLoading}
                       className="w-full px-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 font-medium hover:bg-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                     >

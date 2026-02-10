@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '@/stores/authStore';
 import { resetApi } from '@/lib/api';
@@ -21,6 +21,7 @@ const fadeUp = {
 
 export function SettingsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, signOut, updateProfile } = useAuthStore();
 
   const [displayName, setDisplayName] = useState(user?.display_name || '');
@@ -28,6 +29,20 @@ export function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+
+  // Force close modal and clean up when leaving the page
+  useEffect(() => {
+    return () => {
+      // When component unmounts (user navigates away), force close any open modals
+      if (isResetModalOpen) {
+        setIsResetModalOpen(false);
+      }
+      // Clean up any remaining overlays
+      document.querySelectorAll('[data-overlay="factory-reset"]').forEach((el) => {
+        el.remove();
+      });
+    };
+  }, [location.pathname]);
 
   const handleSave = async () => {
     if (!displayName.trim()) {

@@ -284,14 +284,20 @@ class AdvancedSaveQueue {
             await this.executeBatchNodeUpdate(batch);
             processed.push(...batch);
           } catch (err) {
-            console.warn(`[SaveQueue] Batch node update failed, falling back to individual updates:`, err);
+            console.warn(
+              `[SaveQueue] Batch node update failed, falling back to individual updates:`,
+              err
+            );
             // Fallback: Individual updates
             for (const op of batch) {
               try {
                 await this.executeWithRetry(op);
                 processed.push(op);
               } catch (innerErr) {
-                console.warn(`[SaveQueue] Individual node update failed for ${op.payload.id}:`, innerErr);
+                console.warn(
+                  `[SaveQueue] Individual node update failed for ${op.payload.id}:`,
+                  innerErr
+                );
               }
             }
           }
@@ -336,7 +342,9 @@ class AdvancedSaveQueue {
 
       if (processed.length > 0) {
         this.lastSuccessfulSave = Date.now();
-        console.log(`[SaveQueue] Processed ${processed.length}/${operations.length} operations for map ${mapId}`);
+        console.log(
+          `[SaveQueue] Processed ${processed.length}/${operations.length} operations for map ${mapId}`
+        );
       }
     } catch (err) {
       console.error('[SaveQueue] Error processing map operations:', err);
@@ -383,7 +391,12 @@ class AdvancedSaveQueue {
           break;
 
         case 'edge-create':
-          console.log('[SaveQueue] Creating edge:', op.payload.source_id, '->', op.payload.target_id);
+          console.log(
+            '[SaveQueue] Creating edge:',
+            op.payload.source_id,
+            '->',
+            op.payload.target_id
+          );
           result = await nodesApi.createEdge(op.payload as any);
           return {
             success: result?.success !== false,
@@ -406,7 +419,10 @@ class AdvancedSaveQueue {
       const statusCode = err?.statusCode || err?.status;
       const errorMessage = err?.message || 'Unknown error';
 
-      console.error(`[SaveQueue] Operation error (${op.type}):`, { statusCode, message: errorMessage });
+      console.error(`[SaveQueue] Operation error (${op.type}):`, {
+        statusCode,
+        message: errorMessage,
+      });
 
       // 404 = resource not found on batch update - try individual updates instead
       if (statusCode === 404 && op.type === 'node-update') {
@@ -416,7 +432,9 @@ class AdvancedSaveQueue {
 
       // 409 = conflict - could be duplicate (especially for edges)
       if (statusCode === 409) {
-        console.log(`[SaveQueue] Conflict (409) for operation ${op.id} - likely duplicate, will retry`);
+        console.log(
+          `[SaveQueue] Conflict (409) for operation ${op.id} - likely duplicate, will retry`
+        );
         // Still retry, as it might be transient
       }
 

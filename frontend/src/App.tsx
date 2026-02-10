@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useProfileSync } from '@/hooks/useProfileSync';
+import { overlayManager } from '@/lib/overlay-manager';
 
 // Error Boundary
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -69,11 +70,23 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
+  const location = useLocation();
 
   // Initialize auth once on app mount
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  // Clean up overlays when route changes
+  useEffect(() => {
+    console.log(`[App] Route changed to: ${location.pathname}`);
+    // Give modals a moment to animate out before cleaning up
+    const timer = setTimeout(() => {
+      overlayManager.cleanupAllOverlays();
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [location.pathname]);
 
   return (
     <ErrorBoundary>

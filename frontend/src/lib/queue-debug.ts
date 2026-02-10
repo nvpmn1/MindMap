@@ -15,10 +15,15 @@ export const queueDebug = {
     console.log(`Queue length: ${status.queueLength}`);
     console.log(`Active retries: ${status.activeRetries}`);
     console.log(`Is saving: ${status.isSaving}`);
-    console.log(`Last successful save: ${status.lastSuccessfulSave ? new Date(status.lastSuccessfulSave).toLocaleTimeString() : 'Never'}`);
+    console.log(
+      `Last successful save: ${status.lastSuccessfulSave ? new Date(status.lastSuccessfulSave).toLocaleTimeString() : 'Never'}`
+    );
     console.log('Pending by type:', status.pendingByType);
     if (status.failedOperations.length > 0) {
-      console.warn(`Failed operations (${status.failedOperations.length}):`, status.failedOperations);
+      console.warn(
+        `Failed operations (${status.failedOperations.length}):`,
+        status.failedOperations
+      );
     }
     return status;
   },
@@ -103,7 +108,9 @@ export const queueDebug = {
     console.log('💡 QUICK COMMANDS:');
     console.log('  queueDebug.getStatus()   - Get current queue status');
     console.log("  queueDebug.forceSync()   - Force immediate sync (don't wait for interval)");
-    console.log('  queueDebug.clearQueue()  - Clear all pending operations (⚠️  will lose unsaved data)');
+    console.log(
+      '  queueDebug.clearQueue()  - Clear all pending operations (⚠️  will lose unsaved data)'
+    );
     console.log('  queueDebug.diagnose()    - Show this diagnostic report');
     console.log('');
   },

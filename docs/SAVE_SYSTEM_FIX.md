@@ -3,14 +3,16 @@
 ## ✅ Problemas Corrigidos
 
 ### 1. **Título do Mapa Não Estava Salvando**
+
 - **Problema**: Quando o usuário editava o título do mapa, ele não era salvo no servidor
 - **Causa**: O EditorHeader estava fazendo uma chamada direta à API que falhava com 404
-- **Solução**: 
+- **Solução**:
   - Título agora usa a fila avançada de salvamento
   - Herda toda a lógica de retry e persistência
   - Usa `forceSync()` para salvamento imediato
 
 ### 2. **Erros 409 Conflict ao Criar Edges**
+
 - **Problema**: Múltiplos erros 409 quando criando conexões entre nós
 - **Causa**: Tentativa de recriar edges duplicadas, sem tratamento adequado
 - **Solução**:
@@ -19,6 +21,7 @@
   - Previne loops de retry desnecessários
 
 ### 3. **Erros 404 no Endpoint /api/nodes/batch**
+
 - **Problema**: Requisições batch para atualizar múltiplos nós falhando com 404
 - **Causa**: Falhas de rede ou timeout, sem fallback adequado
 - **Solução**:
@@ -27,6 +30,7 @@
   - Melhor logging para entender o que aconteceu
 
 ### 4. **Erros de Bloqueio por Cliente (ERR_BLOCKED_BY_CLIENT)**
+
 - **Problema**: Requisições sendo bloqueadas por extensões do navegador
 - **Causa**: Extensões de ads/privacy bloqueando requisições da aplicação
 - **Solução**: Aplicação continua funcionando mesmo com requisições bloqueadas
@@ -74,27 +78,32 @@
 ## 🛡️ Camadas de Proteção
 
 ### Camada 1: Auto-save Adaptativo
+
 - **3 segundos**: Quando há nós não salvos (novos com temp IDs)
 - **10 segundos**: Em estado normal
 - Queues TODOS os nós (create + update) e edges
 
 ### Camada 2: Tratamento de Erros
+
 - **409 Conflict**: Tratado como sucesso (edge duplicada = normal)
 - **404 Not Found**: Fallback para atualizações individuais
 - **401/403 Auth**: Fail imediato (não faz retry)
 - **Outros erros**: Retry com exponential backoff (500ms, 1s, 2s, 4s)
 
 ### Camada 3: Persistência em IndexedDB
+
 - Operações pendentes salvam em IndexedDB
 - Survives navegador crash/reload
 - Automaticamente retoma após reiniciar
 
 ### Camada 4: BeforeUnload Handler
+
 - Força sincronização antes de sair da página
 - Exibe aviso ao navegador se mudanças pendentes
 - Captura navegação acidental
 
 ### Camada 5: Visibility Change Handler
+
 - Sincroniza quando usuário volta à aba
 - Processa operações acumuladas enquanto era background
 - Mantém dados sempre atualizados
@@ -102,11 +111,13 @@
 ## 📊 Como Debugar (Console do Navegador)
 
 ### Verificar Status
+
 ```javascript
-queueDebug.diagnose()  // Relatório completo
+queueDebug.diagnose(); // Relatório completo
 ```
 
 Saída esperada:
+
 ```
 ╔═══════════════════════════════════════════════════════╗
 ║       MINDMAP SAVE QUEUE DIAGNOSTICS                  ║
@@ -125,23 +136,27 @@ Saída esperada:
 ```
 
 ### Status Rápido
+
 ```javascript
-queueDebug.getStatus()  // Apenas números
+queueDebug.getStatus(); // Apenas números
 ```
 
 ### Forçar Sincronização
+
 ```javascript
-queueDebug.forceSync()  // Sincroniza agora (não espera 10s)
+queueDebug.forceSync(); // Sincroniza agora (não espera 10s)
 ```
 
 ### Emergência: Limpar Fila
+
 ```javascript
-queueDebug.clearQueue()  // ⚠️ Perde dados não salvos - usar com cuidado!
+queueDebug.clearQueue(); // ⚠️ Perde dados não salvos - usar com cuidado!
 ```
 
 ## 📈 Métricas de Sucesso
 
 ### Antes das Correções
+
 - ❌ Título não salvava
 - ❌ Múltiplos 409 errors
 - ❌ Múltiplos 404 errors
@@ -149,6 +164,7 @@ queueDebug.clearQueue()  // ⚠️ Perde dados não salvos - usar com cuidado!
 - ❌ Perda de dados ao navegar
 
 ### Depois das Correções
+
 - ✅ Título salva via queue com retry
 - ✅ 409 tratado como sucesso
 - ✅ 404 tem fallback para individual updates
@@ -158,12 +174,15 @@ queueDebug.clearQueue()  // ⚠️ Perde dados não salvos - usar com cuidado!
 ## 🔍 Logs para Observar
 
 ### Console do Navegador
+
 Procure por logs com prefixes:
+
 - `[SaveQueue]` - Operações da fila
 - `[Header]` - Operações de título
 - `[QueueDebug]` - Debug commands
 
 ### Exemplo de Log Bem-Sucedido
+
 ```
 [SaveQueue] Processing 5 operations across 1 maps
 [SaveQueue] Updating map: {title: "Meu Mapa"}
@@ -174,6 +193,7 @@ Procure por logs com prefixes:
 ```
 
 ### Exemplo de Log com Retry
+
 ```
 [SaveQueue] Error (node-update): {statusCode: 409, message: "Conflict"}
 [SaveQueue] Conflict (409) for operation... - likely duplicate, will retry

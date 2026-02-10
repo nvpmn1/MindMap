@@ -27,7 +27,9 @@ window.addEventListener('error', (event) => {
 window.addEventListener('unhandledrejection', (event) => {
   if (
     event.reason &&
-    (event.reason.message || '').includes('A listener indicated an asynchronous response by returning true')
+    (event.reason.message || '').includes(
+      'A listener indicated an asynchronous response by returning true'
+    )
   ) {
     event.preventDefault();
   }

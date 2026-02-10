@@ -2,6 +2,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/stores/authStore';
 import { mapsApi, nodesApi } from '@/lib/api';
+import { overlayManager } from '@/lib/overlay-manager';
 import {
   Home,
   Map as MapIcon,
@@ -444,6 +445,7 @@ export function Header() {
                         <button
                           key={map.id}
                           onClick={() => {
+                            overlayManager.cleanupAllOverlays();
                             navigate(`/map/${map.id}`);
                             setSearchOpen(false);
                             setSearchQuery('');
@@ -488,6 +490,7 @@ export function Header() {
                         <button
                           key={node.id}
                           onClick={() => {
+                            overlayManager.cleanupAllOverlays();
                             navigate(
                               `/map/${node.mapId}?node=${node.id}&q=${encodeURIComponent(
                                 searchQuery
@@ -535,7 +538,10 @@ export function Header() {
 
       {/* User Menu */}
       <button
-        onClick={() => navigate('/settings')}
+        onClick={() => {
+          overlayManager.cleanupAllOverlays();
+          navigate('/settings');
+        }}
         className="flex items-center gap-2.5 pl-3 pr-1 border-l border-white/[0.06] hover:opacity-80 transition-opacity"
       >
         <div className="hidden lg:block text-right">
