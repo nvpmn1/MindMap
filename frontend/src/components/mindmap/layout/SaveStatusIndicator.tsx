@@ -61,7 +61,10 @@ export const SaveStatusIndicator: React.FC<SaveStatusIndicatorProps> = ({ mapId 
       const count = queueStatus.queueLength;
       setPendingCount(count);
       if (queueStatus.failedOperations.length > 0) {
-        setErrorMessage(queueStatus.failedOperations[queueStatus.failedOperations.length - 1].lastError || 'Erro ao salvar');
+        setErrorMessage(
+          queueStatus.failedOperations[queueStatus.failedOperations.length - 1].lastError ||
+            'Erro ao salvar'
+        );
       }
 
       if (!isOnline) {
