@@ -13,6 +13,8 @@
     "cleanup": "ts-node scripts/cleanup-database.ts"
   },
   "dependencies": {
+    "@logtail/node": "^0.5.6",
+    "@sentry/node": "^10.38.0",
     "@anthropic-ai/sdk": "^0.32.1",
     "@supabase/supabase-js": "^2.47.10",
     "cors": "^2.8.5",
@@ -28,9 +30,12 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^22.9.0",
+    "@typescript-eslint/eslint-plugin": "^8.54.0",
+    "@typescript-eslint/parser": "^8.54.0",
+    "eslint": "^8.57.1",
     "nodemon": "^3.1.7",
     "ts-node": "^10.9.2",
-    "typescript": "^5.6.3"
+    "typescript": "^5.9.3"
   },
   "engines": {
     "node": ">=20.0.0"

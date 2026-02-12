@@ -23,7 +23,8 @@ router.post(
       // 1️⃣ Create test user (or get existing)
       let userId: string;
       const { data: existingUser } = await supabaseAdmin.auth.admin.listUsers();
-      const testUser = existingUser?.users?.find((u: any) => u.email === testEmail);
+      const users = (existingUser?.users ?? []) as Array<{ id: string; email?: string | null }>;
+      const testUser = users.find((u) => u.email === testEmail);
 
       if (testUser) {
         userId = testUser.id;

@@ -80,7 +80,7 @@ router.post(
     const { data, error } = await supabaseAdmin.auth.verifyOtp({
       email,
       token,
-      type: type as 'magiclink' | 'email',
+      type: type,
     });
 
     if (error || !data.session) {
@@ -89,16 +89,16 @@ router.post(
     }
 
     // Ensure profile exists
-    await ensureProfile(data.user!.id, email);
+    await ensureProfile(data.user.id, email);
 
-    logger.info({ userId: data.user!.id, email }, 'User verified and logged in');
+    logger.info({ userId: data.user.id, email }, 'User verified and logged in');
 
     res.json({
       success: true,
       data: {
         user: {
-          id: data.user!.id,
-          email: data.user!.email,
+          id: data.user.id,
+          email: data.user.email,
         },
         session: {
           access_token: data.session.access_token,
@@ -193,14 +193,14 @@ router.get(
 
     // Get profile
     const { data: profile } = await req
-      .supabase!.from('profiles')
+      .supabase.from('profiles')
       .select('*')
       .eq('id', userId)
       .single();
 
     // Get workspaces
     const { data: memberships } = await req
-      .supabase!.from('workspace_members')
+      .supabase.from('workspace_members')
       .select(
         `
         role,
@@ -214,7 +214,7 @@ router.get(
       )
       .eq('user_id', userId);
 
-    const userProfile = profile as any;
+    const userProfile = profile;
     const membershipsList = (memberships as any[]) || [];
 
     res.json({
@@ -250,7 +250,7 @@ const updateProfileSchema = z.object({
     ])
     .refine((val) => {
       // Reject obviously broken data
-      if (val === null || val === '') return true;
+      if (val === null || val === '') {return true;}
       // At this point val is a non-empty string, accept it
       return true;
     }, 'Avatar URL should be valid')
@@ -323,7 +323,7 @@ router.patch(
 
     // Update profile using authenticated supabase client
     const { data: updatedProfile, error: updateError } = await req
-      .supabase!.from('profiles')
+      .supabase.from('profiles')
       .update(updateData)
       .eq('id', userId)
       .select()

@@ -182,7 +182,7 @@ router.post(
     const { map_id, prompt, parent_node_id, context, options } = parsed.data;
 
     logger.info(
-      { mapId: map_id, userId: req.user!.id, prompt: prompt.substring(0, 100) },
+      { mapId: map_id, userId: req.user.id, prompt: prompt.substring(0, 100) },
       'AI generate request'
     );
 
@@ -191,7 +191,7 @@ router.post(
       agentType: 'generate',
       prompt,
       mapId: map_id,
-      userId: req.user!.id,
+      userId: req.user.id,
       existing_nodes: context?.existing_nodes,
       map_title: context?.map_title,
       map_description: context?.map_description,
@@ -220,13 +220,13 @@ router.post(
 
     const { map_id, node_id, context, options } = parsed.data;
 
-    logger.info({ mapId: map_id, nodeId: node_id, userId: req.user!.id }, 'AI expand request');
+    logger.info({ mapId: map_id, nodeId: node_id, userId: req.user.id }, 'AI expand request');
 
     const orchestrator = getOrchestrator();
     const result = await orchestrator.execute({
       agentType: 'expand',
       mapId: map_id,
-      userId: req.user!.id,
+      userId: req.user.id,
       node: context.node,
       parent: context.parent,
       siblings: context.siblings,
@@ -257,7 +257,7 @@ router.post(
     const { map_id, node_ids, context, options } = parsed.data;
 
     logger.info(
-      { mapId: map_id, nodeCount: node_ids?.length || context.nodes.length, userId: req.user!.id },
+      { mapId: map_id, nodeCount: node_ids?.length || context.nodes.length, userId: req.user.id },
       'AI summarize request'
     );
 
@@ -265,7 +265,7 @@ router.post(
     const result = await orchestrator.execute({
       agentType: 'summarize',
       mapId: map_id,
-      userId: req.user!.id,
+      userId: req.user.id,
       nodes: context.nodes,
       map_title: context.map_title,
       options: { ...options, node_ids },
@@ -293,13 +293,13 @@ router.post(
 
     const { map_id, node_ids, context, options } = parsed.data;
 
-    logger.info({ mapId: map_id, nodeIds: node_ids, userId: req.user!.id }, 'AI to-tasks request');
+    logger.info({ mapId: map_id, nodeIds: node_ids, userId: req.user.id }, 'AI to-tasks request');
 
     const orchestrator = getOrchestrator();
     const result = await orchestrator.execute({
       agentType: 'task_convert',
       mapId: map_id,
-      userId: req.user!.id,
+      userId: req.user.id,
       nodes: context.nodes,
       options: { ...options, node_ids, team_members: context.team_members },
     });
@@ -327,7 +327,7 @@ router.post(
     const { map_id, message, context } = parsed.data;
 
     logger.info(
-      { mapId: map_id, userId: req.user!.id, message: message.substring(0, 100) },
+      { mapId: map_id, userId: req.user.id, message: message.substring(0, 100) },
       'AI chat request'
     );
 
@@ -336,8 +336,8 @@ router.post(
       agentType: 'chat',
       message,
       mapId: map_id,
-      userId: req.user!.id,
-      sessionId: req.user!.id, // Use userId as sessionId for simplicity
+      userId: req.user.id,
+      sessionId: req.user.id, // Use userId as sessionId for simplicity
       nodes: context?.nodes,
       map_title: context?.map_title,
       conversation_history: context?.conversation_history as ConversationMessage[] | undefined,
@@ -366,7 +366,7 @@ router.get(
       error,
       count,
     } = await req
-      .supabase!.from('ai_runs')
+      .supabase.from('ai_runs')
       .select(
         `
         *,
@@ -411,7 +411,7 @@ router.get(
     const { runId } = req.params;
 
     const { data: run, error } = await req
-      .supabase!.from('ai_runs')
+      .supabase.from('ai_runs')
       .select(
         `
         *,
@@ -450,7 +450,7 @@ router.post(
 
     // Get the AI run
     const { data: run, error } = await req
-      .supabase!.from('ai_runs')
+      .supabase.from('ai_runs')
       .select('*')
       .eq('id', runId)
       .eq('status', 'completed')
@@ -460,7 +460,7 @@ router.post(
       throw new ValidationError('AI run not found or not completed');
     }
 
-    const result = run.output_result as any;
+    const result = run.output_result;
     if (!result || !result.suggestions) {
       throw new ValidationError('No suggestions to apply');
     }
@@ -478,7 +478,7 @@ router.post(
       // Create nodes
       for (const suggestion of suggestions) {
         const { data: node } = await req
-          .supabase!.from('nodes')
+          .supabase.from('nodes')
           .insert({
             map_id: run.map_id,
             parent_id: suggestion.parent_id || null,
@@ -487,7 +487,7 @@ router.post(
             content: suggestion.content || null,
             position_x: suggestion.position_x || 0,
             position_y: suggestion.position_y || 0,
-            created_by: req.user!.id,
+            created_by: req.user.id,
           })
           .select()
           .single();
@@ -497,7 +497,7 @@ router.post(
 
           // Create edge if parent specified
           if (suggestion.parent_id) {
-            await req.supabase!.from('edges').insert({
+            await req.supabase.from('edges').insert({
               map_id: run.map_id,
               source_id: suggestion.parent_id,
               target_id: node.id,
@@ -510,7 +510,7 @@ router.post(
       // Create tasks
       for (const suggestion of suggestions) {
         const { data: task } = await req
-          .supabase!.from('tasks')
+          .supabase.from('tasks')
           .insert({
             node_id: suggestion.node_id,
             title: suggestion.title,
@@ -518,7 +518,7 @@ router.post(
             status: 'todo',
             priority: suggestion.priority || 'medium',
             tags: suggestion.tags || [],
-            created_by: req.user!.id,
+            created_by: req.user.id,
           })
           .select()
           .single();
@@ -530,7 +530,7 @@ router.post(
     }
 
     logger.info(
-      { runId, appliedCount: applied.length, userId: req.user!.id },
+      { runId, appliedCount: applied.length, userId: req.user.id },
       'AI suggestions applied'
     );
 
@@ -573,9 +573,9 @@ router.get(
     }
 
     const { data: runs } = await req
-      .supabase!.from('ai_runs')
+      .supabase.from('ai_runs')
       .select('agent_type, tokens_input, tokens_output, duration_ms, status, created_at')
-      .eq('user_id', req.user!.id)
+      .eq('user_id', req.user.id)
       .gte('created_at', startDate.toISOString());
 
     if (!runs) {
@@ -602,7 +602,7 @@ router.get(
     let totalDuration = 0;
     for (const run of runs) {
       stats.byAgentType[run.agent_type] = (stats.byAgentType[run.agent_type] || 0) + 1;
-      if (run.duration_ms) totalDuration += run.duration_ms;
+      if (run.duration_ms) {totalDuration += run.duration_ms;}
     }
 
     stats.avgDuration = runs.length > 0 ? Math.round(totalDuration / runs.length) : 0;
@@ -876,7 +876,7 @@ router.post(
       {
         mapId: map_id,
         agentType: detectedAgent,
-        userId: req.user!.id,
+        userId: req.user.id,
         stream,
         message: message.substring(0, 100),
       },
@@ -887,8 +887,8 @@ router.post(
       agentType: detectedAgent,
       message,
       mapId: map_id,
-      userId: req.user!.id,
-      sessionId: req.user!.id,
+      userId: req.user.id,
+      sessionId: req.user.id,
       nodes: context?.nodes,
       edges: context?.edges,
       selected_node: context?.selected_node,
@@ -934,7 +934,7 @@ router.post(
       {
         mapId: map_id,
         agentType: detectedAgent,
-        userId: req.user!.id,
+        userId: req.user.id,
       },
       'Neural stream request'
     );
@@ -943,8 +943,8 @@ router.post(
       agentType: detectedAgent,
       message,
       mapId: map_id,
-      userId: req.user!.id,
-      sessionId: req.user!.id,
+      userId: req.user.id,
+      sessionId: req.user.id,
       nodes: context?.nodes,
       edges: context?.edges,
       selected_node: context?.selected_node,
@@ -968,13 +968,13 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const { map_id, nodes, edges, map_title, analysis_type } = req.body;
 
-    if (!map_id) throw new ValidationError('map_id is required');
+    if (!map_id) {throw new ValidationError('map_id is required');}
 
     const orchestrator = getOrchestrator();
     const result = await orchestrator.execute({
       agentType: 'analyze',
       mapId: map_id,
-      userId: req.user!.id,
+      userId: req.user.id,
       nodes,
       edges,
       map_title,
@@ -994,13 +994,13 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const { map_id, nodes, edges, map_title, strategy } = req.body;
 
-    if (!map_id) throw new ValidationError('map_id is required');
+    if (!map_id) {throw new ValidationError('map_id is required');}
 
     const orchestrator = getOrchestrator();
     const result = await orchestrator.execute({
       agentType: 'organize',
       mapId: map_id,
-      userId: req.user!.id,
+      userId: req.user.id,
       nodes,
       edges,
       map_title,
@@ -1020,14 +1020,14 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const { map_id, topic, message, nodes, map_title } = req.body;
 
-    if (!map_id) throw new ValidationError('map_id is required');
+    if (!map_id) {throw new ValidationError('map_id is required');}
 
     const orchestrator = getOrchestrator();
     const result = await orchestrator.execute({
       agentType: 'research',
       message: topic || message,
       mapId: map_id,
-      userId: req.user!.id,
+      userId: req.user.id,
       nodes,
       map_title,
     });
@@ -1045,14 +1045,14 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const { map_id, message, nodes, map_title } = req.body;
 
-    if (!map_id) throw new ValidationError('map_id is required');
+    if (!map_id) {throw new ValidationError('map_id is required');}
 
     const orchestrator = getOrchestrator();
     const result = await orchestrator.execute({
       agentType: 'hypothesize',
       message,
       mapId: map_id,
-      userId: req.user!.id,
+      userId: req.user.id,
       nodes,
       map_title,
     });
@@ -1070,13 +1070,13 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const { map_id, nodes, edges, map_title } = req.body;
 
-    if (!map_id) throw new ValidationError('map_id is required');
+    if (!map_id) {throw new ValidationError('map_id is required');}
 
     const orchestrator = getOrchestrator();
     const result = await orchestrator.execute({
       agentType: 'critique',
       mapId: map_id,
-      userId: req.user!.id,
+      userId: req.user.id,
       nodes,
       edges,
       map_title,
@@ -1095,13 +1095,13 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const { map_id, nodes, edges, map_title } = req.body;
 
-    if (!map_id) throw new ValidationError('map_id is required');
+    if (!map_id) {throw new ValidationError('map_id is required');}
 
     const orchestrator = getOrchestrator();
     const result = await orchestrator.execute({
       agentType: 'connect',
       mapId: map_id,
-      userId: req.user!.id,
+      userId: req.user.id,
       nodes,
       edges,
       map_title,
@@ -1156,7 +1156,7 @@ router.delete(
   asyncHandler(async (req: Request, res: Response) => {
     const { map_id } = req.query;
     const orchestrator = getOrchestrator();
-    orchestrator.clearSession(req.user!.id, map_id as string);
+    orchestrator.clearSession(req.user.id, map_id as string);
 
     res.json({ success: true, message: 'Memory cleared' });
   })

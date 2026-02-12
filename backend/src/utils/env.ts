@@ -33,6 +33,13 @@ const envSchema = z.object({
   RATE_LIMIT_WINDOW_MS: z.string().default('60000').transform(Number),
   RATE_LIMIT_MAX: z.string().default('100').transform(Number),
   AI_RATE_LIMIT_MAX: z.string().default('10').transform(Number),
+
+  // Observability
+  SENTRY_DSN: z.string().url().optional(),
+  SENTRY_ENVIRONMENT: z.string().optional(),
+  SENTRY_TRACES_SAMPLE_RATE: z.string().default('0.1').transform(Number),
+  LOGTAIL_SOURCE_TOKEN: z.string().min(1).optional(),
+  OBSERVABILITY_SERVICE_NAME: z.string().default('mindmap-hub-api'),
 });
 
 const parsed = envSchema.safeParse(process.env);

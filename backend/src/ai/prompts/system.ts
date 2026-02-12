@@ -420,7 +420,7 @@ export function buildMapContext(input: Record<string, any>): string {
 
   if (input.map_title) {
     parts.push(`<map_info>\nTítulo: ${input.map_title}`);
-    if (input.map_description) parts.push(`Descrição: ${input.map_description}`);
+    if (input.map_description) {parts.push(`Descrição: ${input.map_description}`);}
     parts.push('</map_info>');
   }
 
@@ -428,8 +428,8 @@ export function buildMapContext(input: Record<string, any>): string {
     parts.push('<map_nodes>');
     for (const node of input.nodes.slice(0, 50)) {
       let nodeStr = `- [${node.type || 'idea'}] "${node.label}"`;
-      if (node.content) nodeStr += ` — ${node.content.substring(0, 150)}`;
-      if (node.id) nodeStr += ` (id: ${node.id})`;
+      if (node.content) {nodeStr += ` — ${node.content.substring(0, 150)}`;}
+      if (node.id) {nodeStr += ` (id: ${node.id})`;}
       parts.push(nodeStr);
     }
     if (input.nodes.length > 50) {
@@ -449,7 +449,7 @@ export function buildMapContext(input: Record<string, any>): string {
   if (input.selected_node || input.node) {
     const node = input.selected_node || input.node;
     parts.push(`<selected_node>\nRótulo: ${node.label}\nTipo: ${node.type}`);
-    if (node.content) parts.push(`Conteúdo: ${node.content}`);
+    if (node.content) {parts.push(`Conteúdo: ${node.content}`);}
     parts.push('</selected_node>');
   }
 
@@ -483,9 +483,9 @@ export function buildUserPrompt(
     case 'generate': {
       parts.push(`<user_request>`);
       parts.push(`Gere ${options.count || 5} ideias criativas e originais para: "${input.prompt || input.message}"`);
-      if (options.style) parts.push(`Estilo: ${options.style}`);
-      if (options.depth && options.depth > 1) parts.push(`Profundidade: ${options.depth} níveis de sub-ideias`);
-      if (input.parent_node_id) parts.push('As ideias devem ser filhas do nó selecionado.');
+      if (options.style) {parts.push(`Estilo: ${options.style}`);}
+      if (options.depth && options.depth > 1) {parts.push(`Profundidade: ${options.depth} níveis de sub-ideias`);}
+      if (input.parent_node_id) {parts.push('As ideias devem ser filhas do nó selecionado.');}
       parts.push('</user_request>');
       parts.push('\nUse a ferramenta create_nodes para criar as ideias no mapa. Se apropriado, use create_edges para conectá-las.');
       break;
@@ -494,7 +494,7 @@ export function buildUserPrompt(
     case 'expand': {
       parts.push('<user_request>');
       parts.push(`Expanda o nó "${input.node?.label || input.label}" com ${options.count || 4} sub-conceitos.`);
-      if (options.direction) parts.push(`Direção: ${options.direction}`);
+      if (options.direction) {parts.push(`Direção: ${options.direction}`);}
       parts.push('</user_request>');
       parts.push('\nUse create_nodes para criar os nós de expansão e create_edges para as conexões.');
       break;
@@ -503,8 +503,8 @@ export function buildUserPrompt(
     case 'summarize': {
       parts.push('<user_request>');
       parts.push(`Sintetize o conteúdo dos nós do mapa.`);
-      if (options.format) parts.push(`Formato: ${options.format}`);
-      if (options.length) parts.push(`Extensão: ${options.length}`);
+      if (options.format) {parts.push(`Formato: ${options.format}`);}
+      if (options.length) {parts.push(`Extensão: ${options.length}`);}
       parts.push('</user_request>');
       break;
     }
@@ -512,7 +512,7 @@ export function buildUserPrompt(
     case 'analyze': {
       parts.push('<user_request>');
       parts.push('Realize uma análise profunda e completa do mapa mental.');
-      if (options.analysis_type) parts.push(`Foco: ${options.analysis_type}`);
+      if (options.analysis_type) {parts.push(`Foco: ${options.analysis_type}`);}
       parts.push('Inclua: padrões, lacunas, SWOT, clusters e recomendações.');
       parts.push('</user_request>');
       parts.push('\nUse analyze_map e find_patterns para fundamentar sua análise.');
@@ -522,7 +522,7 @@ export function buildUserPrompt(
     case 'organize': {
       parts.push('<user_request>');
       parts.push('Reorganize e otimize a estrutura do mapa mental.');
-      if (options.strategy) parts.push(`Estratégia: ${options.strategy}`);
+      if (options.strategy) {parts.push(`Estratégia: ${options.strategy}`);}
       parts.push('</user_request>');
       parts.push('\nUse reorganize_map, create_clusters e update_layout para implementar.');
       break;
@@ -549,9 +549,9 @@ export function buildUserPrompt(
       parts.push('<user_request>');
       const nodeCount = input.node_ids?.length || input.nodes?.length || 'os';
       parts.push(`Converta ${nodeCount} nós selecionados em tarefas acionáveis.`);
-      if (options.include_subtasks) parts.push('Inclua subtarefas como checklist.');
-      if (options.estimate_priority) parts.push('Estime prioridade e esforço.');
-      if (options.suggest_assignees && input.team_members) parts.push('Sugira responsáveis da equipe.');
+      if (options.include_subtasks) {parts.push('Inclua subtarefas como checklist.');}
+      if (options.estimate_priority) {parts.push('Estime prioridade e esforço.');}
+      if (options.suggest_assignees && input.team_members) {parts.push('Sugira responsáveis da equipe.');}
       parts.push('</user_request>');
       parts.push('\nUse create_tasks para criar as tarefas convertidas.');
       break;

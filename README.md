@@ -20,7 +20,7 @@ MindMap/
 
 ## 🚀 Quick Start
 
-### Pré-requisitos
+### Requisitos locais
 
 - Node.js >= 20.0.0
 - npm >= 9.0.0
@@ -59,14 +59,26 @@ npm run dev:frontend           # Frontend em http://localhost:5173
 
 ### Scripts disponíveis
 
-| Script                | Descrição                                  |
-| --------------------- | ------------------------------------------ |
-| `npm run install:all` | Instala dependências do backend e frontend |
-| `npm run dev`         | Inicia backend e frontend em paralelo      |
-| `npm run build`       | Compila backend e frontend                 |
-| `npm run typecheck`   | Verifica tipos TypeScript                  |
-| `npm run lint`        | Executa linter em todo o projeto           |
-| `npm run clean`       | Remove node_modules e dist                 |
+| Script                           | Descrição                                     |
+| -------------------------------- | --------------------------------------------- |
+| `npm run install:all`            | Instala dependências do backend e frontend    |
+| `npm run dev`                    | Inicia backend e frontend em paralelo         |
+| `npm run build`                  | Compila backend e frontend                    |
+| `npm run typecheck`              | Verifica tipos TypeScript                     |
+| `npm run lint`                   | Executa linter em todo o projeto              |
+| `npm run lint:baseline:write`    | Congela baseline de warnings por módulo       |
+| `npm run lint:baseline:check`    | Valida regressão de warnings por módulo       |
+| `npm run lint:budget:check`      | Valida warning budget por área/módulo         |
+| `npm run smoke:deploy`           | Smoke test em ambiente real (URLs publicadas) |
+| `npm run smoke:deploy:public`    | Preflight + smoke público automatizado        |
+| `npm run e2e:critical`           | Executa fluxo crítico E2E no navegador        |
+| `npm run e2e:install`            | Instala browser Chromium para Playwright      |
+| `npm run backup:drill:check`     | Pré-check de backup/restore Supabase          |
+| `npm run env:check:smoke:public` | Valida env para smoke público                 |
+| `npm run env:check:smoke:auth`   | Valida env para smoke autenticado             |
+| `npm run quality:gate`           | Baseline + typecheck + build                  |
+| `npm run release:verify`         | Quality gate + smoke deploy                   |
+| `npm run clean`                  | Remove node_modules e dist                    |
 
 ## 🌐 Deploy
 
@@ -99,8 +111,40 @@ Veja a pasta `/docs` para documentação completa:
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md) - Arquitetura técnica
 - [DEPLOYMENT.md](docs/DEPLOYMENT.md) - Guia de deploy
+- [DEPLOY_SMOKE_PROD.md](docs/DEPLOY_SMOKE_PROD.md) - Smoke test automatizado de produção
 - [DATABASE.md](docs/DATABASE.md) - Schema do banco
+- [OBSERVABILITY.md](docs/OBSERVABILITY.md) - Sentry/Logtail + alertas
+- [INCIDENT_RUNBOOK.md](docs/INCIDENT_RUNBOOK.md) - Resposta a incidentes (SEV-1/2/3)
+- [SECURITY_SECRETS.md](docs/SECURITY_SECRETS.md) - Rotação e higiene de credenciais
+- [SECURITY_REVIEW_CALENDAR.md](docs/SECURITY_REVIEW_CALENDAR.md) - Cadência de revisão de segurança
+- [SUPABASE_BACKUP_RESTORE.md](docs/SUPABASE_BACKUP_RESTORE.md) - Drill de backup/restore
+- [quality/LINT_REDUCTION_PLAN.md](docs/quality/LINT_REDUCTION_PLAN.md) - Plano de redução de warnings
+- [quality/MODULE_WARNING_BUDGET.md](docs/quality/MODULE_WARNING_BUDGET.md) - Orçamento de warnings por módulo
+- [PRODUCT_METRICS_FUNNEL.md](docs/PRODUCT_METRICS_FUNNEL.md) - Métricas de produto e funil
+- [GO_LIVE_FINAL_CHECKLIST.md](docs/GO_LIVE_FINAL_CHECKLIST.md) - Checklist final de lançamento
 - [PRODUCT_SPEC.md](docs/PRODUCT_SPEC.md) - Especificação do produto
+
+## 🤖 Automação total (GitHub Actions)
+
+Workflows configurados:
+
+- `Quality Gate` (`.github/workflows/ci-cd.yml`)
+  - roda em push/PR
+  - valida baseline de lint + typecheck + build (bloqueante)
+  - `npm run lint` permanece fora do gate bloqueante enquanto o plano de redução de warnings está em execução
+- `Production Smoke` (`.github/workflows/production-smoke.yml`)
+  - roda manualmente (`workflow_dispatch`) e a cada 6h (`schedule`)
+  - smoke público e, quando token existir, smoke autenticado completo
+
+### Variáveis no GitHub (Repository Variables)
+
+- `SMOKE_FRONTEND_URL`
+- `SMOKE_BACKEND_URL`
+- `SMOKE_WORKSPACE_ID` (opcional)
+
+### Secrets no GitHub (Repository Secrets)
+
+- `SMOKE_BEARER_TOKEN` (para smoke autenticado)
 
 ## 🌟 Recursos Principais
 
@@ -204,8 +248,8 @@ npm run dev
 
 ### 4. Acessar a Aplicação
 
-- **Frontend**: http://localhost:5173
-- **Backend API**: http://localhost:3001
+- **Frontend**: <http://localhost:5173>
+- **Backend API**: <http://localhost:3001>
 
 ## 📡 Endpoints da API
 
@@ -259,11 +303,11 @@ npm run dev
 
 ## 👤 Usuários Predefinidos
 
-| Nome      | Email                 | Cor    | Papel  |
-| --------- | --------------------- | ------ | ------ |
-| Guilherme | guilherme@mindmap.com | Índigo | Admin  |
-| Helen     | helen@mindmap.com     | Rosa   | Membro |
-| Pablo     | pablo@mindmap.com     | Verde  | Membro |
+| Nome      | Email                                                 | Cor    | Papel  |
+| --------- | ----------------------------------------------------- | ------ | ------ |
+| Guilherme | [guilherme@mindmap.com](mailto:guilherme@mindmap.com) | Índigo | Admin  |
+| Helen     | [helen@mindmap.com](mailto:helen@mindmap.com)         | Rosa   | Membro |
+| Pablo     | [pablo@mindmap.com](mailto:pablo@mindmap.com)         | Verde  | Membro |
 
 ## 🔧 Configuração do Supabase
 

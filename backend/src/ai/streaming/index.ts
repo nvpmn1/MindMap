@@ -90,7 +90,7 @@ export class SSEWriter {
    * Send an SSE event
    */
   send(event: StreamEventType, data: any): void {
-    if (this.closed) return;
+    if (this.closed) {return;}
 
     try {
       const payload = typeof data === 'string' ? data : JSON.stringify(data);
@@ -148,7 +148,7 @@ export class SSEWriter {
    * Close the SSE connection
    */
   close(): void {
-    if (this.closed) return;
+    if (this.closed) {return;}
     this.closed = true;
 
     if (this.keepaliveInterval) {
@@ -267,7 +267,7 @@ export async function executeWithStreaming(
 
     // 6) Process stream events
     for await (const event of stream) {
-      if (writer.isClosed) break;
+      if (writer.isClosed) {break;}
 
       switch (event.type) {
         case 'content_block_start': {

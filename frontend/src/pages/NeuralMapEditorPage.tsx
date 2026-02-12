@@ -1176,6 +1176,7 @@ function NeuralMapEditorInner() {
   return (
     <div
       className="h-screen w-screen bg-[#060910] flex flex-col overflow-hidden"
+      data-testid="map-editor-root"
       onContextMenu={onContextMenu}
     >
       <input

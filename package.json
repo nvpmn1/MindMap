@@ -17,13 +17,25 @@
     "typecheck:backend": "cd backend && npm run typecheck",
     "typecheck:frontend": "cd frontend && npm run type-check",
     "lint": "npm run lint:backend && npm run lint:frontend",
+    "lint:baseline:write": "node scripts/lint-baseline.mjs --write",
+    "lint:baseline:check": "node scripts/lint-baseline.mjs",
+    "lint:budget:check": "node scripts/lint-budget-check.mjs",
+    "env:check:smoke:public": "node scripts/preflight-env.mjs smoke-public",
+    "env:check:smoke:auth": "node scripts/preflight-env.mjs smoke-auth",
+    "smoke:deploy": "node scripts/smoke-deploy.mjs",
+    "smoke:deploy:public": "npm run env:check:smoke:public && npm run smoke:deploy",
+    "e2e:critical": "cd frontend && npm run e2e:critical",
+    "e2e:install": "cd frontend && npm run e2e:install",
+    "backup:drill:check": "node scripts/supabase-backup-restore-drill.mjs",
     "lint:backend": "cd backend && npm run lint",
     "lint:frontend": "cd frontend && npm run lint",
     "clean": "npm run clean:backend && npm run clean:frontend",
     "clean:backend": "cd backend && rm -rf node_modules dist",
     "clean:frontend": "cd frontend && rm -rf node_modules dist .vite",
     "clean:all": "npm run clean && rm -rf node_modules",
-    "start": "cd backend && npm run start"
+    "start": "cd backend && npm run start",
+    "quality:gate": "npm run lint:baseline:check && npm run lint:budget:check && npm run typecheck && npm run build",
+    "release:verify": "npm run quality:gate && npm run smoke:deploy"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

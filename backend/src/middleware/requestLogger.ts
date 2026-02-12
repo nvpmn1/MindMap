@@ -1,18 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
 import { randomUUID } from 'crypto';
+import { captureMessage } from '../observability';
 
 /**
  * Request logging middleware using Pino
  * Logs incoming requests and outgoing responses with timing
  */
-export const requestLogger = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void => {
+export const requestLogger = (req: Request, res: Response, next: NextFunction): void => {
   // Generate unique request ID
-  const requestId = req.headers['x-request-id'] as string || randomUUID();
+  const requestId = (req.headers['x-request-id'] as string) || randomUUID();
   req.headers['x-request-id'] = requestId;
   res.setHeader('x-request-id', requestId);
 
@@ -20,16 +17,19 @@ export const requestLogger = (
   const startTime = process.hrtime.bigint();
 
   // Log incoming request
-  logger.info({
-    type: 'request',
-    requestId,
-    method: req.method,
-    path: req.path,
-    query: Object.keys(req.query).length > 0 ? req.query : undefined,
-    userAgent: req.headers['user-agent'],
-    ip: req.ip || req.socket.remoteAddress,
-    userId: req.user?.id,
-  }, `→ ${req.method} ${req.path}`);
+  logger.info(
+    {
+      type: 'request',
+      requestId,
+      method: req.method,
+      path: req.path,
+      query: Object.keys(req.query).length > 0 ? req.query : undefined,
+      userAgent: req.headers['user-agent'],
+      ip: req.ip || req.socket.remoteAddress,
+      userId: req.user?.id,
+    },
+    `→ ${req.method} ${req.path}`
+  );
 
   // Override res.json to capture response body size
   const originalJson = res.json.bind(res);
@@ -57,6 +57,14 @@ export const requestLogger = (
     // Choose log level based on status code
     if (res.statusCode >= 500) {
       logger.error(logData, `← ${req.method} ${req.path} ${res.statusCode}`);
+      captureMessage('error', 'HTTP 5xx response', {
+        requestId,
+        method: req.method,
+        path: req.path,
+        statusCode: res.statusCode,
+        durationMs: logData.durationMs,
+        userId: req.user?.id,
+      });
     } else if (res.statusCode >= 400) {
       logger.warn(logData, `← ${req.method} ${req.path} ${res.statusCode}`);
     } else {
@@ -70,14 +78,17 @@ export const requestLogger = (
       const endTime = process.hrtime.bigint();
       const durationMs = Number(endTime - startTime) / 1_000_000;
 
-      logger.warn({
-        type: 'response_aborted',
-        requestId,
-        method: req.method,
-        path: req.path,
-        durationMs: Math.round(durationMs * 100) / 100,
-        userId: req.user?.id,
-      }, `✕ ${req.method} ${req.path} aborted`);
+      logger.warn(
+        {
+          type: 'response_aborted',
+          requestId,
+          method: req.method,
+          path: req.path,
+          durationMs: Math.round(durationMs * 100) / 100,
+          userId: req.user?.id,
+        },
+        `✕ ${req.method} ${req.path} aborted`
+      );
     }
   });
 
@@ -89,7 +100,7 @@ export const requestLogger = (
  */
 export const skipPaths = (paths: string[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (paths.some(p => req.path.startsWith(p))) {
+    if (paths.some((p) => req.path.startsWith(p))) {
       return next();
     }
     requestLogger(req, res, next);

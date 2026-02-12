@@ -170,7 +170,7 @@ const CommandToolbarComponent: React.FC<CommandToolbarProps> = ({
                 <div
                   className={`w-9 h-9 rounded-lg flex items-center justify-center
                   bg-gradient-to-br ${config.gradient} border ${config.borderColor}
-                  group-hover:shadow-[0_0_16px_${config.color}40] group-hover:scale-110 
+                  group-hover:shadow-lg group-hover:scale-110 
                   transition-all`}
                 >
                   <Icon className="w-4.5 h-4.5" style={{ color: config.color }} />

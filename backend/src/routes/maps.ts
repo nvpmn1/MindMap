@@ -59,7 +59,7 @@ router.get(
 
     const buildBaseQuery = () =>
       req
-        .supabase!.from('maps')
+        .supabase.from('maps')
         .select(
           `
           *
@@ -95,8 +95,8 @@ router.get(
       const retryQuery = applyCommonFilters(buildBaseQuery());
       const retry = await retryQuery;
       maps = retry.data;
-      error = retry.error as any;
-      count = retry.count as any;
+      error = retry.error;
+      count = retry.count;
     }
 
     if (error) {
@@ -129,7 +129,7 @@ router.get(
 
     // Fetch map with related data
     const { data: map, error } = await req
-      .supabase!.from('maps')
+      .supabase.from('maps')
       .select(
         `
         *
@@ -145,8 +145,8 @@ router.get(
 
     // Log activity
     const mapIdStr = Array.isArray(mapId) ? mapId[0] : mapId;
-    const activityWorkspaceId = (map as any)?.workspace_id || env.DEFAULT_WORKSPACE_ID;
-    await logActivity(req.user!.id, activityWorkspaceId, mapIdStr, 'map_viewed', 'Viewed map');
+    const activityWorkspaceId = (map)?.workspace_id || env.DEFAULT_WORKSPACE_ID;
+    await logActivity(req.user.id, activityWorkspaceId, mapIdStr, 'map_viewed', 'Viewed map');
 
     res.json({
       success: true,
@@ -174,12 +174,12 @@ router.post(
       description: parsed.data.description,
       is_template: parsed.data.is_template,
       settings: parsed.data.settings,
-      created_by: req.user!.id,
+      created_by: req.user.id,
     };
 
     // Create map using RLS-enabled client
     let { data: map, error } = await req
-      .supabase!.from('maps')
+      .supabase.from('maps')
       .insert(mapData)
       .select(
         `
@@ -191,7 +191,7 @@ router.post(
     if (error && error.message?.includes('maps.workspace_id')) {
       const { workspace_id: _workspaceId, ...fallbackData } = mapData as any;
       const retry = await req
-        .supabase!.from('maps')
+        .supabase.from('maps')
         .insert(fallbackData)
         .select(
           `
@@ -209,26 +209,26 @@ router.post(
     }
 
     // Create root node automatically
-    await req.supabase!.from('nodes').insert({
+    await req.supabase.from('nodes').insert({
       map_id: map.id,
       type: 'idea',
       label: map.title,
       position_x: 0,
       position_y: 0,
-      created_by: req.user!.id,
+      created_by: req.user.id,
     });
 
     // Log activity
-    const activityWorkspaceId = (map as any)?.workspace_id || env.DEFAULT_WORKSPACE_ID;
+    const activityWorkspaceId = (map)?.workspace_id || env.DEFAULT_WORKSPACE_ID;
     await logActivity(
-      req.user!.id,
+      req.user.id,
       activityWorkspaceId,
       map.id,
       'map_created',
       `Created map "${map.title}"`
     );
 
-    logger.info({ mapId: map.id, userId: req.user!.id }, 'Map created');
+    logger.info({ mapId: map.id, userId: req.user.id }, 'Map created');
 
     res.status(201).json({
       success: true,
@@ -258,7 +258,7 @@ router.patch(
     };
 
     const { data: map, error } = await req
-      .supabase!.from('maps')
+      .supabase.from('maps')
       .update(updateData)
       .eq('id', mapId)
       .select(
@@ -273,16 +273,16 @@ router.patch(
     }
 
     // Log activity
-    const activityWorkspaceId = (map as any)?.workspace_id || env.DEFAULT_WORKSPACE_ID;
+    const activityWorkspaceId = (map)?.workspace_id || env.DEFAULT_WORKSPACE_ID;
     await logActivity(
-      req.user!.id,
+      req.user.id,
       activityWorkspaceId,
       map.id,
       'map_updated',
       `Updated map "${map.title}"`
     );
 
-    logger.info({ mapId, userId: req.user!.id }, 'Map updated');
+    logger.info({ mapId, userId: req.user.id }, 'Map updated');
 
     res.json({
       success: true,
@@ -303,7 +303,7 @@ router.delete(
 
     // Get map for activity log
     const { data: map } = await req
-      .supabase!.from('maps')
+      .supabase.from('maps')
       .select('title, workspace_id')
       .eq('id', mapId)
       .single();
@@ -313,7 +313,7 @@ router.delete(
     }
 
     // Delete map (cascades to nodes, edges, etc.)
-    const { error } = await req.supabase!.from('maps').delete().eq('id', mapId);
+    const { error } = await req.supabase.from('maps').delete().eq('id', mapId);
 
     if (error) {
       logger.error({ error: error.message, mapId }, 'Failed to delete map');
@@ -323,14 +323,14 @@ router.delete(
     // Log activity
     const activityWorkspaceId = (map as any)?.workspace_id || env.DEFAULT_WORKSPACE_ID;
     await logActivity(
-      req.user!.id,
+      req.user.id,
       activityWorkspaceId,
       null,
       'map_deleted',
       `Deleted map "${map.title}"`
     );
 
-    logger.info({ mapId, userId: req.user!.id }, 'Map deleted');
+    logger.info({ mapId, userId: req.user.id }, 'Map deleted');
 
     res.json({
       success: true,
@@ -352,7 +352,7 @@ router.post(
 
     // Get original map with nodes and edges
     const { data: original, error: fetchError } = await req
-      .supabase!.from('maps')
+      .supabase.from('maps')
       .select(
         `
         *,
@@ -369,14 +369,14 @@ router.post(
 
     // Create new map
     const { data: newMap, error: createError } = await req
-      .supabase!.from('maps')
+      .supabase.from('maps')
       .insert({
         workspace_id: original.workspace_id,
         title: title || `${original.title} (Copy)`,
         description: original.description,
         is_template: false,
         settings: original.settings,
-        created_by: req.user!.id,
+        created_by: req.user.id,
       })
       .select()
       .single();
@@ -408,7 +408,7 @@ router.post(
           style: node.style,
           data: node.data,
           collapsed: node.collapsed,
-          created_by: req.user!.id,
+          created_by: req.user.id,
         };
       });
 
@@ -420,7 +420,7 @@ router.post(
         }
       }
 
-      await req.supabase!.from('nodes').insert(newNodes);
+      await req.supabase.from('nodes').insert(newNodes);
     }
 
     // Copy edges
@@ -438,14 +438,14 @@ router.post(
         .filter((e: any) => e.source_id && e.target_id);
 
       if (newEdges.length > 0) {
-        await req.supabase!.from('edges').insert(newEdges);
+        await req.supabase.from('edges').insert(newEdges);
       }
     }
 
     // Log activity
-    const activityWorkspaceId = (newMap as any)?.workspace_id || env.DEFAULT_WORKSPACE_ID;
+    const activityWorkspaceId = (newMap)?.workspace_id || env.DEFAULT_WORKSPACE_ID;
     await logActivity(
-      req.user!.id,
+      req.user.id,
       activityWorkspaceId,
       newMap.id,
       'map_duplicated',
@@ -453,7 +453,7 @@ router.post(
     );
 
     logger.info(
-      { originalMapId: mapId, newMapId: newMap.id, userId: req.user!.id },
+      { originalMapId: mapId, newMapId: newMap.id, userId: req.user.id },
       'Map duplicated'
     );
 

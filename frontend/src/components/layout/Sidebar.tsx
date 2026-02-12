@@ -1,15 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
-import {
-  LayoutDashboard,
-  Map,
-  Settings,
-  LogOut,
-  ChevronLeft,
-  ChevronRight,
-  Brain,
-  User,
-} from 'lucide-react';
+import { LayoutDashboard, Map, LogOut, ChevronLeft, ChevronRight, Brain, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -121,10 +112,9 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
 
       {/* Bottom Section */}
       <div className="border-t border-white/[0.04] p-3 space-y-2">
-        <button
-          onClick={() => navigate('/settings')}
+        <div
           className={cn(
-            'w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/[0.04] transition-all group',
+            'w-full flex items-center gap-3 p-2.5 rounded-xl',
             collapsed && 'justify-center'
           )}
           title={collapsed ? user?.display_name || 'Perfil' : undefined}
@@ -157,49 +147,27 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
               </motion.div>
             )}
           </AnimatePresence>
-        </button>
-
-        <div className={cn('flex gap-1.5', collapsed ? 'flex-col' : 'flex-row')}>
-          <button
-            onClick={() => navigate('/settings')}
-            className="flex-1 flex items-center justify-center gap-2 px-2.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.04] transition-all"
-            title="Configurações"
-          >
-            <Settings className="w-4 h-4" />
-            <AnimatePresence>
-              {!collapsed && (
-                <motion.span
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="text-[12px] font-medium whitespace-nowrap"
-                >
-                  Config
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </button>
-
-          <button
-            onClick={handleLogout}
-            className="flex items-center justify-center gap-2 px-2.5 py-2 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/[0.06] transition-all"
-            title="Sair"
-          >
-            <LogOut className="w-4 h-4" />
-            <AnimatePresence>
-              {!collapsed && (
-                <motion.span
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="text-[12px] font-medium whitespace-nowrap"
-                >
-                  Sair
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </button>
         </div>
+
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center justify-center gap-2 px-2.5 py-2 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/[0.06] transition-all"
+          title="Sair"
+        >
+          <LogOut className="w-4 h-4" />
+          <AnimatePresence>
+            {!collapsed && (
+              <motion.span
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="text-[12px] font-medium whitespace-nowrap"
+              >
+                Sair
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </button>
       </div>
     </motion.aside>
   );

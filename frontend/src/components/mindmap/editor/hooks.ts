@@ -986,7 +986,7 @@ export function useEditorKeyboard(
           createNode('question', undefined, selectedNodeId);
           break;
         case 'delete':
-        case 'backspace':
+        case 'backspace': {
           // Delete all selected nodes
           e.preventDefault();
           const selectedNodes = nodes.filter((n) => n.selected);
@@ -998,6 +998,7 @@ export function useEditorKeyboard(
             deleteNode(selectedNodeId);
           }
           break;
+        }
         case 'escape':
           setSelectedNodeId(null);
           break;

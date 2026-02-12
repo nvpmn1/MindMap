@@ -31,7 +31,7 @@ router.get('/detailed', async (_req: Request, res: Response) => {
   const supabaseStart = Date.now();
   try {
     const { error } = await supabaseAdmin.from('workspaces').select('id').limit(1);
-    if (error) throw error;
+    if (error) {throw error;}
     checks.supabase = {
       status: 'healthy',
       latency: Date.now() - supabaseStart,
@@ -92,7 +92,7 @@ router.get('/ready', async (_req: Request, res: Response) => {
   try {
     // Quick Supabase check
     const { error } = await supabaseAdmin.from('workspaces').select('id').limit(1);
-    if (error) throw error;
+    if (error) {throw error;}
 
     res.status(200).json({ ready: true });
   } catch {

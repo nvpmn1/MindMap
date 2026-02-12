@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "updatedAt": "2026-02-12",
+  "policy": {
+    "description": "Module warning budgets define max warning ceilings by area. Current warnings must be <= maxWarnings.",
+    "enforcement": "hard-fail-on-budget-regression"
+  },
+  "summary": {
+    "baselineWarnings": 938,
+    "targetGlobalWarnings": 750,
+    "targetReductionPct": 20
+  },
+  "budgets": [
+    {
+      "target": "backend",
+      "module": "routes",
+      "baselineWarnings": 460,
+      "maxWarnings": 460,
+      "targetWarnings": 400,
+      "owner": "backend-core",
+      "sprint": "sprint_2"
+    },
+    {
+      "target": "backend",
+      "module": "ai",
+      "baselineWarnings": 438,
+      "maxWarnings": 438,
+      "targetWarnings": 360,
+      "owner": "ai-platform",
+      "sprint": "sprint_2"
+    },
+    {
+      "target": "backend",
+      "module": "middleware",
+      "baselineWarnings": 28,
+      "maxWarnings": 28,
+      "targetWarnings": 24,
+      "owner": "backend-core",
+      "sprint": "sprint_2"
+    },
+    {
+      "target": "backend",
+      "module": "services",
+      "baselineWarnings": 12,
+      "maxWarnings": 12,
+      "targetWarnings": 10,
+      "owner": "backend-core",
+      "sprint": "sprint_2"
+    },
+    {
+      "target": "frontend",
+      "module": "lib",
+      "baselineWarnings": 0,
+      "maxWarnings": 0,
+      "owner": "frontend-core",
+      "sprint": "sprint_3"
+    },
+    {
+      "target": "frontend",
+      "module": "components",
+      "baselineWarnings": 0,
+      "maxWarnings": 0,
+      "owner": "frontend-core",
+      "sprint": "sprint_3"
+    },
+    {
+      "target": "frontend",
+      "module": "pages",
+      "baselineWarnings": 0,
+      "maxWarnings": 0,
+      "owner": "frontend-core",
+      "sprint": "sprint_3"
+    }
+  ]
+}

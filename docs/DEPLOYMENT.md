@@ -2,7 +2,7 @@
 
 ## 1. Visão Geral
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                    Ambiente de Produção                      │
 ├─────────────────────────────────────────────────────────────┤
@@ -28,13 +28,13 @@
 
 ### 2.1 Contas Necessárias
 
-| Serviço | URL | Para quê |
-|---------|-----|----------|
-| Supabase | supabase.com | Database, Auth, Realtime |
-| Vercel | vercel.com | Frontend hosting |
-| Render | render.com | Backend hosting |
-| Anthropic | console.anthropic.com | Claude API |
-| GitHub | github.com | Repositório |
+| Serviço   | URL                   | Para quê                 |
+| --------- | --------------------- | ------------------------ |
+| Supabase  | supabase.com          | Database, Auth, Realtime |
+| Vercel    | vercel.com            | Frontend hosting         |
+| Render    | render.com            | Backend hosting          |
+| Anthropic | console.anthropic.com | Claude API               |
+| GitHub    | github.com            | Repositório              |
 
 ### 2.2 Ferramentas Locais
 
@@ -67,7 +67,7 @@ git --version   # 2.x.x
 
 Em **Settings → API**:
 
-```
+```text
 Project URL: https://xxxxx.supabase.co
 anon (public): eyJhbGci...
 service_role: eyJhbGci... (NUNCA EXPOR!)
@@ -96,14 +96,15 @@ Em **Authentication → Providers**:
 1. **Email** → Habilitar
 2. Desmarcar "Enable email confirmations" (para Magic Link direto)
 3. Em **URL Configuration**:
-   - Site URL: `https://mind-map-three-blue.vercel.app`
+   - Site URL: `https://mindmap-hub.vercel.app`
    - Redirect URLs:
-     ```
+
+   ```text
      http://localhost:5173
      http://localhost:5173/auth/callback
-     https://mind-map-three-blue.vercel.app
-     https://mind-map-three-blue.vercel.app/auth/callback
-     ```
+     https://mindmap-hub.vercel.app
+     https://mindmap-hub.vercel.app/auth/callback
+   ```
 
 ### 3.5 Habilitar Realtime
 
@@ -163,7 +164,7 @@ CLAUDE_API_KEY=sk-ant-api03-...
 CLAUDE_MODEL=claude-sonnet-4-20250514
 
 # CORS
-FRONTEND_URL=https://mind-map-three-blue.vercel.app
+FRONTEND_URL=https://mindmap-hub.vercel.app
 
 # Rate Limiting
 RATE_LIMIT_WINDOW_MS=60000
@@ -175,8 +176,8 @@ RATE_LIMIT_MAX=100
 Após deploy, teste:
 
 ```bash
-curl https://mindmap-kpf1.onrender.com/health
-# Esperado: {"status":"healthy","timestamp":"..."}
+curl https://mindmap-hub-api.onrender.com/health
+# Esperado: {"status":"ok","timestamp":"..."}
 ```
 
 ### 4.4 Configurações Avançadas
@@ -213,14 +214,14 @@ Em **Settings → Environment Variables**:
 ```env
 VITE_SUPABASE_URL=https://xxxxx.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJhbGci... (anon, NÃO service_role!)
-VITE_API_URL=https://mindmap-kpf1.onrender.com
+VITE_API_URL=https://mindmap-hub-api.onrender.com
 ```
 
 ### 5.3 Configurar Domínio
 
 Em **Settings → Domains**:
 
-- Domínio padrão: `mind-map-three-blue.vercel.app`
+- Domínio padrão: `mindmap-hub.vercel.app`
 - (Opcional) Adicionar domínio customizado
 
 ### 5.4 Verificar Deploy
@@ -286,7 +287,7 @@ Em **Logs → API** você vê requisições ao banco.
 
 ### 8.1 Fluxo de Deploy
 
-```
+```text
 ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
 │  Dev    │───▶│  Push   │───▶│  Build  │───▶│  Deploy │
 │  Local  │    │ GitHub  │    │  Auto   │    │  Auto   │
@@ -307,13 +308,61 @@ git push origin main
 ### 8.3 Rollback
 
 **Vercel:**
+
 - Vá em Deployments
 - Clique nos "..." do deploy anterior
 - "Promote to Production"
 
 **Render:**
+
 - Vá em Events
 - Clique "Rollback" no deploy anterior
+
+### 8.3.1 Teste de rollback em ambiente real (runbook)
+
+Execute este teste 1x por semana ou antes de release relevante.
+
+1. Identifique o último deploy estável de frontend e backend.
+2. Execute smoke atual para baseline:
+
+```bash
+npm run quality:gate
+SMOKE_FRONTEND_URL=https://mindmap-hub.vercel.app SMOKE_BACKEND_URL=https://mindmap-hub-api.onrender.com npm run smoke:deploy:public
+```
+
+1. Provoque rollback controlado:
+   - Vercel: promova o deploy anterior para produção.
+   - Render: faça rollback para o deploy anterior em `Events`.
+2. Aguarde estabilização (2-5 min) e rode smoke autenticado.
+3. Critério de aprovação do rollback:
+   - `/health` e `/health/detailed` OK
+   - auth `/api/auth/me` = 200
+   - CRUD de mapa/nó + IA + persistência = OK
+   - sem spike critical em Sentry/Logtail por 15 min
+4. Retorne ao deploy atual (roll-forward) e repita smoke.
+
+Se qualquer etapa falhar, mantenha a versão estável e abra incidente com RCA.
+
+### 8.4 Automação de Smoke no GitHub Actions
+
+Workflow: `.github/workflows/production-smoke.yml`
+
+Configure em **GitHub → Settings → Secrets and variables → Actions**:
+
+### Variables
+
+- `SMOKE_FRONTEND_URL=https://mindmap-hub.vercel.app`
+- `SMOKE_BACKEND_URL=https://mindmap-hub-api.onrender.com`
+- `SMOKE_WORKSPACE_ID` (opcional)
+
+### Secrets
+
+- `SMOKE_BEARER_TOKEN` (JWT válido para smoke autenticado)
+
+Com isso, o smoke roda:
+
+- manualmente (`Run workflow`)
+- automaticamente a cada 6 horas
 
 ---
 
@@ -321,7 +370,7 @@ git push origin main
 
 ### 9.1 Erro: "Invalid API Key" (Claude)
 
-```
+```text
 Causa: API key inválida ou expirada
 Solução:
 1. Verifique se a key está correta no Render
@@ -331,18 +380,18 @@ Solução:
 
 ### 9.2 Erro: "CORS Error"
 
-```
+```text
 Causa: FRONTEND_URL não configurado corretamente
 Solução:
 1. Verifique FRONTEND_URL no Render env vars
-2. Deve ser exatamente: https://mind-map-three-blue.vercel.app
+2. Deve ser exatamente: https://mindmap-hub.vercel.app
 3. Sem barra no final
 4. Redeploy o backend
 ```
 
 ### 9.3 Erro: "RLS Policy Violation"
 
-```
+```text
 Causa: Políticas de segurança bloqueando
 Solução:
 1. Verifique se o usuário é membro do workspace
@@ -352,7 +401,7 @@ Solução:
 
 ### 9.4 Erro: "Magic Link não chega"
 
-```
+```text
 Causa: Configuração de email ou redirect
 Solução:
 1. Verifique spam/lixo eletrônico
@@ -362,7 +411,7 @@ Solução:
 
 ### 9.5 Erro: "502 Bad Gateway" (Render)
 
-```
+```text
 Causa: Backend não iniciou corretamente
 Solução:
 1. Verifique logs no Render
@@ -377,16 +426,16 @@ Solução:
 
 ### 10.1 Planos Gratuitos (MVP)
 
-| Serviço | Plano | Limite |
-|---------|-------|--------|
-| Supabase | Free | 500MB DB, 1GB transfer |
-| Vercel | Hobby | 100GB bandwidth |
-| Render | Free | 750h/mês (sleep após 15min) |
-| Anthropic | Pay-as-you-go | ~$3/1M tokens (Sonnet) |
+| Serviço   | Plano         | Limite                      |
+| --------- | ------------- | --------------------------- |
+| Supabase  | Free          | 500MB DB, 1GB transfer      |
+| Vercel    | Hobby         | 100GB bandwidth             |
+| Render    | Free          | 750h/mês (sleep após 15min) |
+| Anthropic | Pay-as-you-go | ~$3/1M tokens (Sonnet)      |
 
 ### 10.2 Estimativa Mensal (3 usuários ativos)
 
-```
+```text
 Supabase Free:     $0
 Vercel Hobby:      $0
 Render Free:       $0
@@ -397,11 +446,11 @@ Total Estimado: $5-10/mês
 
 ### 10.3 Escala (se precisar)
 
-| Serviço | Plano Pago | Preço |
-|---------|------------|-------|
-| Supabase Pro | $25/mês | 8GB DB, 50GB transfer |
-| Vercel Pro | $20/mês | Unlimited bandwidth |
-| Render Starter | $7/mês | Always on, no sleep |
+| Serviço        | Plano Pago | Preço                 |
+| -------------- | ---------- | --------------------- |
+| Supabase Pro   | $25/mês    | 8GB DB, 50GB transfer |
+| Vercel Pro     | $20/mês    | Unlimited bandwidth   |
+| Render Starter | $7/mês     | Always on, no sleep   |
 
 ---
 

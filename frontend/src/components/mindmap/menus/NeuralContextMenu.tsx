@@ -86,13 +86,11 @@ const QUICK_NODE_TYPES: NeuralNodeType[] = [
 ];
 
 export const NeuralContextMenu: React.FC<ContextMenuProps> = ({ state, onClose, onAction }) => {
-  if (!state) return null;
-
   const [position, setPosition] = useState({ left: 0, top: 0 });
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!menuRef.current) return;
+    if (!state || !menuRef.current) return;
 
     const updatePosition = () => {
       const menuRect = menuRef.current?.getBoundingClientRect();
@@ -132,7 +130,7 @@ export const NeuralContextMenu: React.FC<ContextMenuProps> = ({ state, onClose, 
     });
 
     return () => cancelAnimationFrame(rafId);
-  }, [state.x, state.y]);
+  }, [state]);
 
   const handleAction = useCallback(
     (action: ContextMenuAction) => {

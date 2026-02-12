@@ -45,3 +45,13 @@ services:
         sync: false
       - key: CLAUDE_API_KEY
         sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
+      - key: SENTRY_TRACES_SAMPLE_RATE
+        value: '0.1'
+      - key: LOGTAIL_SOURCE_TOKEN
+        sync: false
+      - key: OBSERVABILITY_SERVICE_NAME
+        value: mindmap-hub-api

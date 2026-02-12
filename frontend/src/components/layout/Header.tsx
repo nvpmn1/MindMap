@@ -61,8 +61,6 @@ export function Header() {
       return { title: 'Meus Mapas', icon: MapIcon, crumbs: ['Dashboard', 'Meus Mapas'] };
     if (path.includes('/map/'))
       return { title: 'Editor', icon: MapIcon, crumbs: ['Dashboard', 'Mapas', 'Editor'] };
-    if (path === '/settings')
-      return { title: 'Configurações', icon: Settings, crumbs: ['Dashboard', 'Configurações'] };
     return { title: 'Dashboard', icon: Home, crumbs: ['Dashboard'] };
   }, [location.pathname]);
 
@@ -399,7 +397,8 @@ export function Header() {
                   </p>
                   {searchQuery && (
                     <p className="text-xs text-slate-500 mt-1">
-                      para <span className="text-white font-medium">"{searchQuery}"</span>
+                      para{' '}
+                      <span className="text-white font-medium">&ldquo;{searchQuery}&rdquo;</span>
                     </p>
                   )}
                 </div>
@@ -424,7 +423,7 @@ export function Header() {
                   <div className="p-8 text-center">
                     <p className="text-sm text-slate-600">
                       Nenhum resultado para{' '}
-                      <span className="text-white font-medium">"{searchQuery}"</span>
+                      <span className="text-white font-medium">&ldquo;{searchQuery}&rdquo;</span>
                     </p>
                     <p className="text-xs text-slate-700 mt-2">Tente outro termo de busca</p>
                   </div>
@@ -537,13 +536,7 @@ export function Header() {
       </div>
 
       {/* User Menu */}
-      <button
-        onClick={() => {
-          overlayManager.cleanupAllOverlays();
-          navigate('/settings');
-        }}
-        className="flex items-center gap-2.5 pl-3 pr-1 border-l border-white/[0.06] hover:opacity-80 transition-opacity"
-      >
+      <div className="flex items-center gap-2.5 pl-3 pr-1 border-l border-white/[0.06]">
         <div className="hidden lg:block text-right">
           <p className="text-xs font-semibold text-white leading-tight truncate max-w-[100px]">
             {user?.display_name || 'Usuário'}
@@ -551,7 +544,7 @@ export function Header() {
           <p className="text-[10px] text-slate-600">Perfil</p>
         </div>
         <UserAvatar url={user?.avatar_url} displayName={user?.display_name} size="md" />
-      </button>
+      </div>
     </header>
   );
 }

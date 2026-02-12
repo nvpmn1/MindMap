@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { robustMapsApi } from '@/lib/robustMapsApi';
 import { mapPersistence } from '@/lib/mapPersistence';
 import { robustMapDelete } from '@/lib/robustMapDelete';
+import { trackProductEvent } from '@/lib/productMetrics';
 import { formatRelativeTime } from '@/lib/utils';
 import { DeleteStatusIndicator } from '@/components/mindmap/layout/DeleteStatusIndicator';
 import { MapCard } from '@/components/MapCard';
@@ -98,6 +99,10 @@ export function MapsPage() {
         nodes_count: map._count?.count || map.nodes_count || 0,
       })) as MapItem[];
       setMaps(normalized);
+      trackProductEvent('maps_viewed', {
+        workspaceId,
+        mapsCount: normalized.length,
+      });
       setIsLoading(false);
     } catch (error) {
       console.error('Critical error loading maps:', error);
@@ -128,12 +133,24 @@ export function MapsPage() {
 
       const created = response.data as any;
       if (created?.id) {
+        trackProductEvent('map_created', {
+          workspaceId,
+          mapId: created.id,
+        });
         toast.success('Mapa criado com sucesso!', { duration: 3000 });
         navigate(`/map/${created.id}`);
       } else {
+        trackProductEvent('map_create_failed', {
+          workspaceId,
+          reason: 'missing-id-in-response',
+        });
         toast.error('Erro ao criar mapa');
       }
     } catch (err) {
+      trackProductEvent('map_create_failed', {
+        workspaceId,
+        reason: err instanceof Error ? err.message : String(err),
+      });
       console.error('Failed to create map:', err);
       toast.error('Erro ao criar mapa. Verifique a conexão.');
     }
@@ -155,6 +172,9 @@ export function MapsPage() {
       const result = await robustMapDelete.queueDelete(mapId);
 
       if (result.success) {
+        trackProductEvent('map_deleted', {
+          mapId,
+        });
         toast.success('Mapa excluído com sucesso!', { duration: 3000 });
       } else {
         toast.error('Erro ao excluir: ' + (result.error || 'tente novamente'));
@@ -172,6 +192,10 @@ export function MapsPage() {
     try {
       const response = await robustMapsApi.duplicate(mapId);
       const map = response.data as any;
+      trackProductEvent('map_duplicated', {
+        mapId,
+        duplicatedMapId: map?.id,
+      });
       toast.success('Mapa duplicado!');
       loadMaps();
     } catch (err) {
@@ -245,6 +269,7 @@ export function MapsPage() {
             <DeleteStatusIndicator compact={true} />
             <button
               onClick={handleCreateMap}
+              data-testid="maps-create-button"
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-[13px] font-medium hover:from-cyan-500 hover:to-blue-500 transition-all shadow-lg shadow-cyan-500/15"
             >
               <Plus className="w-4 h-4" />

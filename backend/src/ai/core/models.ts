@@ -59,12 +59,12 @@ export function analyzeComplexity(
 
   // Factor 2: Context length complexity (weight: 20%)
   let contextScore = 0;
-  if (contextLength > 50000) contextScore = 90;
-  else if (contextLength > 20000) contextScore = 70;
-  else if (contextLength > 10000) contextScore = 50;
-  else if (contextLength > 5000) contextScore = 35;
-  else if (contextLength > 1000) contextScore = 20;
-  else contextScore = 10;
+  if (contextLength > 50000) {contextScore = 90;}
+  else if (contextLength > 20000) {contextScore = 70;}
+  else if (contextLength > 10000) {contextScore = 50;}
+  else if (contextLength > 5000) {contextScore = 35;}
+  else if (contextLength > 1000) {contextScore = 20;}
+  else {contextScore = 10;}
 
   factors.push({
     name: 'context_length',
@@ -97,13 +97,13 @@ export function analyzeComplexity(
   // Factor 4: Structural complexity (weight: 15%)
   let structuralScore = 20;
   const nodeCount = input.nodes?.length || input.existing_nodes?.length || 0;
-  if (nodeCount > 30) structuralScore = 80;
-  else if (nodeCount > 15) structuralScore = 60;
-  else if (nodeCount > 5) structuralScore = 40;
+  if (nodeCount > 30) {structuralScore = 80;}
+  else if (nodeCount > 15) {structuralScore = 60;}
+  else if (nodeCount > 5) {structuralScore = 40;}
 
   // Multiple tool requirements increase complexity
   const toolReqs = input.tools?.length || 0;
-  if (toolReqs > 3) structuralScore += 15;
+  if (toolReqs > 3) {structuralScore += 15;}
 
   factors.push({
     name: 'structural',
@@ -117,9 +117,9 @@ export function analyzeComplexity(
   let outputScore = 30;
   const depth = input.depth || input.options?.depth || 1;
   const count = input.count || input.options?.count || 5;
-  if (depth > 2) outputScore += 20;
-  if (count > 10) outputScore += 20;
-  if (input.include_subtasks || input.estimate_priority) outputScore += 10;
+  if (depth > 2) {outputScore += 20;}
+  if (count > 10) {outputScore += 20;}
+  if (input.include_subtasks || input.estimate_priority) {outputScore += 10;}
 
   factors.push({
     name: 'output_requirements',
@@ -178,7 +178,7 @@ export function selectModel(
 
   // If user explicitly chose a tier, respect it
   if (options.preferredTier && options.preferredTier !== 'balanced') {
-    const model = Object.values(MODEL_REGISTRY).find(m => m.tier === options.preferredTier)!;
+    const model = Object.values(MODEL_REGISTRY).find(m => m.tier === options.preferredTier);
     return {
       modelId: model.id,
       modelName: model.name,
@@ -191,10 +191,10 @@ export function selectModel(
   }
 
   // Filter models by requirements
-  let candidates = Object.values(MODEL_REGISTRY).filter(model => {
-    if (options.requireVision && !model.supportsVision) return false;
-    if (options.requireWebSearch && !model.supportsWebSearch) return false;
-    if (options.requireExtendedThinking && !model.supportsExtendedThinking) return false;
+  const candidates = Object.values(MODEL_REGISTRY).filter(model => {
+    if (options.requireVision && !model.supportsVision) {return false;}
+    if (options.requireWebSearch && !model.supportsWebSearch) {return false;}
+    if (options.requireExtendedThinking && !model.supportsExtendedThinking) {return false;}
     return true;
   });
 

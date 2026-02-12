@@ -76,9 +76,9 @@ function analyzeComplexity(
   score += agentTypeScores[agentType] || 3;
 
   // Context length scoring (more context = more complex)
-  if (contextLength > 10000) score += 3;
-  else if (contextLength > 5000) score += 2;
-  else if (contextLength > 1000) score += 1;
+  if (contextLength > 10000) {score += 3;}
+  else if (contextLength > 5000) {score += 2;}
+  else if (contextLength > 1000) {score += 1;}
 
   // Input content analysis
   const inputStr = JSON.stringify(input).toLowerCase();
@@ -98,13 +98,13 @@ function analyzeComplexity(
   };
 
   Object.entries(complexKeywords).forEach(([keyword, points]) => {
-    if (inputStr.includes(keyword)) score += points;
+    if (inputStr.includes(keyword)) {score += points;}
   });
 
   // Simple keywords (reduce score)
   const simpleKeywords = ['hello', 'hi', 'quick', 'simple', 'fast', 'easy', 'brief'];
   simpleKeywords.forEach(keyword => {
-    if (inputStr.includes(keyword)) score = Math.max(1, score - 1);
+    if (inputStr.includes(keyword)) {score = Math.max(1, score - 1);}
   });
 
   // Determine level
@@ -494,7 +494,7 @@ Seja conciso mas completo em suas respostas.`,
    * This is the REAL Claude API call with tools
    */
   async callAgentRaw(params: AgentRawParams): Promise<any> {
-    let { model, systemPrompt, messages, tools, maxTokens, temperature } = params;
+    const { model, systemPrompt, messages, tools, maxTokens, temperature } = params;
 
     // Auto-select model based on complexity
     let selectedModel = model;
@@ -527,7 +527,7 @@ Seja conciso mas completo em suas respostas.`,
 
     // Build Anthropic API request
     const anthropicMessages = messages.map(m => ({
-      role: m.role as 'user' | 'assistant',
+      role: m.role,
       content: m.content,
     }));
 
@@ -575,7 +575,7 @@ Seja conciso mas completo em suas respostas.`,
     params: AgentRawParams,
     onEvent: (event: string, data: any) => void,
   ): Promise<void> {
-    let { model, systemPrompt, messages, tools, maxTokens, temperature } = params;
+    const { model, systemPrompt, messages, tools, maxTokens, temperature } = params;
 
     // Auto-select model based on complexity
     let selectedModel = model;
@@ -613,7 +613,7 @@ Seja conciso mas completo em suas respostas.`,
     }, 'streamAgentRaw: Starting Claude streaming');
 
     const anthropicMessages = messages.map(m => ({
-      role: m.role as 'user' | 'assistant',
+      role: m.role,
       content: m.content,
     }));
 

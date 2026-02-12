@@ -3,8 +3,17 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
 import App from './App';
+import { logger } from '@/lib/logger';
+import {
+  initObservability,
+  captureFrontendException,
+  captureFrontendMessage,
+} from '@/lib/observability';
 import './index.css';
+
+initObservability();
 
 // Initialize queue debug utilities in development
 if (import.meta.env.DEV) {
@@ -13,26 +22,86 @@ if (import.meta.env.DEV) {
   });
 }
 
-// Suppress browser extension message channel errors
-window.addEventListener('error', (event) => {
-  if (
-    event.message &&
-    event.message.includes('A listener indicated an asynchronous response by returning true')
-  ) {
-    event.preventDefault();
+const EXTENSION_CHANNEL_ERROR = 'A listener indicated an asynchronous response by returning true';
+let lastRuntimeToastAt = 0;
+const runtimeErrorCache = new Set<string>();
+
+function normalizeErrorMessage(input: unknown): string {
+  if (input instanceof Error) return input.message;
+  if (typeof input === 'string') return input;
+  if (typeof input === 'object' && input !== null && 'message' in input) {
+    return String((input as { message?: unknown }).message || 'Unknown error');
   }
+  return 'Unknown error';
+}
+
+function shouldIgnoreRuntimeNoise(message: string): boolean {
+  return message.includes(EXTENSION_CHANNEL_ERROR);
+}
+
+function notifyRuntimeFailure(message: string) {
+  const now = Date.now();
+  if (now - lastRuntimeToastAt > 8000) {
+    toast.error('Encontramos um erro inesperado. Sua sessão foi preservada.', { duration: 3500 });
+    lastRuntimeToastAt = now;
+  }
+
+  if (runtimeErrorCache.size > 250) {
+    runtimeErrorCache.clear();
+  }
+  runtimeErrorCache.add(message);
+}
+
+window.addEventListener('error', (event) => {
+  const message = normalizeErrorMessage(event.error ?? event.message);
+  if (!message) return;
+
+  if (shouldIgnoreRuntimeNoise(message)) {
+    event.preventDefault();
+    return;
+  }
+
+  if (!runtimeErrorCache.has(message)) {
+    logger.error('Erro global não tratado (window.error)', {
+      message,
+      filename: event.filename,
+      lineno: event.lineno,
+      colno: event.colno,
+    });
+    captureFrontendException(event.error ?? message, {
+      source: 'window.error',
+      filename: event.filename,
+      lineno: event.lineno,
+      colno: event.colno,
+    });
+  }
+
+  notifyRuntimeFailure(message);
 });
 
-// Also handle promise rejections from message channel
 window.addEventListener('unhandledrejection', (event) => {
-  if (
-    event.reason &&
-    (event.reason.message || '').includes(
-      'A listener indicated an asynchronous response by returning true'
-    )
-  ) {
+  const message = normalizeErrorMessage(event.reason);
+  if (!message) return;
+
+  if (shouldIgnoreRuntimeNoise(message)) {
     event.preventDefault();
+    return;
   }
+
+  if (!runtimeErrorCache.has(message)) {
+    logger.error('Promise rejeitada sem tratamento (unhandledrejection)', {
+      message,
+      reason: event.reason,
+    });
+    captureFrontendException(event.reason ?? message, {
+      source: 'unhandledrejection',
+    });
+    captureFrontendMessage('error', 'Unhandled promise rejection', {
+      message,
+    });
+  }
+
+  notifyRuntimeFailure(message);
 });
 
 // Create React Query client

@@ -4,7 +4,7 @@ import { authenticate, asyncHandler } from '../middleware';
 import { ValidationError, NotFoundError } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { supabaseAdmin } from '../services/supabase';
-import { Insertable, Updatable } from '../types/database';
+import { Updatable } from '../types/database';
 
 const router = Router();
 
@@ -18,11 +18,15 @@ const createTaskSchema = z.object({
   due_date: z.string().datetime().nullable().optional(),
   assigned_to: z.string().uuid().nullable().optional(),
   tags: z.array(z.string().max(50)).max(10).default([]),
-  checklist: z.array(z.object({
-    id: z.string(),
-    text: z.string(),
-    done: z.boolean(),
-  })).default([]),
+  checklist: z
+    .array(
+      z.object({
+        id: z.string(),
+        text: z.string(),
+        done: z.boolean(),
+      })
+    )
+    .default([]),
 });
 
 const updateTaskSchema = z.object({
@@ -33,11 +37,15 @@ const updateTaskSchema = z.object({
   due_date: z.string().datetime().nullable().optional(),
   assigned_to: z.string().uuid().nullable().optional(),
   tags: z.array(z.string().max(50)).max(10).optional(),
-  checklist: z.array(z.object({
-    id: z.string(),
-    text: z.string(),
-    done: z.boolean(),
-  })).optional(),
+  checklist: z
+    .array(
+      z.object({
+        id: z.string(),
+        text: z.string(),
+        done: z.boolean(),
+      })
+    )
+    .optional(),
   order_index: z.number().optional(),
 });
 
@@ -47,7 +55,10 @@ const listTasksQuerySchema = z.object({
   status: z.enum(['backlog', 'todo', 'in_progress', 'review', 'done']).optional(),
   priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
   assigned_to: z.string().uuid().optional(),
-  assigned_to_me: z.string().transform(v => v === 'true').optional(),
+  assigned_to_me: z
+    .string()
+    .transform((v) => v === 'true')
+    .optional(),
   due_before: z.string().datetime().optional(),
   due_after: z.string().datetime().optional(),
   tags: z.string().optional(), // comma-separated
@@ -57,11 +68,16 @@ const listTasksQuerySchema = z.object({
 });
 
 const reorderTasksSchema = z.object({
-  tasks: z.array(z.object({
-    id: z.string().uuid(),
-    order_index: z.number(),
-    status: z.enum(['backlog', 'todo', 'in_progress', 'review', 'done']).optional(),
-  })).min(1).max(100),
+  tasks: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        order_index: z.number(),
+        status: z.enum(['backlog', 'todo', 'in_progress', 'review', 'done']).optional(),
+      })
+    )
+    .min(1)
+    .max(100),
 });
 
 /**
@@ -93,9 +109,10 @@ router.get(
     } = parsed.data;
 
     // Build query
-    let query = req.supabase!
-      .from('tasks')
-      .select(`
+    let query = req
+      .supabase.from('tasks')
+      .select(
+        `
         *,
         node:nodes!inner (
           id,
@@ -123,7 +140,9 @@ router.get(
           avatar_url,
           color
         )
-      `, { count: 'exact' })
+      `,
+        { count: 'exact' }
+      )
       .order('order_index', { ascending: true })
       .order('created_at', { ascending: false });
 
@@ -149,7 +168,7 @@ router.get(
     }
 
     if (assigned_to_me) {
-      query = query.eq('assigned_to', req.user!.id);
+      query = query.eq('assigned_to', req.user.id);
     }
 
     if (due_before) {
@@ -161,7 +180,7 @@ router.get(
     }
 
     if (tags) {
-      const tagList = tags.split(',').map(t => t.trim());
+      const tagList = tags.split(',').map((t) => t.trim());
       query = query.contains('tags', tagList);
     }
 
@@ -201,9 +220,10 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const { mapId } = req.params;
 
-    const { data: tasks, error } = await req.supabase!
-      .from('tasks')
-      .select(`
+    const { data: tasks, error } = await req
+      .supabase.from('tasks')
+      .select(
+        `
         *,
         node:nodes!inner (
           id,
@@ -216,7 +236,8 @@ router.get(
           avatar_url,
           color
         )
-      `)
+      `
+      )
       .eq('node.map_id', mapId)
       .order('order_index', { ascending: true });
 
@@ -257,9 +278,10 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const { taskId } = req.params;
 
-    const { data: task, error } = await req.supabase!
-      .from('tasks')
-      .select(`
+    const { data: task, error } = await req
+      .supabase.from('tasks')
+      .select(
+        `
         *,
         node:nodes (
           id,
@@ -289,7 +311,8 @@ router.get(
           avatar_url,
           color
         )
-      `)
+      `
+      )
       .eq('id', taskId)
       .single();
 
@@ -318,8 +341,8 @@ router.post(
     }
 
     // Get max order_index for the status
-    const { data: maxOrder } = await req.supabase!
-      .from('tasks')
+    const { data: maxOrder } = await req
+      .supabase.from('tasks')
       .select('order_index')
       .eq('node_id', parsed.data.node_id)
       .eq('status', parsed.data.status)
@@ -338,13 +361,14 @@ router.post(
       tags: parsed.data.tags,
       checklist: parsed.data.checklist,
       order_index: (maxOrder?.order_index ?? -1) + 1,
-      created_by: req.user!.id,
+      created_by: req.user.id,
     };
 
-    const { data: task, error } = await req.supabase!
-      .from('tasks')
+    const { data: task, error } = await req
+      .supabase.from('tasks')
       .insert(taskData)
-      .select(`
+      .select(
+        `
         *,
         node:nodes (
           id,
@@ -357,7 +381,8 @@ router.post(
           avatar_url,
           color
         )
-      `)
+      `
+      )
       .single();
 
     if (error) {
@@ -366,16 +391,11 @@ router.post(
     }
 
     // If assigned to someone else, create notification
-    if (task.assigned_to && task.assigned_to !== req.user!.id) {
-      await createAssignmentNotification(
-        task.assigned_to,
-        req.user!.id,
-        task.id,
-        task.title
-      );
+    if (task.assigned_to && task.assigned_to !== req.user.id) {
+      await createAssignmentNotification(task.assigned_to, req.user.id, task.id, task.title);
     }
 
-    logger.info({ taskId: task.id, nodeId: task.node_id, userId: req.user!.id }, 'Task created');
+    logger.info({ taskId: task.id, nodeId: task.node_id, userId: req.user.id }, 'Task created');
 
     res.status(201).json({
       success: true,
@@ -400,8 +420,8 @@ router.patch(
     }
 
     // Get current task to check for assignment changes
-    const { data: currentTask } = await req.supabase!
-      .from('tasks')
+    const { data: currentTask } = await req
+      .supabase.from('tasks')
       .select('assigned_to, title')
       .eq('id', taskId)
       .single();
@@ -411,11 +431,12 @@ router.patch(
       updated_at: new Date().toISOString(),
     };
 
-    const { data: task, error } = await req.supabase!
-      .from('tasks')
+    const { data: task, error } = await req
+      .supabase.from('tasks')
       .update(updateData)
       .eq('id', taskId)
-      .select(`
+      .select(
+        `
         *,
         node:nodes (
           id,
@@ -428,7 +449,8 @@ router.patch(
           avatar_url,
           color
         )
-      `)
+      `
+      )
       .single();
 
     if (error || !task) {
@@ -439,17 +461,17 @@ router.patch(
     if (
       parsed.data.assigned_to &&
       parsed.data.assigned_to !== currentTask?.assigned_to &&
-      parsed.data.assigned_to !== req.user!.id
+      parsed.data.assigned_to !== req.user.id
     ) {
       await createAssignmentNotification(
         parsed.data.assigned_to,
-        req.user!.id,
+        req.user.id,
         task.id,
         task.title
       );
     }
 
-    logger.debug({ taskId, userId: req.user!.id }, 'Task updated');
+    logger.debug({ taskId, userId: req.user.id }, 'Task updated');
 
     res.json({
       success: true,
@@ -477,12 +499,9 @@ router.patch(
     await Promise.all(
       tasks.map(async ({ id, order_index, status }) => {
         const updateData: any = { order_index, updated_at: new Date().toISOString() };
-        if (status) updateData.status = status;
+        if (status) {updateData.status = status;}
 
-        const { error } = await req.supabase!
-          .from('tasks')
-          .update(updateData)
-          .eq('id', id);
+        const { error } = await req.supabase.from('tasks').update(updateData).eq('id', id);
 
         if (error) {
           errors.push({ id, error: error.message });
@@ -511,17 +530,14 @@ router.delete(
   asyncHandler(async (req: Request, res: Response) => {
     const { taskId } = req.params;
 
-    const { error } = await req.supabase!
-      .from('tasks')
-      .delete()
-      .eq('id', taskId);
+    const { error } = await req.supabase.from('tasks').delete().eq('id', taskId);
 
     if (error) {
       logger.error({ error: error.message, taskId }, 'Failed to delete task');
       throw new Error('Failed to delete task');
     }
 
-    logger.info({ taskId, userId: req.user!.id }, 'Task deleted');
+    logger.info({ taskId, userId: req.user.id }, 'Task deleted');
 
     res.json({
       success: true,
@@ -541,9 +557,10 @@ router.get(
     const { workspaceId } = req.params;
 
     // Get all tasks in workspace
-    const { data: tasks } = await req.supabase!
-      .from('tasks')
-      .select(`
+    const { data: tasks } = (await req
+      .supabase.from('tasks')
+      .select(
+        `
         id,
         status,
         priority,
@@ -554,8 +571,9 @@ router.get(
             workspace_id
           )
         )
-      `)
-      .eq('node.map.workspace_id', workspaceId) as any;
+      `
+      )
+      .eq('node.map.workspace_id', workspaceId)) as any;
 
     if (!tasks) {
       return res.json({
@@ -613,9 +631,7 @@ router.get(
 
     // Completion rate
     const completedCount = stats.byStatus['done'] || 0;
-    stats.completionRate = tasks.length > 0 
-      ? Math.round((completedCount / tasks.length) * 100) 
-      : 0;
+    stats.completionRate = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 0;
 
     res.json({
       success: true,
@@ -637,11 +653,11 @@ async function createAssignmentNotification(
 ): Promise<void> {
   try {
     // Get assigner profile
-    const { data: assigner } = await supabaseAdmin
+    const { data: assigner } = (await supabaseAdmin
       .from('profiles')
       .select('display_name')
       .eq('id', assignerId)
-      .single() as any;
+      .single()) as any;
 
     const assignerName = assigner?.display_name || 'Someone';
 
@@ -655,7 +671,7 @@ async function createAssignmentNotification(
         assigner_id: assignerId,
       },
     };
-    
+
     await supabaseAdmin.from('notifications').insert(notificationData);
     logger.debug({ assigneeId, taskId }, 'Assignment notification created');
   } catch (error) {

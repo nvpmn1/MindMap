@@ -237,7 +237,7 @@ class ClaudeClient {
       }
 
       // Complex content blocks (images, documents, tool results, etc.)
-      const contentBlocks = (msg.content as ContentBlock[]).map(block => {
+      const contentBlocks = (msg.content).map(block => {
         switch (block.type) {
           case 'text':
             return {

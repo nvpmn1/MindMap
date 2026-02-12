@@ -115,7 +115,7 @@ export class BaseAgent {
    */
   async execute(input: AgentInput): Promise<AgentOutput> {
     const startTime = Date.now();
-    let retries = 0;
+    const retries = 0;
 
     try {
       // 1) Analyze complexity and select model
@@ -335,7 +335,7 @@ export class BaseAgent {
    * Update conversation memory
    */
   protected updateMemory(input: AgentInput, output: AgentOutput): void {
-    if (this.agentType !== 'chat' || !input.sessionId) return;
+    if (this.agentType !== 'chat' || !input.sessionId) {return;}
 
     const userMsg: ConversationMessage = {
       role: 'user',

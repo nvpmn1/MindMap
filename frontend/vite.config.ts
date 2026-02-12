@@ -27,14 +27,33 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom'],
-          xyflow: ['@xyflow/react'],
-          ui: [
-            '@radix-ui/react-dialog',
-            '@radix-ui/react-dropdown-menu',
-            '@radix-ui/react-popover',
-          ],
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+
+          if (id.includes('/node_modules/@xyflow/')) {
+            return 'xyflow';
+          }
+
+          if (
+            id.includes('/node_modules/@dnd-kit/') ||
+            id.includes('/node_modules/framer-motion/')
+          ) {
+            return 'interaction';
+          }
+
+          if (id.includes('/node_modules/@radix-ui/')) {
+            return 'ui';
+          }
+
+          if (id.includes('/node_modules/@supabase/') || id.includes('/node_modules/zustand/')) {
+            return 'state-data';
+          }
+
+          if (id.includes('/node_modules/lucide-react/')) {
+            return 'icons';
+          }
+
+          return 'vendor';
         },
       },
     },

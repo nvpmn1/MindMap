@@ -142,8 +142,8 @@ export function contentFilter() {
  * Extract all text content from request body recursively
  */
 function extractTextContent(obj: any): string {
-  if (typeof obj === 'string') return obj;
-  if (!obj || typeof obj !== 'object') return '';
+  if (typeof obj === 'string') {return obj;}
+  if (!obj || typeof obj !== 'object') {return '';}
 
   const parts: string[] = [];
 
@@ -207,22 +207,22 @@ export function costTracker() {
     // Attach cost tracker to request for post-response tracking
     (req as any).costTracker = {
       addCost: (usd: number) => {
-        entry!.dailyUSD += usd;
-        entry!.monthlyUSD += usd;
-        entry!.requests++;
+        entry.dailyUSD += usd;
+        entry.monthlyUSD += usd;
+        entry.requests++;
       },
       getCosts: () => ({
-        daily: entry!.dailyUSD,
-        monthly: entry!.monthlyUSD,
-        requests: entry!.requests,
+        daily: entry.dailyUSD,
+        monthly: entry.monthlyUSD,
+        requests: entry.requests,
         limits: {
           daily: COST_LIMITS.maxDailyCostPerUser,
           monthly: COST_LIMITS.maxMonthlyCostPerUser,
         },
       }),
       isOverLimit: () =>
-        entry!.dailyUSD >= COST_LIMITS.maxDailyCostPerUser ||
-        entry!.monthlyUSD >= COST_LIMITS.maxMonthlyCostPerUser,
+        entry.dailyUSD >= COST_LIMITS.maxDailyCostPerUser ||
+        entry.monthlyUSD >= COST_LIMITS.maxMonthlyCostPerUser,
     };
 
     next();

@@ -5,8 +5,16 @@
 // ============================================================================
 
 import type {
-  NeuralNodeType, NeuralNodeData, AIAgentMessage, AIAgentAction,
-  AIAgentConfig, AIAgentMode, PowerNode, PowerEdge, ChartData, TableData
+  NeuralNodeType,
+  NeuralNodeData,
+  AIAgentMessage,
+  AIAgentAction,
+  AIAgentConfig,
+  AIAgentMode,
+  PowerNode,
+  PowerEdge,
+  ChartData,
+  TableData,
 } from '../editor/types';
 import { AGENT_TOOLS, type AgentToolName } from './tools';
 import { buildSystemPrompt, buildMapContextMessage, formatConversationHistory } from './prompts';
@@ -44,7 +52,7 @@ export interface StreamCallbacks {
   onTextDelta?: (text: string, accumulated: string) => void;
   onToolStart?: (toolName: string, detail?: string) => void;
   onToolComplete?: (toolName: string, input: any, result?: string) => void;
-  onActionStep?: (step: string, icon?: string) => void;  // NEW: Step-by-step actions
+  onActionStep?: (step: string, icon?: string) => void; // NEW: Step-by-step actions
   onComplete?: (response: AgentResponse) => void;
   onError?: (error: string) => void;
 }
@@ -75,11 +83,11 @@ export class NeuralAIAgent {
 
   constructor() {
     this.config = {
-      model: 'claude-haiku-4-5',   // FIXED: Always Haiku
+      model: 'claude-haiku-4-5', // FIXED: Always Haiku
       mode: 'agent',
       temperature: 0.7,
       maxTokens: 8192,
-      tools: AGENT_TOOLS.map(t => t.name),
+      tools: AGENT_TOOLS.map((t) => t.name),
       autoExecute: true,
     };
   }
@@ -165,7 +173,7 @@ export class NeuralAIAgent {
     edges: PowerEdge[],
     selectedNodeId?: string | null,
     callbacks?: StreamCallbacks,
-    agentType?: string,
+    agentType?: string
   ): Promise<AgentResponse> {
     if (this.isProcessing) {
       return { response: '⏳ Aguarde, estou processando a tarefa anterior...', actions: [] };
@@ -206,14 +214,27 @@ export class NeuralAIAgent {
       let result: AgentResponse;
 
       try {
-        result = await this.callStreamingAPI(message, mapContext, nodes, edges, selectedNodeId, callbacks);
+        result = await this.callStreamingAPI(
+          message,
+          mapContext,
+          nodes,
+          edges,
+          selectedNodeId,
+          callbacks
+        );
       } catch (streamError) {
         console.warn('Streaming failed, trying regular API:', streamError);
         this.updateTodo('todo_2', 'in-progress', callbacks);
         callbacks?.onThinkingUpdate?.('Processando via API direta...');
 
         try {
-          const apiResult = await this.callAgentAPI(message, mapContext, nodes, edges, selectedNodeId);
+          const apiResult = await this.callAgentAPI(
+            message,
+            mapContext,
+            nodes,
+            edges,
+            selectedNodeId
+          );
           result = apiResult.agentResponse;
 
           // Execute tool calls from Claude
@@ -221,14 +242,17 @@ export class NeuralAIAgent {
             this.updateTodo('todo_3', 'in-progress', callbacks);
 
             const execResults = actionExecutor.executeAll(
-              apiResult.toolCalls.map(tc => ({ name: tc.name as AgentToolName, input: tc.input })),
-              this.executionContext,
+              apiResult.toolCalls.map((tc) => ({
+                name: tc.name as AgentToolName,
+                input: tc.input,
+              })),
+              this.executionContext
             );
             result.toolResults = execResults;
             result.actions = this.toolResultsToActions(apiResult.toolCalls, execResults);
 
-            const successCount = execResults.filter(r => r.success).length;
-            const failCount = execResults.filter(r => !r.success).length;
+            const successCount = execResults.filter((r) => r.success).length;
+            const failCount = execResults.filter((r) => !r.success).length;
             if (successCount > 0) {
               result.response += `\n\n⚡ ${successCount} ação(ões) executada(s) com sucesso${failCount > 0 ? `, ${failCount} falhou(aram)` : ''}.`;
             }
@@ -240,12 +264,16 @@ export class NeuralAIAgent {
           console.error('Claude API call failed:', errMsg);
           this.markAllTodosFailed(callbacks);
           callbacks?.onError?.(errMsg);
-          throw new Error(`❌ Erro ao chamar Claude API: ${errMsg}\n\n🔑 Verifique se CLAUDE_API_KEY está configurada no backend.`);
+          throw new Error(
+            `❌ Erro ao chamar Claude API: ${errMsg}\n\n🔑 Verifique se CLAUDE_API_KEY está configurada no backend.`
+          );
         }
       }
 
       // Mark all todos as completed
-      this.currentTodos.forEach(t => { t.status = 'completed'; });
+      this.currentTodos.forEach((t) => {
+        t.status = 'completed';
+      });
       callbacks?.onTodoUpdate?.([...this.currentTodos]);
 
       // Record agent response
@@ -268,7 +296,6 @@ export class NeuralAIAgent {
 
       callbacks?.onComplete?.(result);
       return result;
-
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
       console.error('NeuralAgent processMessage error:', errMsg);
@@ -299,7 +326,7 @@ export class NeuralAIAgent {
   // ─── TODO Management (Real-Time) ─────────────────────────────────────
 
   private updateTodo(todoId: string, status: AgentTodoItem['status'], callbacks?: StreamCallbacks) {
-    const todo = this.currentTodos.find(t => t.id === todoId);
+    const todo = this.currentTodos.find((t) => t.id === todoId);
     if (todo) {
       todo.status = status;
       callbacks?.onTodoUpdate?.([...this.currentTodos]);
@@ -307,7 +334,7 @@ export class NeuralAIAgent {
   }
 
   private markAllTodosFailed(callbacks?: StreamCallbacks) {
-    this.currentTodos.forEach(t => {
+    this.currentTodos.forEach((t) => {
       if (t.status !== 'completed') t.status = 'failed';
     });
     callbacks?.onTodoUpdate?.([...this.currentTodos]);
@@ -321,21 +348,22 @@ export class NeuralAIAgent {
     nodes: PowerNode[],
     edges: PowerEdge[],
     selectedNodeId?: string | null,
-    callbacks?: StreamCallbacks,
+    callbacks?: StreamCallbacks
   ): Promise<AgentResponse> {
     const history = formatConversationHistory(
-      this.conversationHistory.map(m => ({ role: m.role, content: m.content })),
-      8,
+      this.conversationHistory.map((m) => ({ role: m.role, content: m.content })),
+      8
     );
 
     const contextMessage = `${mapContext}\n\n---\n\nMensagem do usuário: ${userMessage}`;
-    const messages = history.length > 0
-      ? [...history.slice(0, -1), { role: 'user' as const, content: contextMessage }]
-      : [{ role: 'user' as const, content: contextMessage }];
+    const messages =
+      history.length > 0
+        ? [...history.slice(0, -1), { role: 'user' as const, content: contextMessage }]
+        : [{ role: 'user' as const, content: contextMessage }];
 
     // ALWAYS use /agent/stream — it works reliably with tool-use
     const body = {
-      model: 'claude-haiku-4-5',   // FIXED: Always Haiku
+      model: 'claude-haiku-4-5', // FIXED: Always Haiku
       mode: this.config.mode,
       systemPrompt: buildSystemPrompt(this.config.mode),
       messages,
@@ -372,7 +400,7 @@ export class NeuralAIAgent {
    */
   private async handleSSEStream(
     response: Response,
-    callbacks?: StreamCallbacks,
+    callbacks?: StreamCallbacks
   ): Promise<AgentResponse> {
     const reader = response.body?.getReader();
     if (!reader) throw new Error('No response body reader');
@@ -388,9 +416,13 @@ export class NeuralAIAgent {
     try {
       let buffer = '';
 
-      while (true) {
+      let streamEnded = false;
+      while (!streamEnded) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          streamEnded = true;
+          continue;
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
@@ -409,9 +441,7 @@ export class NeuralAIAgent {
 
               switch (lastEventName) {
                 case 'model_selected':
-                  callbacks?.onThinkingUpdate?.(
-                    `🤖 **Claude Haiku 4.5** — Agente pronto`
-                  );
+                  callbacks?.onThinkingUpdate?.(`🤖 **Claude Haiku 4.5** — Agente pronto`);
                   model = 'claude-haiku-4-5';
                   break;
 
@@ -425,7 +455,7 @@ export class NeuralAIAgent {
                   break;
 
                 case 'text_delta':
-                  textAccumulator = data.accumulated || (textAccumulator + (data.text || ''));
+                  textAccumulator = data.accumulated || textAccumulator + (data.text || '');
                   callbacks?.onTextDelta?.(data.text || '', textAccumulator);
                   break;
 
@@ -434,7 +464,7 @@ export class NeuralAIAgent {
                   this.updateTodo('todo_2', 'completed', callbacks);
                   break;
 
-                case 'tool_start':
+                case 'tool_start': {
                   if (!toolsStarted) {
                     toolsStarted = true;
                     this.updateTodo('todo_2', 'completed', callbacks);
@@ -445,8 +475,9 @@ export class NeuralAIAgent {
                   callbacks?.onActionStep?.(actionDetail, this.getToolIcon(data.name));
                   callbacks?.onToolStart?.(data.name, actionDetail);
                   break;
+                }
 
-                case 'tool_complete':
+                case 'tool_complete': {
                   toolCalls.push({
                     type: 'tool_use',
                     id: data.id || `tool_${Date.now()}_${toolCalls.length}`,
@@ -458,6 +489,7 @@ export class NeuralAIAgent {
                   callbacks?.onActionStep?.(completionDetail, '✅');
                   callbacks?.onToolComplete?.(data.name, data.input, completionDetail);
                   break;
+                }
 
                 case 'complete':
                   usage = data.usage;
@@ -517,8 +549,8 @@ export class NeuralAIAgent {
       this.updateTodo('todo_3', 'in-progress', callbacks);
 
       toolResults = actionExecutor.executeAll(
-        toolCalls.map(tc => ({ name: tc.name as AgentToolName, input: tc.input })),
-        this.executionContext,
+        toolCalls.map((tc) => ({ name: tc.name as AgentToolName, input: tc.input })),
+        this.executionContext
       );
       actions = this.toolResultsToActions(toolCalls, toolResults);
 
@@ -542,12 +574,14 @@ export class NeuralAIAgent {
 
     // If tools ran but no text, generate summary
     if (!mainResponse && toolCalls.length > 0) {
-      const toolSummary = toolCalls.map(tc => {
-        if (tc.name === 'batch_create_nodes' || tc.name === 'create_nodes') return `Criados ${tc.input.nodes?.length || 0} nós`;
+      const toolSummary = toolCalls.map((tc) => {
+        if (tc.name === 'batch_create_nodes' || tc.name === 'create_nodes')
+          return `Criados ${tc.input.nodes?.length || 0} nós`;
         if (tc.name === 'create_node') return `Criado nó "${tc.input.label}"`;
         if (tc.name === 'update_node') return `Atualizado nó`;
         if (tc.name === 'delete_node') return `Removido nó`;
-        if (tc.name === 'create_edge' || tc.name === 'create_edges') return `Criada(s) conexão(ões)`;
+        if (tc.name === 'create_edge' || tc.name === 'create_edges')
+          return `Criada(s) conexão(ões)`;
         return `Executado ${tc.name}`;
       });
       mainResponse = `✅ **Ações executadas com sucesso!**\n\n${toolSummary.map((s, i) => `${i + 1}. ${s}`).join('\n')}`;
@@ -575,20 +609,21 @@ export class NeuralAIAgent {
     mapContext: string,
     nodes: PowerNode[],
     edges: PowerEdge[],
-    selectedNodeId?: string | null,
+    selectedNodeId?: string | null
   ): Promise<{ agentResponse: AgentResponse; toolCalls: ToolUseBlock[] }> {
     const history = formatConversationHistory(
-      this.conversationHistory.map(m => ({ role: m.role, content: m.content })),
-      8,
+      this.conversationHistory.map((m) => ({ role: m.role, content: m.content })),
+      8
     );
 
     const contextMessage = `${mapContext}\n\n---\n\nMensagem do usuário: ${userMessage}`;
-    const messages = history.length > 0
-      ? [...history.slice(0, -1), { role: 'user' as const, content: contextMessage }]
-      : [{ role: 'user' as const, content: contextMessage }];
+    const messages =
+      history.length > 0
+        ? [...history.slice(0, -1), { role: 'user' as const, content: contextMessage }]
+        : [{ role: 'user' as const, content: contextMessage }];
 
     const body = {
-      model: 'claude-haiku-4-5',   // FIXED: Always Haiku
+      model: 'claude-haiku-4-5', // FIXED: Always Haiku
       mode: this.config.mode,
       systemPrompt: buildSystemPrompt(this.config.mode),
       messages,
@@ -638,8 +673,9 @@ export class NeuralAIAgent {
     const confidence = toolCalls.length > 0 ? 0.95 : 0.8;
 
     if (toolCalls.length > 0 && !textResponse.trim()) {
-      const toolNames = toolCalls.map(tc => {
-        if (tc.name === 'batch_create_nodes' || tc.name === 'create_nodes') return `Criar ${tc.input.nodes?.length || 'vários'} nós`;
+      const toolNames = toolCalls.map((tc) => {
+        if (tc.name === 'batch_create_nodes' || tc.name === 'create_nodes')
+          return `Criar ${tc.input.nodes?.length || 'vários'} nós`;
         if (tc.name === 'create_node') return `Criar "${tc.input.label}"`;
         return tc.name;
       });
@@ -662,10 +698,14 @@ export class NeuralAIAgent {
 
   // ─── Context Building ─────────────────────────────────────────────────
 
-  private buildContext(nodes: PowerNode[], edges: PowerEdge[], selectedNodeId?: string | null): string {
-    const edgeList = edges.map(e => ({ source: e.source, target: e.target }));
+  private buildContext(
+    nodes: PowerNode[],
+    edges: PowerEdge[],
+    selectedNodeId?: string | null
+  ): string {
+    const edgeList = edges.map((e) => ({ source: e.source, target: e.target }));
 
-    const nodeList = nodes.map(n => ({
+    const nodeList = nodes.map((n) => ({
       id: n.id,
       type: n.data.type,
       label: n.data.label,
@@ -678,8 +718,8 @@ export class NeuralAIAgent {
       chart: n.data.chart,
       table: n.data.table,
       dueDate: n.data.dueDate,
-      parentIds: edges.filter(e => e.target === n.id).map(e => e.source),
-      childIds: edges.filter(e => e.source === n.id).map(e => e.target),
+      parentIds: edges.filter((e) => e.target === n.id).map((e) => e.source),
+      childIds: edges.filter((e) => e.source === n.id).map((e) => e.target),
     }));
 
     return buildMapContextMessage({
@@ -692,7 +732,10 @@ export class NeuralAIAgent {
 
   // ─── Tool Results → Actions ───────────────────────────────────────────
 
-  private toolResultsToActions(toolCalls: ToolUseBlock[], results: ExecutionResult[]): AIAgentAction[] {
+  private toolResultsToActions(
+    toolCalls: ToolUseBlock[],
+    results: ExecutionResult[]
+  ): AIAgentAction[] {
     return results.map((result, i) => ({
       type: toolCalls[i]?.name || result.toolName,
       description: result.description,
@@ -711,70 +754,75 @@ export class NeuralAIAgent {
 
   private getToolIcon(toolName: string): string {
     const icons: Record<string, string> = {
-      'create_node': '➕',
-      'batch_create_nodes': '🌳',
-      'update_node': '✏️',
-      'batch_update_nodes': '📝',
-      'delete_node': '🗑️',
-      'create_edge': '🔗',
-      'create_edges': '🕸️',
-      'delete_edge': '✂️',
-      'analyze_map': '🔍',
-      'reorganize_map': '📐',
-      'find_nodes': '🔎',
+      create_node: '➕',
+      batch_create_nodes: '🌳',
+      update_node: '✏️',
+      batch_update_nodes: '📝',
+      delete_node: '🗑️',
+      create_edge: '🔗',
+      create_edges: '🕸️',
+      delete_edge: '✂️',
+      analyze_map: '🔍',
+      reorganize_map: '📐',
+      find_nodes: '🔎',
     };
     return icons[toolName] || '⚡';
   }
 
   private formatToolStartMessage(toolName: string): string {
     const messages: Record<string, string> = {
-      'create_node': 'Criando novo nó no mapa...',
-      'batch_create_nodes': 'Criando múltiplos nós em batch...',
-      'update_node': 'Atualizando nó existente...',
-      'batch_update_nodes': 'Atualizando vários nós...',
-      'delete_node': 'Removendo nó do mapa...',
-      'create_edge': 'Criando conexão entre nós...',
-      'create_edges': 'Criando múltiplas conexões...',
-      'delete_edge': 'Removendo conexão...',
-      'analyze_map': 'Analisando estrutura do mapa...',
-      'reorganize_map': 'Reorganizando layout do mapa...',
-      'find_nodes': 'Buscando nós no mapa...',
+      create_node: 'Criando novo nó no mapa...',
+      batch_create_nodes: 'Criando múltiplos nós em batch...',
+      update_node: 'Atualizando nó existente...',
+      batch_update_nodes: 'Atualizando vários nós...',
+      delete_node: 'Removendo nó do mapa...',
+      create_edge: 'Criando conexão entre nós...',
+      create_edges: 'Criando múltiplas conexões...',
+      delete_edge: 'Removendo conexão...',
+      analyze_map: 'Analisando estrutura do mapa...',
+      reorganize_map: 'Reorganizando layout do mapa...',
+      find_nodes: 'Buscando nós no mapa...',
     };
     return messages[toolName] || `Executando ${toolName}...`;
   }
 
   private formatToolCompleteMessage(toolName: string, input: any): string {
     switch (toolName) {
-      case 'create_node':
+      case 'create_node': {
         return `Nó criado: "${input.label}" (tipo: ${input.type})`;
-      
-      case 'batch_create_nodes':
+      }
+
+      case 'batch_create_nodes': {
         const count = input.nodes?.length || 0;
         const types = [...new Set((input.nodes || []).map((n: any) => n.type))];
         return `${count} nós criados (tipos: ${types.join(', ')})`;
-      
-      case 'update_node':
-        const fields = Object.keys(input).filter(k => k !== 'nodeId').join(', ');
+      }
+
+      case 'update_node': {
+        const fields = Object.keys(input)
+          .filter((k) => k !== 'nodeId')
+          .join(', ');
         return `Nó atualizado (campos: ${fields})`;
-      
+      }
+
       case 'batch_update_nodes':
         return `${input.updates?.length || 0} nós atualizados`;
-      
+
       case 'delete_node':
         return `Nó removido (${input.reason || 'sem motivo especificado'})`;
-      
+
       case 'create_edge':
         return `Conexão criada${input.label ? `: "${input.label}"` : ''}`;
-      
+
       case 'analyze_map':
         return `Análise completa (foco: ${input.focus || 'all'})`;
-      
+
       case 'reorganize_map':
         return `Mapa reorganizado (estratégia: ${input.strategy})`;
-      
+
       case 'find_nodes':
         return `Busca concluída${input.query ? `: "${input.query}"` : ''}`;
-      
+
       default:
         return `${toolName} concluído`;
     }

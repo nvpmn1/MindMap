@@ -54,7 +54,7 @@ interface MemoryEntry {
  * Uses Claude's approximate ratio of ~4 chars per token
  */
 export function estimateTokens(text: string): number {
-  if (!text) return 0;
+  if (!text) {return 0;}
   return Math.ceil(text.length / TOKEN_ESTIMATION.avgCharsPerToken);
 }
 
@@ -90,7 +90,7 @@ export function estimateMessagesTokens(messages: ConversationMessage[]): number 
  * Estimate tokens for tool definitions
  */
 export function estimateToolTokens(tools: any[]): number {
-  if (!tools || tools.length === 0) return 0;
+  if (!tools || tools.length === 0) {return 0;}
   // Tool schemas are verbose in token space
   const schemaStr = JSON.stringify(tools);
   return Math.ceil(estimateTokens(schemaStr) * TOKEN_ESTIMATION.jsonOverheadMultiplier);
@@ -190,7 +190,7 @@ function truncateSlidingWindow(
   // Take from end
   for (let i = messages.length - 1; i >= 0 && result.length < keepLast; i--) {
     const msgTokens = estimateMessagesTokens([messages[i]]);
-    if (tokenCount + msgTokens > maxTokens) break;
+    if (tokenCount + msgTokens > maxTokens) {break;}
     result.unshift(messages[i]);
     tokenCount += msgTokens;
   }
@@ -245,7 +245,7 @@ function truncateSmart(
   // Add recent messages
   for (const msg of lastMessages) {
     const msgTokens = estimateMessagesTokens([msg]);
-    if (tokenCount + msgTokens > maxTokens) break;
+    if (tokenCount + msgTokens > maxTokens) {break;}
     result.push(msg);
     tokenCount += msgTokens;
   }
@@ -291,7 +291,7 @@ class ConversationMemory {
     const key = `${sessionId}:${mapId}`;
     const entry = this.store.get(key);
 
-    if (!entry) return [];
+    if (!entry) {return [];}
 
     // Check TTL
     if (Date.now() - entry.lastAccessed.getTime() > this.ttlMs) {

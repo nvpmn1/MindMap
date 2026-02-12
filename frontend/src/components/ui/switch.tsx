@@ -24,8 +24,7 @@ const Switch = React.forwardRef<
 Switch.displayName = SwitchPrimitive.Root.displayName;
 
 // Switch with label
-interface SwitchWithLabelProps
-  extends React.ComponentPropsWithoutRef<typeof SwitchPrimitive.Root> {
+interface SwitchWithLabelProps extends React.ComponentPropsWithoutRef<typeof SwitchPrimitive.Root> {
   label: string;
   description?: string;
   position?: 'left' | 'right';
@@ -47,9 +46,7 @@ const SwitchWithLabel = React.forwardRef<
       >
         {label}
       </label>
-      {description && (
-        <p className="text-sm text-muted-foreground">{description}</p>
-      )}
+      {description && <p className="text-sm text-muted-foreground">{description}</p>}
     </div>
   );
 
@@ -115,45 +112,4 @@ function ThemeSwitch({ isDark, onToggle, className }: ThemeSwitchProps) {
   );
 }
 
-// Settings switch - common pattern for settings pages
-interface SettingsSwitchProps {
-  label: string;
-  description?: string;
-  checked: boolean;
-  onCheckedChange: (checked: boolean) => void;
-  disabled?: boolean;
-  className?: string;
-}
-
-function SettingsSwitch({
-  label,
-  description,
-  checked,
-  onCheckedChange,
-  disabled = false,
-  className,
-}: SettingsSwitchProps) {
-  return (
-    <div
-      className={cn(
-        'flex items-center justify-between rounded-lg border p-4',
-        disabled && 'opacity-50',
-        className
-      )}
-    >
-      <div className="space-y-0.5">
-        <p className="text-sm font-medium">{label}</p>
-        {description && (
-          <p className="text-sm text-muted-foreground">{description}</p>
-        )}
-      </div>
-      <Switch
-        checked={checked}
-        onCheckedChange={onCheckedChange}
-        disabled={disabled}
-      />
-    </div>
-  );
-}
-
-export { Switch, SwitchWithLabel, ThemeSwitch, SettingsSwitch };
+export { Switch, SwitchWithLabel, ThemeSwitch };

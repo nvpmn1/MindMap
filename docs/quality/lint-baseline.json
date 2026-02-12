@@ -1,0 +1,213 @@
+{
+  "generatedAt": "2026-02-12T14:43:15.744Z",
+  "strategy": {
+    "description": "Warnings must not increase by module. Reduce by sprint using module budgets in this file.",
+    "enforcement": "currentWarnings <= baselineWarnings per module"
+  },
+  "totals": {
+    "warnings": 938,
+    "errors": 1
+  },
+  "targets": {
+    "backend": {
+      "errors": 1,
+      "warnings": 938,
+      "filesWithWarnings": 23,
+      "filesWithErrors": 1,
+      "modules": {
+        "ai": {
+          "warnings": 438,
+          "errors": 0,
+          "files": 11,
+          "warningRules": {
+            "@typescript-eslint/no-unused-vars": 17,
+            "@typescript-eslint/no-explicit-any": 132,
+            "@typescript-eslint/no-unsafe-assignment": 68,
+            "@typescript-eslint/no-unsafe-member-access": 161,
+            "@typescript-eslint/no-unsafe-return": 6,
+            "@typescript-eslint/no-unsafe-argument": 23,
+            "@typescript-eslint/explicit-function-return-type": 1,
+            "@typescript-eslint/explicit-module-boundary-types": 3,
+            "@typescript-eslint/no-redundant-type-constituents": 2,
+            "@typescript-eslint/restrict-template-expressions": 1,
+            "no-case-declarations": 2,
+            "@typescript-eslint/no-unsafe-call": 22
+          }
+        },
+        "app.ts": {
+          "warnings": 0,
+          "errors": 0,
+          "files": 0,
+          "warningRules": {}
+        },
+        "index.ts": {
+          "warnings": 0,
+          "errors": 0,
+          "files": 0,
+          "warningRules": {}
+        },
+        "middleware": {
+          "warnings": 28,
+          "errors": 0,
+          "files": 3,
+          "warningRules": {
+            "@typescript-eslint/no-namespace": 1,
+            "@typescript-eslint/no-unsafe-argument": 1,
+            "@typescript-eslint/no-unsafe-assignment": 9,
+            "@typescript-eslint/no-unsafe-member-access": 8,
+            "@typescript-eslint/no-explicit-any": 7,
+            "@typescript-eslint/no-unsafe-return": 1,
+            "@typescript-eslint/no-unsafe-call": 1
+          }
+        },
+        "observability": {
+          "warnings": 0,
+          "errors": 1,
+          "files": 0,
+          "warningRules": {}
+        },
+        "routes": {
+          "warnings": 460,
+          "errors": 0,
+          "files": 8,
+          "warningRules": {
+            "@typescript-eslint/no-unsafe-return": 13,
+            "@typescript-eslint/no-unused-vars": 12,
+            "@typescript-eslint/no-unsafe-assignment": 178,
+            "@typescript-eslint/no-unsafe-member-access": 173,
+            "@typescript-eslint/no-unsafe-call": 19,
+            "@typescript-eslint/no-explicit-any": 32,
+            "@typescript-eslint/explicit-function-return-type": 3,
+            "@typescript-eslint/require-await": 4,
+            "@typescript-eslint/no-unsafe-argument": 25,
+            "@typescript-eslint/restrict-template-expressions": 1
+          }
+        },
+        "services": {
+          "warnings": 12,
+          "errors": 0,
+          "files": 1,
+          "warningRules": {
+            "@typescript-eslint/no-explicit-any": 10,
+            "@typescript-eslint/explicit-function-return-type": 1,
+            "@typescript-eslint/explicit-module-boundary-types": 1
+          }
+        },
+        "types": {
+          "warnings": 0,
+          "errors": 0,
+          "files": 0,
+          "warningRules": {}
+        },
+        "utils": {
+          "warnings": 0,
+          "errors": 0,
+          "files": 0,
+          "warningRules": {}
+        }
+      },
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 29,
+        "@typescript-eslint/no-explicit-any": 181,
+        "@typescript-eslint/no-unsafe-assignment": 255,
+        "@typescript-eslint/no-unsafe-member-access": 342,
+        "@typescript-eslint/no-unsafe-return": 20,
+        "@typescript-eslint/no-unsafe-argument": 49,
+        "@typescript-eslint/explicit-function-return-type": 5,
+        "@typescript-eslint/explicit-module-boundary-types": 4,
+        "@typescript-eslint/no-redundant-type-constituents": 2,
+        "@typescript-eslint/restrict-template-expressions": 2,
+        "no-case-declarations": 2,
+        "@typescript-eslint/no-unsafe-call": 42,
+        "@typescript-eslint/no-namespace": 1,
+        "@typescript-eslint/require-await": 4
+      }
+    },
+    "frontend": {
+      "errors": 0,
+      "warnings": 0,
+      "filesWithWarnings": 0,
+      "filesWithErrors": 0,
+      "modules": {
+        "misc": {
+          "warnings": 0,
+          "errors": 0,
+          "files": 0,
+          "warningRules": {}
+        },
+        "App.tsx": {
+          "warnings": 0,
+          "errors": 0,
+          "files": 0,
+          "warningRules": {}
+        },
+        "components": {
+          "warnings": 0,
+          "errors": 0,
+          "files": 0,
+          "warningRules": {}
+        },
+        "hooks": {
+          "warnings": 0,
+          "errors": 0,
+          "files": 0,
+          "warningRules": {}
+        },
+        "lib": {
+          "warnings": 0,
+          "errors": 0,
+          "files": 0,
+          "warningRules": {}
+        },
+        "main.tsx": {
+          "warnings": 0,
+          "errors": 0,
+          "files": 0,
+          "warningRules": {}
+        },
+        "pages": {
+          "warnings": 0,
+          "errors": 0,
+          "files": 0,
+          "warningRules": {}
+        },
+        "services": {
+          "warnings": 0,
+          "errors": 0,
+          "files": 0,
+          "warningRules": {}
+        },
+        "stores": {
+          "warnings": 0,
+          "errors": 0,
+          "files": 0,
+          "warningRules": {}
+        },
+        "types": {
+          "warnings": 0,
+          "errors": 0,
+          "files": 0,
+          "warningRules": {}
+        },
+        "vite-env.d.ts": {
+          "warnings": 0,
+          "errors": 0,
+          "files": 0,
+          "warningRules": {}
+        }
+      },
+      "rules": {}
+    }
+  },
+  "sprintBudgets": {
+    "sprint_1": {
+      "targetWarningReductionPct": 10
+    },
+    "sprint_2": {
+      "targetWarningReductionPct": 20
+    },
+    "sprint_3": {
+      "targetWarningReductionPct": 30
+    }
+  }
+}

@@ -2,7 +2,6 @@ import { Router, Request, Response } from 'express';
 import { supabaseAdmin } from '../services/supabase';
 import { asyncHandler, authenticate } from '../middleware';
 import { logger } from '../utils/logger';
-import { env } from '../utils/env';
 
 const router = Router();
 

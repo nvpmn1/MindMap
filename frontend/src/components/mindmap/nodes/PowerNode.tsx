@@ -575,7 +575,7 @@ const PowerNodeComponent: React.FC<NodeProps> = ({ id, data: rawData, selected }
         ${isInLinkingMode && !isLinkingSource ? 'opacity-75 hover:opacity-100 cursor-crosshair' : 'opacity-100'}
         bg-[#0c1220]/90 backdrop-blur-xl
         border transition-all duration-300
-        ${selected ? `border-[${config.color}]/50` : 'border-white/[0.06]'}
+        border-white/[0.06]
         hover:border-white/[0.12]`}
       style={{
         borderColor: selected ? `${config.color}60` : undefined,

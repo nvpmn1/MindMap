@@ -189,7 +189,7 @@ export class NeuralOrchestrator {
       userId: input.userId,
       sessionId: input.sessionId,
       modelOverride: input.model_override,
-      res: input.res!,
+      res: input.res,
     });
   }
 
@@ -204,10 +204,10 @@ export class NeuralOrchestrator {
       // Try parsing JSON from content
       const jsonParsed = this.tryParseJSON(content);
       if (jsonParsed) {
-        if (jsonParsed.nodes) parsed.generatedNodes = jsonParsed.nodes;
-        if (jsonParsed.edges) parsed.generatedEdges = jsonParsed.edges;
-        if (jsonParsed.tasks) parsed.generatedTasks = jsonParsed.tasks;
-        if (jsonParsed.analysis) parsed.analysis = jsonParsed.analysis;
+        if (jsonParsed.nodes) {parsed.generatedNodes = jsonParsed.nodes;}
+        if (jsonParsed.edges) {parsed.generatedEdges = jsonParsed.edges;}
+        if (jsonParsed.tasks) {parsed.generatedTasks = jsonParsed.tasks;}
+        if (jsonParsed.analysis) {parsed.analysis = jsonParsed.analysis;}
       }
       return parsed;
     }
@@ -249,7 +249,7 @@ export class NeuralOrchestrator {
         case 'create_clusters':
         case 'update_layout':
           // These will be structured as action items for the frontend
-          if (!parsed.generatedNodes) parsed.generatedNodes = [];
+          if (!parsed.generatedNodes) {parsed.generatedNodes = [];}
           parsed.generatedNodes.push({
             action: call.toolName,
             ...call.input,
@@ -258,7 +258,7 @@ export class NeuralOrchestrator {
 
         case 'search_web':
           // Web search results become research nodes
-          if (!parsed.generatedNodes) parsed.generatedNodes = [];
+          if (!parsed.generatedNodes) {parsed.generatedNodes = [];}
           parsed.generatedNodes.push({
             type: 'reference',
             label: `Pesquisa: ${call.input?.query || ''}`,
@@ -268,7 +268,7 @@ export class NeuralOrchestrator {
 
         case 'add_citations':
           // Citations become metadata on nodes
-          if (!parsed.generatedEdges) parsed.generatedEdges = [];
+          if (!parsed.generatedEdges) {parsed.generatedEdges = [];}
           parsed.generatedEdges.push({
             type: 'citation',
             ...call.input,
@@ -288,7 +288,7 @@ export class NeuralOrchestrator {
    * Try to parse JSON from a text response
    */
   private tryParseJSON(text: string): any | null {
-    if (!text) return null;
+    if (!text) {return null;}
 
     // Try direct parse
     try {
@@ -361,7 +361,7 @@ export class NeuralOrchestrator {
     ];
 
     for (const [pattern, agent] of patterns) {
-      if (pattern.test(msg)) return agent;
+      if (pattern.test(msg)) {return agent;}
     }
 
     return 'chat';

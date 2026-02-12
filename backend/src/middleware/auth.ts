@@ -237,7 +237,7 @@ export const requireWorkspaceMember = (workspaceIdParam: string = 'workspaceId')
 
       // Check membership using RLS-enabled client
       const { data: membership, error } = await req
-        .supabase!.from('workspace_members')
+        .supabase.from('workspace_members')
         .select('role')
         .eq('workspace_id', workspaceId)
         .eq('user_id', req.user.id)
@@ -274,7 +274,7 @@ export const requireWorkspaceEditor = (workspaceIdParam: string = 'workspaceId')
       }
 
       const { data: membership, error } = await req
-        .supabase!.from('workspace_members')
+        .supabase.from('workspace_members')
         .select('role')
         .eq('workspace_id', workspaceId)
         .eq('user_id', req.user.id)
@@ -315,7 +315,7 @@ export const requireWorkspaceAdmin = (workspaceIdParam: string = 'workspaceId') 
       }
 
       const { data: membership, error } = await req
-        .supabase!.from('workspace_members')
+        .supabase.from('workspace_members')
         .select('role')
         .eq('workspace_id', workspaceId)
         .eq('user_id', req.user.id)

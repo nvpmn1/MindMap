@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { AppError } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { env } from '../utils/env';
+import { captureException } from '../observability';
 
 interface ErrorResponse {
   success: false;
@@ -40,7 +41,7 @@ export const errorHandler = (
   // Handle Supabase errors
   if ('code' in err && typeof (err as any).code === 'string') {
     const supabaseCode = (err as any).code;
-    
+
     switch (supabaseCode) {
       case 'PGRST116': // Not found
         statusCode = 404;
@@ -103,6 +104,17 @@ export const errorHandler = (
     logger.error(logData, 'Unexpected error');
   }
 
+  if (!isOperational || statusCode >= 500) {
+    captureException(err, {
+      statusCode,
+      code,
+      path: req.path,
+      method: req.method,
+      userId: req.user?.id,
+      requestId: req.headers['x-request-id'],
+    });
+  }
+
   // Build response
   const response: ErrorResponse = {
     success: false,
@@ -124,11 +136,7 @@ export const errorHandler = (
 /**
  * 404 handler for unknown routes
  */
-export const notFoundHandler = (
-  req: Request,
-  res: Response,
-  _next: NextFunction
-): void => {
+export const notFoundHandler = (req: Request, res: Response, _next: NextFunction): void => {
   const response: ErrorResponse = {
     success: false,
     error: {

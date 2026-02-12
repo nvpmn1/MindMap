@@ -1,0 +1,127 @@
+name: Production Smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'
+
+concurrency:
+  group: production-smoke
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      can_run_public: ${{ steps.validate.outputs.can_run_public }}
+      can_run_auth: ${{ steps.validate.outputs.can_run_auth }}
+
+    steps:
+      - name: Validate smoke variable availability
+        id: validate
+        shell: bash
+        env:
+          SMOKE_FRONTEND_URL: ${{ vars.SMOKE_FRONTEND_URL }}
+          SMOKE_BACKEND_URL: ${{ vars.SMOKE_BACKEND_URL }}
+          SMOKE_BEARER_TOKEN: ${{ secrets.SMOKE_BEARER_TOKEN }}
+        run: |
+          CAN_PUBLIC=false
+          CAN_AUTH=false
+
+          if [ -n "${SMOKE_FRONTEND_URL}" ] && [ -n "${SMOKE_BACKEND_URL}" ]; then
+            CAN_PUBLIC=true
+          fi
+
+          if [ "${CAN_PUBLIC}" = "true" ] && [ -n "${SMOKE_BEARER_TOKEN}" ]; then
+            CAN_AUTH=true
+          fi
+
+          echo "can_run_public=${CAN_PUBLIC}" >> "$GITHUB_OUTPUT"
+          echo "can_run_auth=${CAN_AUTH}" >> "$GITHUB_OUTPUT"
+
+          if [ "${CAN_PUBLIC}" != "true" ]; then
+            echo "::error::Missing repository variables SMOKE_FRONTEND_URL and/or SMOKE_BACKEND_URL"
+          fi
+
+          if [ "${CAN_AUTH}" != "true" ]; then
+            echo "::warning::SMOKE_BEARER_TOKEN is missing. Authenticated smoke job will be skipped."
+          fi
+
+      - name: Enforce public smoke prerequisites
+        if: ${{ steps.validate.outputs.can_run_public != 'true' }}
+        run: |
+          echo "Public smoke prerequisites not met. Configure repository variables and rerun."
+          exit 1
+
+  smoke-public:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: preflight
+    if: ${{ needs.preflight.outputs.can_run_public == 'true' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Validate smoke env (public)
+        run: npm run env:check:smoke:public
+        env:
+          SMOKE_FRONTEND_URL: ${{ vars.SMOKE_FRONTEND_URL }}
+          SMOKE_BACKEND_URL: ${{ vars.SMOKE_BACKEND_URL }}
+
+      - name: Run public smoke
+        run: npm run smoke:deploy
+        env:
+          SMOKE_FRONTEND_URL: ${{ vars.SMOKE_FRONTEND_URL }}
+          SMOKE_BACKEND_URL: ${{ vars.SMOKE_BACKEND_URL }}
+          SMOKE_HEALTH_MAX_ATTEMPTS: '10'
+          SMOKE_HEALTH_RETRY_DELAY_MS: '12000'
+
+  smoke-authenticated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [preflight, smoke-public]
+    if: ${{ needs.preflight.outputs.can_run_auth == 'true' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Validate smoke env (authenticated)
+        run: npm run env:check:smoke:auth
+        env:
+          SMOKE_FRONTEND_URL: ${{ vars.SMOKE_FRONTEND_URL }}
+          SMOKE_BACKEND_URL: ${{ vars.SMOKE_BACKEND_URL }}
+          SMOKE_BEARER_TOKEN: ${{ secrets.SMOKE_BEARER_TOKEN }}
+
+      - name: Run authenticated smoke
+        run: npm run smoke:deploy
+        env:
+          SMOKE_FRONTEND_URL: ${{ vars.SMOKE_FRONTEND_URL }}
+          SMOKE_BACKEND_URL: ${{ vars.SMOKE_BACKEND_URL }}
+          SMOKE_BEARER_TOKEN: ${{ secrets.SMOKE_BEARER_TOKEN }}
+          SMOKE_WORKSPACE_ID: ${{ vars.SMOKE_WORKSPACE_ID }}
+          SMOKE_HEALTH_MAX_ATTEMPTS: '10'
+          SMOKE_HEALTH_RETRY_DELAY_MS: '12000'

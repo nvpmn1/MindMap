@@ -1,5 +1,6 @@
 import React, { Component, ReactNode } from 'react';
 import { AlertCircle, RotateCw } from 'lucide-react';
+import { logger } from '@/lib/logger';
 
 interface Props {
   children: ReactNode;
@@ -17,12 +18,12 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: Error): State {
-    console.error('📍 ErrorBoundary caught error:', error);
+    logger.error('ErrorBoundary capturou um erro de renderização', error);
     return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('❌ Error Details:', {
+    logger.error('Detalhes do erro capturado pelo ErrorBoundary', {
       message: error.message,
       stack: error.stack,
       componentStack: errorInfo.componentStack,
@@ -30,10 +31,9 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   handleReset = () => {
-    console.log('🔄 Resetting error boundary...');
+    logger.info('Resetando ErrorBoundary e recarregando aplicação');
     this.setState({ hasError: false, error: null });
-    // Force page reload
-    window.location.href = window.location.pathname;
+    window.location.reload();
   };
 
   render() {

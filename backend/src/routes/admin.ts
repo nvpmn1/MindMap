@@ -134,7 +134,7 @@ router.delete(
             .delete()
             .in('map_id', orphanedMapIds);
 
-          if (!edgeError) results.orphanedEdgesDeleted = orphanedMapIds.length;
+          if (!edgeError) {results.orphanedEdgesDeleted = orphanedMapIds.length;}
 
           // Delete nodes
           const { error: nodeError } = await supabaseAdmin
@@ -142,7 +142,7 @@ router.delete(
             .delete()
             .in('map_id', orphanedMapIds);
 
-          if (!nodeError) results.orphanedNodesDeleted = orphanedMapIds.length;
+          if (!nodeError) {results.orphanedNodesDeleted = orphanedMapIds.length;}
 
           // Delete maps
           const { error: mapError } = await supabaseAdmin
