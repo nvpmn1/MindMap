@@ -898,11 +898,37 @@ export function useMapPersistence(
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [isRemoteMap, mapId]);
 
+  // CRITICAL: Reset refs and cancel previous queue when mapId changes
+  useEffect(() => {
+    // Clean up previous map's pending operations when switching maps
+    return () => {
+      if (mapId) {
+        (async () => {
+          try {
+            const { advancedSaveQueue } = await import('@/lib/advanced-save-queue');
+            advancedSaveQueue.cancelMapQueue(mapId);
+          } catch {
+            // Silent fail on cleanup
+          }
+        })();
+      }
+    };
+  }, [mapId]);
+
+  // Reset internal state when mapId changes (before load)
+  useEffect(() => {
+    loadedRef.current = false;  // Reset flag when mapId changes
+    isSavingRef.current = false;  // CRITICAL: Reset save flag to prevent hang
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+  }, [mapId]);
+
   // Initial load
   useEffect(() => {
     loadedRef.current = false;
     loadMap();
-  }, [loadMap]);
+  }, [mapId, loadMap]);  // Add mapId to dependencies!
 
   return { saveMap, loadMap, isRemoteMap };
 }
