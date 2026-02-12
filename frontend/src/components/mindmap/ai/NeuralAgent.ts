@@ -22,6 +22,8 @@ import { actionExecutor, type ExecutionContext, type ExecutionResult } from './A
 import { getAccessToken } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
 
+const FALLBACK_PROD_API_URL = 'https://mindmap-hub-api.onrender.com';
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface AgentResponse {
@@ -158,6 +160,26 @@ export class NeuralAIAgent {
     return headers;
   }
 
+  /**
+   * Resolve backend base URL safely for both dev and production.
+   * Avoids calling /api on Vercel frontend domain (can return 405 when rewrite catches POST).
+   */
+  private getApiBaseUrl(): string {
+    const envUrl = (import.meta.env.VITE_API_URL || '').trim();
+    if (envUrl) {
+      return envUrl.replace(/\/$/, '');
+    }
+
+    if (typeof window !== 'undefined') {
+      const host = window.location.hostname;
+      if (host === 'localhost' || host === '127.0.0.1') {
+        return 'http://localhost:3001';
+      }
+    }
+
+    return FALLBACK_PROD_API_URL;
+  }
+
   // ─── Main Entry Point ─────────────────────────────────────────────────
 
   /**
@@ -264,9 +286,15 @@ export class NeuralAIAgent {
           console.error('Claude API call failed:', errMsg);
           this.markAllTodosFailed(callbacks);
           callbacks?.onError?.(errMsg);
-          throw new Error(
-            `❌ Erro ao chamar Claude API: ${errMsg}\n\n🔑 Verifique se CLAUDE_API_KEY está configurada no backend.`
-          );
+
+          const isMethodError = errMsg.includes('API 405') || errMsg.includes('Stream API 405');
+          if (isMethodError) {
+            throw new Error(
+              `❌ Erro ao chamar API de IA: ${errMsg}\n\n🌐 Diagnóstico: endpoint de IA recebeu método não permitido (405).\nIsso normalmente acontece quando o frontend chama o domínio errado para /api.\n\n✅ Verifique VITE_API_URL apontando para o backend Render.`
+            );
+          }
+
+          throw new Error(`❌ Erro ao chamar Claude API: ${errMsg}`);
         }
       }
 
@@ -300,8 +328,13 @@ export class NeuralAIAgent {
       const errMsg = error instanceof Error ? error.message : String(error);
       console.error('NeuralAgent processMessage error:', errMsg);
 
+      const isMethodError = errMsg.includes('API 405') || errMsg.includes('Stream API 405');
+      const errorHint = isMethodError
+        ? '💡 **Possíveis soluções:**\n- Configure `VITE_API_URL` para o backend Render\n- Faça redeploy no Vercel após atualizar variáveis\n- Confirme no Network que a URL chamada é `https://...onrender.com/api/ai/...`'
+        : '💡 **Possíveis soluções:**\n- Verifique se CLAUDE_API_KEY está configurada no backend (.env)\n- Verifique se o backend está rodando na porta 3001\n- Verifique os logs do terminal do backend';
+
       const errorResponse: AgentResponse = {
-        response: `❌ **Erro na IA**\n\n${errMsg}\n\n💡 **Possíveis soluções:**\n- Verifique se CLAUDE_API_KEY está configurada no backend (.env)\n- Verifique se o backend está rodando na porta 3001\n- Verifique os logs do terminal do backend`,
+        response: `❌ **Erro na IA**\n\n${errMsg}\n\n${errorHint}`,
         actions: [],
         confidence: 0,
         todoList: this.currentTodos,
@@ -373,8 +406,9 @@ export class NeuralAIAgent {
     };
 
     const headers = await this.buildAuthHeaders();
+    const apiBaseUrl = this.getApiBaseUrl();
 
-    const response = await fetch('/api/ai/agent/stream', {
+    const response = await fetch(`${apiBaseUrl}/api/ai/agent/stream`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
@@ -382,6 +416,11 @@ export class NeuralAIAgent {
 
     if (!response.ok) {
       const errText = await response.text().catch(() => 'Unknown error');
+      if (response.status === 405) {
+        throw new Error(
+          `Stream API 405: Method Not Allowed. URL chamada: ${apiBaseUrl}/api/ai/agent/stream`
+        );
+      }
       throw new Error(`Stream API ${response.status}: ${errText}`);
     }
 
@@ -633,8 +672,9 @@ export class NeuralAIAgent {
     };
 
     const headers = await this.buildAuthHeaders();
+    const apiBaseUrl = this.getApiBaseUrl();
 
-    const response = await fetch('/api/ai/agent', {
+    const response = await fetch(`${apiBaseUrl}/api/ai/agent`, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
@@ -642,6 +682,9 @@ export class NeuralAIAgent {
 
     if (!response.ok) {
       const errText = await response.text().catch(() => 'Unknown error');
+      if (response.status === 405) {
+        throw new Error(`API 405: Method Not Allowed. URL chamada: ${apiBaseUrl}/api/ai/agent`);
+      }
       throw new Error(`API ${response.status}: ${errText}`);
     }
 
