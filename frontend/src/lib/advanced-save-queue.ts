@@ -50,6 +50,7 @@ class AdvancedSaveQueue {
   private MAX_RETRIES = 4;
   private BATCH_SIZE = 50;
   private idMappings = new Map<string, Map<string, string>>(); // mapId -> localId -> serverId
+  private syncedEdgeKeys = new Map<string, Set<string>>(); // mapId -> source__target
 
   // IndexedDB for persistence
   private dbName = 'mindmap-save-queue';
@@ -138,6 +139,28 @@ class AdvancedSaveQueue {
   enqueueOperation(
     op: Omit<QueuedOperation, 'id' | 'retries' | 'maxRetries' | 'createdAt'>
   ): string {
+    if (op.type === 'edge-create') {
+      const source = String(op.payload.source_id || '');
+      const target = String(op.payload.target_id || '');
+      if (source && target) {
+        const key = `${source}__${target}`;
+        const synced = this.syncedEdgeKeys.get(op.mapId);
+        if (synced?.has(key)) {
+          return `op_skipped_${Date.now()}`;
+        }
+
+        // Skip if same edge is already queued and pending
+        for (const [, existing] of this.queue) {
+          if (existing.mapId !== op.mapId || existing.type !== 'edge-create') continue;
+          const existingSource = String(existing.payload.source_id || '');
+          const existingTarget = String(existing.payload.target_id || '');
+          if (`${existingSource}__${existingTarget}` === key) {
+            return existing.id;
+          }
+        }
+      }
+    }
+
     const id = `op_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const queuedOp: QueuedOperation = {
       ...op,
@@ -306,14 +329,42 @@ class AdvancedSaveQueue {
 
       // Step 4: Create edges (after node IDs are resolved)
       if (edgeCreates.length > 0) {
+        const edgeCreateMap = new Map<string, QueuedOperation>();
         for (const op of edgeCreates) {
+          const sourceId = String(op.payload.source_id || '');
+          const targetId = String(op.payload.target_id || '');
+          if (!sourceId || !targetId || sourceId === targetId) {
+            continue;
+          }
+          edgeCreateMap.set(`${sourceId}__${targetId}`, op);
+        }
+
+        for (const op of edgeCreateMap.values()) {
+          const sourceId = String(op.payload.source_id || '');
+          const targetId = String(op.payload.target_id || '');
+          const edgeKey = `${sourceId}__${targetId}`;
+          const synced = this.syncedEdgeKeys.get(mapId);
+
+          if (synced?.has(edgeKey)) {
+            processed.push(op);
+            continue;
+          }
+
           try {
             await this.executeWithRetry(op);
+            if (!this.syncedEdgeKeys.has(mapId)) {
+              this.syncedEdgeKeys.set(mapId, new Set());
+            }
+            this.syncedEdgeKeys.get(mapId)!.add(edgeKey);
             processed.push(op);
           } catch (err: any) {
             // 409 conflict usually means edge already exists - safe to ignore
             if (err?.statusCode === 409) {
               console.log(`[SaveQueue] Edge already exists (409), skipping:`, op.payload);
+              if (!this.syncedEdgeKeys.has(mapId)) {
+                this.syncedEdgeKeys.set(mapId, new Set());
+              }
+              this.syncedEdgeKeys.get(mapId)!.add(edgeKey);
               processed.push(op); // Still mark as processed
             } else {
               console.warn(`[SaveQueue] Failed to create edge:`, err);
@@ -398,6 +449,15 @@ class AdvancedSaveQueue {
             op.payload.target_id
           );
           result = await nodesApi.createEdge(op.payload as any);
+          if (result?.success === false) {
+            const maybeConflict =
+              (result as any)?.error?.code === 'CONFLICT' ||
+              (result as any)?.error?.message === 'Edge already exists' ||
+              (result as any)?.error === 'Edge already exists';
+            if (maybeConflict) {
+              return { success: true };
+            }
+          }
           return {
             success: result?.success !== false,
             serverId: result?.data?.id,
@@ -592,6 +652,8 @@ class AdvancedSaveQueue {
       }
     }
 
+    this.syncedEdgeKeys.delete(mapId);
+
     return canceledCount;
   }
 
@@ -600,6 +662,7 @@ class AdvancedSaveQueue {
    */
   clear(): void {
     this.queue.clear();
+    this.syncedEdgeKeys.clear();
     if (this.db) {
       const transaction = this.db.transaction([this.storeName], 'readwrite');
       const store = transaction.objectStore(this.storeName);

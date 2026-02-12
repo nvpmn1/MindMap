@@ -81,8 +81,8 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const { mapId } = req.params;
 
-    const { data: nodes, error } = await req
-      .supabase!.from('nodes')
+    const { data: nodes, error } = await req.supabase
+      .from('nodes')
       .select('*')
       .eq('map_id', mapId)
       .order('created_at', { ascending: true });
@@ -109,8 +109,8 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const { nodeId } = req.params;
 
-    const { data: node, error } = await req
-      .supabase!.from('nodes')
+    const { data: node, error } = await req.supabase
+      .from('nodes')
       .select('*')
       .eq('id', nodeId)
       .single();
@@ -142,8 +142,8 @@ router.post(
       }
 
       // Verify map exists first
-      const { data: map, error: mapError } = await req
-        .supabase!.from('maps')
+      const { data: map, error: mapError } = await req.supabase
+        .from('maps')
         .select('id')
         .eq('id', parsed.data.map_id)
         .single();
@@ -166,12 +166,12 @@ router.post(
         style: parsed.data.style || {},
         data: parsed.data.data || {},
         collapsed: parsed.data.collapsed || false,
-        created_by: req.user!.id,
+        created_by: req.user.id,
         updated_at: new Date().toISOString(),
       } as any;
 
-      const { data: node, error } = await req
-        .supabase!.from('nodes')
+      const { data: node, error } = await req.supabase
+        .from('nodes')
         .insert(nodeData)
         .select('*')
         .single();
@@ -183,7 +183,7 @@ router.post(
 
       // Create edge from parent if specified
       if (parsed.data.parent_id) {
-        const { error: edgeError } = await req.supabase!.from('edges').insert({
+        const { error: edgeError } = await req.supabase.from('edges').insert({
           map_id: parsed.data.map_id,
           source_id: parsed.data.parent_id,
           target_id: node.id,
@@ -198,7 +198,7 @@ router.post(
       // Log activity
       try {
         await logNodeActivity(
-          req.user!.id,
+          req.user.id,
           node.map_id,
           node.id,
           'node_created',
@@ -209,7 +209,7 @@ router.post(
       }
 
       logger.info(
-        { nodeId: node.id, mapId: node.map_id, userId: req.user!.id },
+        { nodeId: node.id, mapId: node.map_id, userId: req.user.id },
         'Node created successfully'
       );
 
@@ -221,46 +221,6 @@ router.post(
       logger.error({ error: err, body: req.body }, 'Create node error');
       throw err;
     }
-  })
-);
-
-/**
- * PATCH /api/nodes/:nodeId
- * Update node
- */
-router.patch(
-  '/:nodeId',
-  authenticate,
-  asyncHandler(async (req: Request, res: Response) => {
-    const { nodeId } = req.params;
-
-    const parsed = updateNodeSchema.safeParse(req.body);
-    if (!parsed.success) {
-      throw new ValidationError(parsed.error.errors[0].message);
-    }
-
-    const updateData: Updatable<'nodes'> & { type?: string } = {
-      ...parsed.data,
-      updated_at: new Date().toISOString(),
-    } as any;
-
-    const { data: node, error } = await req
-      .supabase!.from('nodes')
-      .update(updateData)
-      .eq('id', nodeId)
-      .select('*')
-      .single();
-
-    if (error || !node) {
-      throw new NotFoundError('Node not found or access denied');
-    }
-
-    logger.debug({ nodeId, userId: req.user!.id }, 'Node updated');
-
-    res.json({
-      success: true,
-      data: node,
-    });
   })
 );
 
@@ -286,8 +246,8 @@ router.patch(
       nodes.map(async (nodeUpdate) => {
         const { id, ...updateData } = nodeUpdate;
 
-        const { data, error } = await req
-          .supabase!.from('nodes')
+        const { data, error } = await req.supabase
+          .from('nodes')
           .update({
             ...updateData,
             updated_at: new Date().toISOString(),
@@ -304,7 +264,7 @@ router.patch(
       })
     );
 
-    logger.debug({ count: results.length, userId: req.user!.id }, 'Batch node update');
+    logger.debug({ count: results.length, userId: req.user.id }, 'Batch node update');
 
     res.json({
       success: errors.length === 0,
@@ -313,6 +273,46 @@ router.patch(
         failed: errors.length,
         errors: errors.length > 0 ? errors : undefined,
       },
+    });
+  })
+);
+
+/**
+ * PATCH /api/nodes/:nodeId
+ * Update node
+ */
+router.patch(
+  '/:nodeId',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { nodeId } = req.params;
+
+    const parsed = updateNodeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError(parsed.error.errors[0].message);
+    }
+
+    const updateData: Updatable<'nodes'> & { type?: string } = {
+      ...parsed.data,
+      updated_at: new Date().toISOString(),
+    } as any;
+
+    const { data: node, error } = await req.supabase
+      .from('nodes')
+      .update(updateData)
+      .eq('id', nodeId)
+      .select('*')
+      .single();
+
+    if (error || !node) {
+      throw new NotFoundError('Node not found or access denied');
+    }
+
+    logger.debug({ nodeId, userId: req.user.id }, 'Node updated');
+
+    res.json({
+      success: true,
+      data: node,
     });
   })
 );
@@ -329,8 +329,8 @@ router.delete(
     const { cascade = 'true' } = req.query;
 
     // Get node info for activity log
-    const { data: node } = await req
-      .supabase!.from('nodes')
+    const { data: node } = await req.supabase
+      .from('nodes')
       .select('label, map_id')
       .eq('id', nodeId)
       .single();
@@ -343,11 +343,11 @@ router.delete(
 
     if (cascade === 'true') {
       // Get all descendant nodes
-      const descendants = await getDescendantIds(req.supabase!, nodeIdStr);
+      const descendants = await getDescendantIds(req.supabase, nodeIdStr);
       const allNodeIds = [nodeIdStr, ...descendants];
 
       // Delete all nodes (edges cascade automatically)
-      const { error } = await req.supabase!.from('nodes').delete().in('id', allNodeIds);
+      const { error } = await req.supabase.from('nodes').delete().in('id', allNodeIds);
 
       if (error) {
         logger.error({ error: error.message, nodeId }, 'Failed to delete nodes');
@@ -355,23 +355,23 @@ router.delete(
       }
 
       logger.info(
-        { nodeId, descendants: descendants.length, userId: req.user!.id },
+        { nodeId, descendants: descendants.length, userId: req.user.id },
         'Node deleted with children'
       );
     } else {
       // Just delete this node, children become orphans
-      const { error } = await req.supabase!.from('nodes').delete().eq('id', nodeId);
+      const { error } = await req.supabase.from('nodes').delete().eq('id', nodeId);
 
       if (error) {
         throw new Error('Failed to delete node');
       }
 
-      logger.info({ nodeId, userId: req.user!.id }, 'Node deleted');
+      logger.info({ nodeId, userId: req.user.id }, 'Node deleted');
     }
 
     // Log activity
     await logNodeActivity(
-      req.user!.id,
+      req.user.id,
       node.map_id,
       null,
       'node_deleted',
@@ -397,10 +397,7 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const { mapId } = req.params;
 
-    const { data: edges, error } = await req
-      .supabase!.from('edges')
-      .select('*')
-      .eq('map_id', mapId);
+    const { data: edges, error } = await req.supabase.from('edges').select('*').eq('map_id', mapId);
 
     if (error) {
       logger.error({ error: error.message, mapId }, 'Failed to fetch edges');
@@ -435,8 +432,8 @@ router.post(
     }
 
     // Validate both nodes exist in the map
-    const { data: nodes, error: nodesError } = await req
-      .supabase!.from('nodes')
+    const { data: nodes, error: nodesError } = await req.supabase
+      .from('nodes')
       .select('id')
       .eq('map_id', map_id)
       .in('id', [source_id, target_id]);
@@ -446,24 +443,28 @@ router.post(
     }
 
     // Check for existing edge
-    const { data: existing, error: existingError } = await req
-      .supabase!.from('edges')
+    const { data: existing, error: existingError } = await req.supabase
+      .from('edges')
       .select('id')
       .eq('source_id', source_id)
       .eq('target_id', target_id)
       .maybeSingle();
 
     if (existing) {
-      // Return 409 Conflict instead of throwing an error for duplicates
-      logger.debug({ source_id, target_id, mapId: map_id }, 'Edge already exists');
-      return res.status(409).json({
-        success: false,
-        error: 'Edge already exists',
+      // Idempotent behavior: if edge already exists, return success.
+      logger.debug(
+        { source_id, target_id, mapId: map_id, edgeId: existing.id },
+        'Edge already exists'
+      );
+      return res.status(200).json({
+        success: true,
+        data: existing,
+        meta: { duplicate: true },
       });
     }
 
-    const { data: edge, error } = await req
-      .supabase!.from('edges')
+    const { data: edge, error } = await req.supabase
+      .from('edges')
       .insert(parsed.data)
       .select()
       .single();
@@ -492,7 +493,7 @@ router.delete(
   asyncHandler(async (req: Request, res: Response) => {
     const { edgeId } = req.params;
 
-    const { error } = await req.supabase!.from('edges').delete().eq('id', edgeId);
+    const { error } = await req.supabase.from('edges').delete().eq('id', edgeId);
 
     if (error) {
       logger.error({ error: error.message, edgeId }, 'Failed to delete edge');
@@ -518,8 +519,8 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const { nodeId } = req.params;
 
-    const { data: comments, error } = await req
-      .supabase!.from('comments')
+    const { data: comments, error } = await req.supabase
+      .from('comments')
       .select('*')
       .eq('node_id', nodeId)
       .order('created_at', { ascending: true });
@@ -550,11 +551,11 @@ router.post(
       throw new ValidationError('Comment content required');
     }
 
-    const { data: comment, error } = await req
-      .supabase!.from('comments')
+    const { data: comment, error } = await req.supabase
+      .from('comments')
       .insert({
         node_id: nodeId,
-        user_id: req.user!.id,
+        user_id: req.user.id,
         content: content.trim(),
         mentions,
         parent_comment_id,
@@ -566,7 +567,7 @@ router.post(
       throw new Error('Failed to create comment');
     }
 
-    logger.info({ commentId: comment.id, nodeId, userId: req.user!.id }, 'Comment created');
+    logger.info({ commentId: comment.id, nodeId, userId: req.user.id }, 'Comment created');
 
     res.status(201).json({
       success: true,
@@ -586,11 +587,11 @@ router.delete(
     const { commentId } = req.params;
 
     // Only allow deleting own comments
-    const { error } = await req
-      .supabase!.from('comments')
+    const { error } = await req.supabase
+      .from('comments')
       .delete()
       .eq('id', commentId)
-      .eq('user_id', req.user!.id);
+      .eq('user_id', req.user.id);
 
     if (error) {
       throw new Error('Failed to delete comment');
