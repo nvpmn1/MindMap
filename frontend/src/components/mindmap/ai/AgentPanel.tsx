@@ -6,16 +6,48 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Brain, Send, Sparkles, X, Bot, Zap, Search, BarChart3,
-  Lightbulb, CheckSquare, HelpCircle, Maximize2, Minimize2,
-  Trash2, ChevronDown, Play, Loader2,
-  Target, Eye, BookOpen, GitBranch, RefreshCw, Wand2,
-  CheckCircle2, Circle, AlertCircle, Clock, Cpu, ArrowRight,
-  type LucideIcon
+  Brain,
+  Send,
+  Sparkles,
+  X,
+  Bot,
+  Zap,
+  Search,
+  BarChart3,
+  Lightbulb,
+  CheckSquare,
+  HelpCircle,
+  Maximize2,
+  Minimize2,
+  Trash2,
+  ChevronDown,
+  Play,
+  Loader2,
+  Target,
+  Eye,
+  BookOpen,
+  GitBranch,
+  RefreshCw,
+  Wand2,
+  CheckCircle2,
+  Circle,
+  AlertCircle,
+  Clock,
+  Cpu,
+  ArrowRight,
+  type LucideIcon,
 } from 'lucide-react';
 import { neuralAgent } from './NeuralAgent';
 import type { AgentTodoItem, StreamCallbacks } from './NeuralAgent';
-import type { AIAgentMode, AIAgentAction, AIAgentMessage, PowerNode, PowerEdge, NeuralNodeData, NeuralNodeType } from '../editor/types';
+import type {
+  AIAgentMode,
+  AIAgentAction,
+  AIAgentMessage,
+  PowerNode,
+  PowerEdge,
+  NeuralNodeData,
+  NeuralNodeType,
+} from '../editor/types';
 import type { ExecutionContext } from './ActionExecutor';
 
 interface AgentPanelProps {
@@ -28,7 +60,12 @@ interface AgentPanelProps {
   pendingPrompt?: string;
   onPendingPromptConsumed?: () => void;
   // Node operation functions for ExecutionContext (Agent Mode direct execution)
-  createNode?: (type: NeuralNodeType, position?: { x: number; y: number }, parentId?: string | null, data?: Partial<NeuralNodeData>) => PowerNode;
+  createNode?: (
+    type: NeuralNodeType,
+    position?: { x: number; y: number },
+    parentId?: string | null,
+    data?: Partial<NeuralNodeData>
+  ) => PowerNode;
   updateNodeData?: (nodeId: string, data: Partial<NeuralNodeData>) => void;
   deleteNode?: (nodeId: string) => void;
   setEdges?: React.Dispatch<React.SetStateAction<PowerEdge[]>>;
@@ -45,43 +82,187 @@ interface QuickAction {
   prompt: string;
   mode: AIAgentMode;
   color: string;
+  requiresExecution?: boolean;
 }
 
 const QUICK_ACTIONS: QuickAction[] = [
   // Core Agents
-  { id: 'generate', label: 'Gerar Ideias', icon: Lightbulb, prompt: 'Gere ideias criativas e inovadoras para expandir meu mapa mental', mode: 'creative', color: 'text-amber-400' },
-  { id: 'expand', label: 'Expandir', icon: GitBranch, prompt: 'Expanda e aprofunde o nó selecionado com sub-tópicos detalhados', mode: 'agent', color: 'text-blue-400' },
-  { id: 'summarize', label: 'Sintetizar', icon: BookOpen, prompt: 'Sintetize o conteúdo do mapa em um resumo executivo claro', mode: 'analytical', color: 'text-teal-400' },
-  { id: 'analyze', label: 'Analisar Mapa', icon: Eye, prompt: 'Analise completamente meu mapa mental, identifique padrões, lacunas e sugira melhorias', mode: 'analytical', color: 'text-cyan-400' },
-  { id: 'organize', label: 'Organizar', icon: RefreshCw, prompt: 'Reorganize e melhore a estrutura do mapa mental', mode: 'agent', color: 'text-indigo-400' },
-  { id: 'research', label: 'Pesquisar', icon: Search, prompt: 'Pesquise aprofundadamente sobre o tema do mapa e adicione nós de pesquisa com fontes', mode: 'research', color: 'text-violet-400' },
-  
+  {
+    id: 'generate',
+    label: 'Gerar Ideias',
+    icon: Lightbulb,
+    prompt: 'Gere ideias criativas e inovadoras para expandir meu mapa mental',
+    mode: 'agent',
+    color: 'text-amber-400',
+    requiresExecution: true,
+  },
+  {
+    id: 'expand',
+    label: 'Expandir',
+    icon: GitBranch,
+    prompt: 'Expanda e aprofunde o nó selecionado com sub-tópicos detalhados',
+    mode: 'agent',
+    color: 'text-blue-400',
+    requiresExecution: true,
+  },
+  {
+    id: 'summarize',
+    label: 'Sintetizar',
+    icon: BookOpen,
+    prompt:
+      'Sintetize o conteúdo do mapa em um resumo executivo claro e anexe essa síntese ao mapa como nós úteis',
+    mode: 'agent',
+    color: 'text-teal-400',
+    requiresExecution: true,
+  },
+  {
+    id: 'analyze',
+    label: 'Analisar Mapa',
+    icon: Eye,
+    prompt:
+      'Analise completamente meu mapa mental, identifique padrões, lacunas e sugira melhorias aplicando ao menos uma melhoria prática',
+    mode: 'agent',
+    color: 'text-cyan-400',
+    requiresExecution: true,
+  },
+  {
+    id: 'organize',
+    label: 'Organizar',
+    icon: RefreshCw,
+    prompt: 'Reorganize e melhore a estrutura do mapa mental',
+    mode: 'agent',
+    color: 'text-indigo-400',
+    requiresExecution: true,
+  },
+  {
+    id: 'research',
+    label: 'Pesquisar',
+    icon: Search,
+    prompt: 'Pesquise aprofundadamente sobre o tema do mapa e adicione nós de pesquisa com fontes',
+    mode: 'agent',
+    color: 'text-violet-400',
+    requiresExecution: true,
+  },
+
   // Advanced Agents
-  { id: 'hypothesize', label: 'Hipóteses', icon: HelpCircle, prompt: 'Formule hipóteses e cenários possíveis baseados no conteúdo do mapa', mode: 'research', color: 'text-yellow-400' },
-  { id: 'task_convert', label: 'Criar Tarefas', icon: CheckSquare, prompt: 'Crie um plano de ação detalhado com tarefas, prioridades e prazos', mode: 'agent', color: 'text-emerald-400' },
-  { id: 'critique', label: 'Crítica Construtiva', icon: AlertCircle, prompt: 'Ofereça crítica construtiva e sugestões de melhoria para o mapa', mode: 'analytical', color: 'text-red-400' },
-  { id: 'connect', label: 'Descobrir Conexões', icon: GitBranch, prompt: 'Descubra conexões ocultas e relações não-óbvias entre conceitos', mode: 'research', color: 'text-pink-400' },
-  { id: 'visualize', label: 'Melhorar Visual', icon: Wand2, prompt: 'Sugira melhorias visuais: cores, ícones, layout e organização', mode: 'agent', color: 'text-rose-400' },
-  { id: 'chart', label: 'Dashboard', icon: BarChart3, prompt: 'Crie um dashboard analítico com gráficos e métricas sobre o mapa', mode: 'analytical', color: 'text-pink-400' },
+  {
+    id: 'hypothesize',
+    label: 'Hipóteses',
+    icon: HelpCircle,
+    prompt:
+      'Formule hipóteses e cenários possíveis baseados no conteúdo do mapa e registre no mapa como nós',
+    mode: 'agent',
+    color: 'text-yellow-400',
+    requiresExecution: true,
+  },
+  {
+    id: 'task_convert',
+    label: 'Criar Tarefas',
+    icon: CheckSquare,
+    prompt: 'Crie um plano de ação detalhado com tarefas, prioridades e prazos',
+    mode: 'agent',
+    color: 'text-emerald-400',
+    requiresExecution: true,
+  },
+  {
+    id: 'critique',
+    label: 'Crítica Construtiva',
+    icon: AlertCircle,
+    prompt:
+      'Ofereça crítica construtiva e sugestões de melhoria para o mapa, aplicando as melhorias mais importantes',
+    mode: 'agent',
+    color: 'text-red-400',
+    requiresExecution: true,
+  },
+  {
+    id: 'connect',
+    label: 'Descobrir Conexões',
+    icon: GitBranch,
+    prompt:
+      'Descubra conexões ocultas e relações não-óbvias entre conceitos e crie as conexões no mapa',
+    mode: 'agent',
+    color: 'text-pink-400',
+    requiresExecution: true,
+  },
+  {
+    id: 'visualize',
+    label: 'Melhorar Visual',
+    icon: Wand2,
+    prompt: 'Melhore visual e organização do mapa com ações reais de estrutura e conexões',
+    mode: 'agent',
+    color: 'text-rose-400',
+    requiresExecution: true,
+  },
+  {
+    id: 'chart',
+    label: 'Dashboard',
+    icon: BarChart3,
+    prompt: 'Crie um dashboard analítico com gráficos e métricas sobre o mapa usando nós de dados',
+    mode: 'agent',
+    color: 'text-pink-400',
+    requiresExecution: true,
+  },
 ];
 
 // ─── Mode Config ────────────────────────────────────────────────────────────
 
-const MODE_CONFIG: Record<AIAgentMode, { label: string; icon: LucideIcon; color: string; desc: string }> = {
-  agent: { label: 'Agent Mode', icon: Zap, color: 'text-cyan-400', desc: 'Executa ações diretamente no mapa' },
-  assistant: { label: 'Assistente', icon: Bot, color: 'text-blue-400', desc: 'Responde perguntas e sugere' },
-  research: { label: 'Pesquisa', icon: BookOpen, color: 'text-violet-400', desc: 'Análise profunda e hipóteses' },
-  creative: { label: 'Criativo', icon: Sparkles, color: 'text-amber-400', desc: 'Ideação e brainstorming' },
-  analytical: { label: 'Analítico', icon: Target, color: 'text-emerald-400', desc: 'Dados, gráficos e métricas' },
+const MODE_CONFIG: Record<
+  AIAgentMode,
+  { label: string; icon: LucideIcon; color: string; desc: string }
+> = {
+  agent: {
+    label: 'Agent Mode',
+    icon: Zap,
+    color: 'text-cyan-400',
+    desc: 'Executa ações diretamente no mapa',
+  },
+  assistant: {
+    label: 'Assistente',
+    icon: Bot,
+    color: 'text-blue-400',
+    desc: 'Responde perguntas e sugere',
+  },
+  research: {
+    label: 'Pesquisa',
+    icon: BookOpen,
+    color: 'text-violet-400',
+    desc: 'Análise profunda e hipóteses',
+  },
+  creative: {
+    label: 'Criativo',
+    icon: Sparkles,
+    color: 'text-amber-400',
+    desc: 'Ideação e brainstorming',
+  },
+  analytical: {
+    label: 'Analítico',
+    icon: Target,
+    color: 'text-emerald-400',
+    desc: 'Dados, gráficos e métricas',
+  },
 };
 
 // ─── TODO Item Component ────────────────────────────────────────────────────
 
 const TodoItem: React.FC<{ item: AgentTodoItem; index: number }> = ({ item, index }) => {
-  const statusConfig: Record<AgentTodoItem['status'], { icon: LucideIcon; color: string; bg: string; label: string; animate?: boolean }> = {
+  const statusConfig: Record<
+    AgentTodoItem['status'],
+    { icon: LucideIcon; color: string; bg: string; label: string; animate?: boolean }
+  > = {
     planning: { icon: Circle, color: 'text-slate-500', bg: 'bg-slate-500/10', label: 'Planejado' },
-    'in-progress': { icon: Loader2, color: 'text-cyan-400', bg: 'bg-cyan-500/10', label: 'Em progresso', animate: true },
-    completed: { icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10', label: 'Concluído' },
+    'in-progress': {
+      icon: Loader2,
+      color: 'text-cyan-400',
+      bg: 'bg-cyan-500/10',
+      label: 'Em progresso',
+      animate: true,
+    },
+    completed: {
+      icon: CheckCircle2,
+      color: 'text-emerald-400',
+      bg: 'bg-emerald-500/10',
+      label: 'Concluído',
+    },
     failed: { icon: AlertCircle, color: 'text-red-400', bg: 'bg-red-500/10', label: 'Falhou' },
   };
 
@@ -98,14 +279,25 @@ const TodoItem: React.FC<{ item: AgentTodoItem; index: number }> = ({ item, inde
       <div className="flex-shrink-0">
         <Icon className={`w-4 h-4 ${config.color} ${config.animate ? 'animate-spin' : ''}`} />
       </div>
-      <span className={`text-xs flex-1 ${item.status === 'completed' ? 'line-through text-slate-500' : item.status === 'in-progress' ? 'text-cyan-300 font-medium' : 'text-slate-400'}`}>
+      <span
+        className={`text-xs flex-1 ${item.status === 'completed' ? 'line-through text-slate-500' : item.status === 'in-progress' ? 'text-cyan-300 font-medium' : 'text-slate-400'}`}
+      >
         {item.title}
       </span>
       {item.status === 'in-progress' && (
         <div className="flex gap-0.5">
-          <div className="w-1 h-1 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-          <div className="w-1 h-1 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-          <div className="w-1 h-1 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+          <div
+            className="w-1 h-1 rounded-full bg-cyan-400 animate-bounce"
+            style={{ animationDelay: '0ms' }}
+          />
+          <div
+            className="w-1 h-1 rounded-full bg-cyan-400 animate-bounce"
+            style={{ animationDelay: '150ms' }}
+          />
+          <div
+            className="w-1 h-1 rounded-full bg-cyan-400 animate-bounce"
+            style={{ animationDelay: '300ms' }}
+          />
         </div>
       )}
     </motion.div>
@@ -120,11 +312,19 @@ const StreamingText: React.FC<{ text: string }> = ({ text }) => {
       {text.split('\n').map((line, i) => {
         // Bold text
         if (line.startsWith('**') && line.endsWith('**')) {
-          return <div key={i} className="font-semibold text-white">{line.replace(/\*\*/g, '')}</div>;
+          return (
+            <div key={i} className="font-semibold text-white">
+              {line.replace(/\*\*/g, '')}
+            </div>
+          );
         }
         // Headers
         if (line.startsWith('###')) {
-          return <div key={i} className="font-bold text-white mt-2">{line.replace(/###\s?/g, '')}</div>;
+          return (
+            <div key={i} className="font-bold text-white mt-2">
+              {line.replace(/###\s?/g, '')}
+            </div>
+          );
         }
         // Lines with **bold** inline
         if (line.includes('**')) {
@@ -133,7 +333,11 @@ const StreamingText: React.FC<{ text: string }> = ({ text }) => {
             <div key={i}>
               {parts.map((part, j) => {
                 if (part.startsWith('**') && part.endsWith('**')) {
-                  return <span key={j} className="font-semibold text-white">{part.replace(/\*\*/g, '')}</span>;
+                  return (
+                    <span key={j} className="font-semibold text-white">
+                      {part.replace(/\*\*/g, '')}
+                    </span>
+                  );
                 }
                 return <span key={j}>{part}</span>;
               })}
@@ -142,15 +346,27 @@ const StreamingText: React.FC<{ text: string }> = ({ text }) => {
         }
         // List items
         if (line.startsWith('- ') || line.startsWith('• ')) {
-          return <div key={i} className="ml-2 text-slate-300">{line}</div>;
+          return (
+            <div key={i} className="ml-2 text-slate-300">
+              {line}
+            </div>
+          );
         }
         // Numbered items
         if (line.match(/^\d+\./)) {
-          return <div key={i} className="ml-2 text-slate-300">{line}</div>;
+          return (
+            <div key={i} className="ml-2 text-slate-300">
+              {line}
+            </div>
+          );
         }
         // Success/emoji lines
         if (line.startsWith('✅') || line.startsWith('⚡') || line.startsWith('❌')) {
-          return <div key={i} className="font-medium">{line}</div>;
+          return (
+            <div key={i} className="font-medium">
+              {line}
+            </div>
+          );
         }
         return <div key={i}>{line || <br />}</div>;
       })}
@@ -160,7 +376,10 @@ const StreamingText: React.FC<{ text: string }> = ({ text }) => {
 
 // ─── Tool Call Display ──────────────────────────────────────────────────────
 
-const ToolCallDisplay: React.FC<{ toolName: string; isComplete: boolean }> = ({ toolName, isComplete }) => {
+const ToolCallDisplay: React.FC<{ toolName: string; isComplete: boolean }> = ({
+  toolName,
+  isComplete,
+}) => {
   const toolLabels: Record<string, string> = {
     create_node: '📌 Criando nó',
     update_node: '✏️ Atualizando nó',
@@ -185,9 +404,7 @@ const ToolCallDisplay: React.FC<{ toolName: string; isComplete: boolean }> = ({ 
       ) : (
         <Loader2 className="w-3.5 h-3.5 text-purple-400 animate-spin" />
       )}
-      <span className="text-xs text-purple-300">
-        {toolLabels[toolName] || `🔧 ${toolName}`}
-      </span>
+      <span className="text-xs text-purple-300">{toolLabels[toolName] || `🔧 ${toolName}`}</span>
       {isComplete && <span className="text-[10px] text-emerald-400">✓</span>}
     </motion.div>
   );
@@ -196,10 +413,19 @@ const ToolCallDisplay: React.FC<{ toolName: string; isComplete: boolean }> = ({ 
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export const AgentPanel: React.FC<AgentPanelProps> = ({
-  isOpen, onClose, nodes, edges, selectedNodeId, onApplyActions,
-  pendingPrompt, onPendingPromptConsumed,
-  createNode: createNodeFn, updateNodeData: updateNodeDataFn,
-  deleteNode: deleteNodeFn, setEdges: setEdgesFn, onSave
+  isOpen,
+  onClose,
+  nodes,
+  edges,
+  selectedNodeId,
+  onApplyActions,
+  pendingPrompt,
+  onPendingPromptConsumed,
+  createNode: createNodeFn,
+  updateNodeData: updateNodeDataFn,
+  deleteNode: deleteNodeFn,
+  setEdges: setEdgesFn,
+  onSave,
 }) => {
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -213,8 +439,12 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   // Streaming state
   const [streamingText, setStreamingText] = useState('');
   const [currentTodos, setCurrentTodos] = useState<AgentTodoItem[]>([]);
-  const [activeToolCalls, setActiveToolCalls] = useState<Array<{ name: string; complete: boolean }>>([]);
-  const [actionSteps, setActionSteps] = useState<Array<{ message: string; icon: string; timestamp: number }>>([]);
+  const [activeToolCalls, setActiveToolCalls] = useState<
+    Array<{ name: string; complete: boolean }>
+  >([]);
+  const [actionSteps, setActionSteps] = useState<
+    Array<{ message: string; icon: string; timestamp: number }>
+  >([]);
   const [thinkingText, setThinkingText] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
 
@@ -237,207 +467,238 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     }
   }, [pendingPrompt, isOpen]);
 
-  const handleSend = useCallback(async (text?: string, agentType?: string) => {
-    const msgText = text || input.trim();
-    if (!msgText || isProcessing) return;
+  const handleSend = useCallback(
+    async (text?: string, agentType?: string) => {
+      const msgText = text || input.trim();
+      if (!msgText || isProcessing) return;
 
-    setInput('');
-    setIsProcessing(true);
-    setIsStreaming(true);
-    setShowQuickActions(false);
-    setStreamingText('');
-    setCurrentTodos([]);
-    setActiveToolCalls([]);
-    setActionSteps([]);
-    setThinkingText('');
-    neuralAgent.setMode(mode);
+      setInput('');
+      setIsProcessing(true);
+      setIsStreaming(true);
+      setShowQuickActions(false);
+      setStreamingText('');
+      setCurrentTodos([]);
+      setActiveToolCalls([]);
+      setActionSteps([]);
+      setThinkingText('');
+      neuralAgent.setMode(mode);
 
-    // Add user message
-    const userMsg: AIAgentMessage = {
-      id: `user_${Date.now()}`,
-      role: 'user',
-      content: msgText,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages(prev => [...prev, userMsg]);
+      // Add user message
+      const userMsg: AIAgentMessage = {
+        id: `user_${Date.now()}`,
+        role: 'user',
+        content: msgText,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, userMsg]);
 
-    // Setup streaming callbacks
-    const callbacks: StreamCallbacks = {
-      onThinkingStart: () => {
-        setThinkingText('Analisando contexto e planejando ações...');
-      },
-      onThinkingUpdate: (text) => {
-        setThinkingText(text);
-      },
-      onTodoUpdate: (todos) => {
-        setCurrentTodos([...todos]);
-      },
-      onTextDelta: (_delta, accumulated) => {
-        setStreamingText(accumulated);
-      },
-      onToolStart: (toolName, detail) => {
-        setActiveToolCalls(prev => [...prev, { name: toolName, complete: false }]);
-      },
-      onToolComplete: (toolName, _input, result) => {
-        setActiveToolCalls(prev =>
-          prev.map(tc => tc.name === toolName && !tc.complete ? { ...tc, complete: true } : tc)
+      // Setup streaming callbacks
+      const callbacks: StreamCallbacks = {
+        onThinkingStart: () => {
+          setThinkingText('Analisando contexto e planejando ações...');
+        },
+        onThinkingUpdate: (text) => {
+          setThinkingText(text);
+        },
+        onTodoUpdate: (todos) => {
+          setCurrentTodos([...todos]);
+        },
+        onTextDelta: (_delta, accumulated) => {
+          setStreamingText(accumulated);
+        },
+        onToolStart: (toolName, detail) => {
+          setActiveToolCalls((prev) => [...prev, { name: toolName, complete: false }]);
+        },
+        onToolComplete: (toolName, _input, result) => {
+          setActiveToolCalls((prev) =>
+            prev.map((tc) =>
+              tc.name === toolName && !tc.complete ? { ...tc, complete: true } : tc
+            )
+          );
+        },
+        onActionStep: (step, icon) => {
+          setActionSteps((prev) => [
+            ...prev,
+            { message: step, icon: icon || '⚡', timestamp: Date.now() },
+          ]);
+        },
+        onComplete: (response) => {
+          setIsStreaming(false);
+          setStreamingText('');
+          setThinkingText('');
+
+          // Build final agent message
+          const agentMsg: AIAgentMessage = {
+            id: `agent_${Date.now()}`,
+            role: 'agent',
+            content: response.response,
+            timestamp: new Date().toISOString(),
+            metadata: {
+              mode,
+              actions: response.actions,
+              reasoning: response.thinking,
+              confidence: response.confidence,
+              usage: response.usage,
+              todoList: response.todoList,
+            },
+          };
+          setMessages((prev) => [...prev, agentMsg]);
+
+          if (response.actions.length > 0) {
+            setPendingActions(response.actions);
+
+            // Trigger save after streaming completes with actions
+            if (onSave) {
+              setTimeout(() => {
+                onSave();
+                console.log('[AgentPanel] Auto-save triggered after streaming complete');
+              }, 500);
+            }
+          }
+        },
+        onError: (error) => {
+          setIsStreaming(false);
+          setStreamingText('');
+          setThinkingText('');
+        },
+      };
+
+      try {
+        // ── Set up ExecutionContext so tool calls execute DIRECTLY on the map ──
+        if (createNodeFn && updateNodeDataFn && deleteNodeFn && setEdgesFn) {
+          const executionContext: ExecutionContext = {
+            nodes,
+            edges,
+            createNode: (type: NeuralNodeType, label: string, parentId?: string) => {
+              return createNodeFn(type, undefined, parentId || selectedNodeId, { label });
+            },
+            updateNode: (nodeId: string, data: Partial<NeuralNodeData>) => {
+              updateNodeDataFn(nodeId, data);
+            },
+            deleteNode: (nodeId: string) => {
+              deleteNodeFn(nodeId);
+            },
+            createEdge: (sourceId: string, targetId: string, label?: string) => {
+              const edgeId = `edge_${sourceId}_${targetId}_${Date.now()}`;
+              const newEdge: PowerEdge = {
+                id: edgeId,
+                source: sourceId,
+                target: targetId,
+                type: 'power',
+                animated: true,
+                data: { style: 'neural' as const, label },
+              };
+              setEdgesFn((prev) => [...prev, newEdge]);
+              return newEdge;
+            },
+            deleteEdge: (sourceId: string, targetId: string) => {
+              setEdgesFn((prev) =>
+                prev.filter((e) => !(e.source === sourceId && e.target === targetId))
+              );
+            },
+          };
+          neuralAgent.setExecutionContext(executionContext);
+        }
+
+        const result = await neuralAgent.processMessage(
+          msgText,
+          nodes,
+          edges,
+          selectedNodeId,
+          callbacks,
+          agentType
         );
-      },
-      onActionStep: (step, icon) => {
-        setActionSteps(prev => [...prev, { message: step, icon: icon || '⚡', timestamp: Date.now() }]);
-      },
-      onComplete: (response) => {
-        setIsStreaming(false);
-        setStreamingText('');
-        setThinkingText('');
 
-        // Build final agent message
-        const agentMsg: AIAgentMessage = {
-          id: `agent_${Date.now()}`,
-          role: 'agent',
-          content: response.response,
-          timestamp: new Date().toISOString(),
-          metadata: {
-            mode,
-            actions: response.actions,
-            reasoning: response.thinking,
-            confidence: response.confidence,
-            usage: response.usage,
-            todoList: response.todoList,
-          },
-        };
-        setMessages(prev => [...prev, agentMsg]);
+        // Auto-apply actions to the map (Agent Mode = no manual "Apply" needed)
+        if (result.actions.length > 0) {
+          onApplyActions(result.actions);
 
-        if (response.actions.length > 0) {
-          setPendingActions(response.actions);
-          
-          // Trigger save after streaming completes with actions
+          // Trigger save after AI actions complete
           if (onSave) {
             setTimeout(() => {
               onSave();
-              console.log('[AgentPanel] Auto-save triggered after streaming complete');
-            }, 500);
+              console.log('[AgentPanel] Auto-save triggered after AI actions');
+            }, 500); // Small delay to let state updates settle
           }
         }
-      },
-      onError: (error) => {
+
+        // If streaming didn't fire onComplete (regular API fallback), handle it here
+        if (!result.streaming) {
+          setIsStreaming(false);
+          setStreamingText('');
+          setThinkingText('');
+
+          const agentMsg: AIAgentMessage = {
+            id: `agent_${Date.now()}`,
+            role: 'agent',
+            content: result.response,
+            timestamp: new Date().toISOString(),
+            metadata: {
+              mode,
+              actions: result.actions,
+              reasoning: result.thinking,
+              confidence: result.confidence,
+              usage: result.usage,
+              todoList: result.todoList,
+            },
+          };
+          setMessages((prev) => [...prev, agentMsg]);
+
+          if (result.actions.length > 0) {
+            setPendingActions(result.actions);
+          }
+        }
+      } catch (error) {
         setIsStreaming(false);
         setStreamingText('');
-        setThinkingText('');
-      },
-    };
 
-    try {
-      // ── Set up ExecutionContext so tool calls execute DIRECTLY on the map ──
-      if (createNodeFn && updateNodeDataFn && deleteNodeFn && setEdgesFn) {
-        const executionContext: ExecutionContext = {
-          nodes,
-          edges,
-          createNode: (type: NeuralNodeType, label: string, parentId?: string) => {
-            return createNodeFn(type, undefined, parentId || selectedNodeId, { label });
+        const errMsg = error instanceof Error ? error.message : 'Erro desconhecido';
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `error_${Date.now()}`,
+            role: 'system',
+            content: `❌ ${errMsg}`,
+            timestamp: new Date().toISOString(),
           },
-          updateNode: (nodeId: string, data: Partial<NeuralNodeData>) => {
-            updateNodeDataFn(nodeId, data);
-          },
-          deleteNode: (nodeId: string) => {
-            deleteNodeFn(nodeId);
-          },
-          createEdge: (sourceId: string, targetId: string, label?: string) => {
-            const edgeId = `edge_${sourceId}_${targetId}_${Date.now()}`;
-            const newEdge: PowerEdge = {
-              id: edgeId,
-              source: sourceId,
-              target: targetId,
-              type: 'power',
-              animated: true,
-              data: { style: 'neural' as const, label },
-            };
-            setEdgesFn(prev => [...prev, newEdge]);
-            return newEdge;
-          },
-          deleteEdge: (sourceId: string, targetId: string) => {
-            setEdgesFn(prev => prev.filter(e => !(e.source === sourceId && e.target === targetId)));
-          },
-        };
-        neuralAgent.setExecutionContext(executionContext);
+        ]);
+      } finally {
+        setIsProcessing(false);
+        setActiveToolCalls([]);
       }
-
-      const result = await neuralAgent.processMessage(msgText, nodes, edges, selectedNodeId, callbacks, agentType);
-
-      // Auto-apply actions to the map (Agent Mode = no manual "Apply" needed)
-      if (result.actions.length > 0) {
-        onApplyActions(result.actions);
-        
-        // Trigger save after AI actions complete
-        if (onSave) {
-          setTimeout(() => {
-            onSave();
-            console.log('[AgentPanel] Auto-save triggered after AI actions');
-          }, 500); // Small delay to let state updates settle
-        }
-      }
-
-      // If streaming didn't fire onComplete (regular API fallback), handle it here
-      if (!result.streaming) {
-        setIsStreaming(false);
-        setStreamingText('');
-        setThinkingText('');
-
-        const agentMsg: AIAgentMessage = {
-          id: `agent_${Date.now()}`,
-          role: 'agent',
-          content: result.response,
-          timestamp: new Date().toISOString(),
-          metadata: {
-            mode,
-            actions: result.actions,
-            reasoning: result.thinking,
-            confidence: result.confidence,
-            usage: result.usage,
-            todoList: result.todoList,
-          },
-        };
-        setMessages(prev => [...prev, agentMsg]);
-
-        if (result.actions.length > 0) {
-          setPendingActions(result.actions);
-        }
-      }
-    } catch (error) {
-      setIsStreaming(false);
-      setStreamingText('');
-      
-      const errMsg = error instanceof Error ? error.message : 'Erro desconhecido';
-      setMessages(prev => [...prev, {
-        id: `error_${Date.now()}`,
-        role: 'system',
-        content: `❌ ${errMsg}`,
-        timestamp: new Date().toISOString(),
-      }]);
-    } finally {
-      setIsProcessing(false);
-      setActiveToolCalls([]);
-    }
-  }, [input, isProcessing, mode, nodes, edges, selectedNodeId]);
+    },
+    [input, isProcessing, mode, nodes, edges, selectedNodeId]
+  );
 
   const handleApply = useCallback(() => {
     if (pendingActions.length === 0) return;
     onApplyActions(pendingActions);
     setPendingActions([]);
 
-    setMessages(prev => [...prev, {
-      id: `system_${Date.now()}`,
-      role: 'system',
-      content: `✅ ${pendingActions.length} ações aplicadas ao mapa com sucesso!`,
-      timestamp: new Date().toISOString(),
-    }]);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `system_${Date.now()}`,
+        role: 'system',
+        content: `✅ ${pendingActions.length} ações aplicadas ao mapa com sucesso!`,
+        timestamp: new Date().toISOString(),
+      },
+    ]);
   }, [pendingActions, onApplyActions]);
 
-  const handleQuickAction = useCallback((action: QuickAction) => {
-    setMode(action.mode);
-    neuralAgent.setMode(action.mode);
-    handleSend(action.prompt, action.id);
-  }, [handleSend]);
+  const handleQuickAction = useCallback(
+    (action: QuickAction) => {
+      setMode(action.mode);
+      neuralAgent.setMode(action.mode);
+
+      const strictExecutionSuffix = action.requiresExecution
+        ? '\n\nIMPORTANTE: execute ações REAIS no mapa usando ferramentas (tool-use). Não apenas explique. Só finalize após executar pelo menos 1 ação concreta.'
+        : '';
+
+      handleSend(`${action.prompt}${strictExecutionSuffix}`, action.id);
+    },
+    [handleSend]
+  );
 
   const handleClearChat = useCallback(() => {
     setMessages([]);
@@ -450,12 +711,15 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     setShowQuickActions(true);
   }, []);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  }, [handleSend]);
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+    },
+    [handleSend]
+  );
 
   const panelWidth = isExpanded ? 'w-[560px]' : 'w-[420px]';
 
@@ -475,15 +739,22 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
             <div className="flex items-center gap-3">
               <div className="relative">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center border
-                  ${isProcessing
-                    ? 'bg-gradient-to-br from-cyan-500/30 to-purple-500/30 border-cyan-400/50 shadow-[0_0_12px_rgba(6,182,212,0.3)]'
-                    : 'bg-gradient-to-br from-cyan-500/20 to-purple-500/20 border-cyan-500/30'
-                  } transition-all duration-500`}>
-                  <Brain className={`w-5 h-5 text-cyan-400 ${isProcessing ? 'animate-pulse' : ''}`} />
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center border
+                  ${
+                    isProcessing
+                      ? 'bg-gradient-to-br from-cyan-500/30 to-purple-500/30 border-cyan-400/50 shadow-[0_0_12px_rgba(6,182,212,0.3)]'
+                      : 'bg-gradient-to-br from-cyan-500/20 to-purple-500/20 border-cyan-500/30'
+                  } transition-all duration-500`}
+                >
+                  <Brain
+                    className={`w-5 h-5 text-cyan-400 ${isProcessing ? 'animate-pulse' : ''}`}
+                  />
                 </div>
-                <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0a0f1a]
-                  ${isProcessing ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400 animate-pulse'}`} />
+                <div
+                  className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#0a0f1a]
+                  ${isProcessing ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400 animate-pulse'}`}
+                />
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-white">NeuralAgent</h3>
@@ -514,16 +785,27 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                     className="absolute right-0 top-full mt-1 w-56 bg-[#111827] border border-white/10
                       rounded-xl shadow-xl z-50 overflow-hidden"
                   >
-                    {(Object.entries(MODE_CONFIG) as [AIAgentMode, typeof MODE_CONFIG[AIAgentMode]][]).map(([key, config]) => (
+                    {(
+                      Object.entries(MODE_CONFIG) as [
+                        AIAgentMode,
+                        (typeof MODE_CONFIG)[AIAgentMode],
+                      ][]
+                    ).map(([key, config]) => (
                       <button
                         key={key}
-                        onClick={() => { setMode(key); neuralAgent.setMode(key); setShowModeSelector(false); }}
+                        onClick={() => {
+                          setMode(key);
+                          neuralAgent.setMode(key);
+                          setShowModeSelector(false);
+                        }}
                         className={`flex items-center gap-3 w-full px-4 py-2.5 text-left hover:bg-white/5
                           transition-all ${mode === key ? 'bg-white/10' : ''}`}
                       >
                         {React.createElement(config.icon, { className: `w-4 h-4 ${config.color}` })}
                         <div>
-                          <div className={`text-xs font-medium ${config.color}`}>{config.label}</div>
+                          <div className={`text-xs font-medium ${config.color}`}>
+                            {config.label}
+                          </div>
                           <div className="text-[10px] text-slate-500">{config.desc}</div>
                         </div>
                       </button>
@@ -532,16 +814,22 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                 )}
               </div>
 
-              <button onClick={() => setIsExpanded(!isExpanded)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5">
+              <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5"
+              >
                 {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
               </button>
-              <button onClick={handleClearChat}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10">
+              <button
+                onClick={handleClearChat}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10"
+              >
                 <Trash2 className="w-4 h-4" />
               </button>
-              <button onClick={onClose}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5">
+              <button
+                onClick={onClose}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -554,16 +842,17 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                 <Target className="w-3.5 h-3.5" />
                 <span className="font-medium">Contexto:</span>
                 <span className="text-cyan-300 truncate">
-                  {nodes.find(n => n.id === selectedNodeId)?.data.label || 'Nó selecionado'}
+                  {nodes.find((n) => n.id === selectedNodeId)?.data.label || 'Nó selecionado'}
                 </span>
               </div>
             </div>
           )}
 
           {/* ─── Messages ────────────────────────────────────────────── */}
-          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 scrollbar-thin
-            scrollbar-thumb-white/10 scrollbar-track-transparent">
-
+          <div
+            className="flex-1 overflow-y-auto px-4 py-3 space-y-4 scrollbar-thin
+            scrollbar-thumb-white/10 scrollbar-track-transparent"
+          >
             {/* Quick Actions (initial state) */}
             {showQuickActions && messages.length === 0 && (
               <motion.div
@@ -572,18 +861,23 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                 className="space-y-3"
               >
                 <div className="text-center py-4">
-                  <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-cyan-500/10 to-purple-500/10
-                    border border-cyan-500/20 flex items-center justify-center mb-3">
+                  <div
+                    className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-cyan-500/10 to-purple-500/10
+                    border border-cyan-500/20 flex items-center justify-center mb-3"
+                  >
                     <Wand2 className="w-8 h-8 text-cyan-400" />
                   </div>
-                  <h4 className="text-sm font-semibold text-white mb-1">Agent Mode com Claude AI</h4>
+                  <h4 className="text-sm font-semibold text-white mb-1">
+                    Agent Mode com Claude AI
+                  </h4>
                   <p className="text-xs text-slate-400 max-w-[300px] mx-auto">
-                    IA real powered by Claude. Executo ações diretamente no mapa com raciocínio em tempo real.
+                    IA real powered by Claude. Executo ações diretamente no mapa com raciocínio em
+                    tempo real.
                   </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
-                  {QUICK_ACTIONS.map(action => (
+                  {QUICK_ACTIONS.map((action) => (
                     <button
                       key={action.id}
                       onClick={() => handleQuickAction(action)}
@@ -592,8 +886,12 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                         hover:bg-white/[0.06] hover:border-white/[0.12]
                         transition-all group text-left"
                     >
-                      {React.createElement(action.icon, { className: `w-4 h-4 ${action.color} group-hover:scale-110 transition-transform` })}
-                      <span className="text-xs text-slate-300 group-hover:text-white">{action.label}</span>
+                      {React.createElement(action.icon, {
+                        className: `w-4 h-4 ${action.color} group-hover:scale-110 transition-transform`,
+                      })}
+                      <span className="text-xs text-slate-300 group-hover:text-white">
+                        {action.label}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -637,7 +935,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                       <Clock className="w-3.5 h-3.5 text-cyan-400" />
                       <span className="text-xs font-medium text-cyan-300">Progresso do Agente</span>
                       <span className="ml-auto text-[10px] text-slate-500">
-                        {currentTodos.filter(t => t.status === 'completed').length}/{currentTodos.length}
+                        {currentTodos.filter((t) => t.status === 'completed').length}/
+                        {currentTodos.length}
                       </span>
                     </div>
                     <div className="p-2 space-y-1">
@@ -652,7 +951,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                           className="h-full bg-gradient-to-r from-cyan-500 to-emerald-500 rounded-full"
                           initial={{ width: '0%' }}
                           animate={{
-                            width: `${Math.round((currentTodos.filter(t => t.status === 'completed').length / Math.max(currentTodos.length, 1)) * 100)}%`,
+                            width: `${Math.round((currentTodos.filter((t) => t.status === 'completed').length / Math.max(currentTodos.length, 1)) * 100)}%`,
                           }}
                           transition={{ duration: 0.5 }}
                         />
@@ -665,15 +964,19 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                 {activeToolCalls.length > 0 && (
                   <div className="space-y-1.5">
                     {activeToolCalls.map((tc, i) => (
-                      <ToolCallDisplay key={`${tc.name}_${i}`} toolName={tc.name} isComplete={tc.complete} />
+                      <ToolCallDisplay
+                        key={`${tc.name}_${i}`}
+                        toolName={tc.name}
+                        isComplete={tc.complete}
+                      />
                     ))}
                   </div>
                 )}
 
                 {/* Action Steps (Real-time VS Code style) */}
                 {actionSteps.length > 0 && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: -5 }} 
+                  <motion.div
+                    initial={{ opacity: 0, y: -5 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="space-y-0.5 max-h-40 overflow-y-auto custom-scrollbar"
                   >
@@ -700,15 +1003,26 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                     className="rounded-2xl px-4 py-3 bg-white/[0.03] text-slate-200 border border-white/[0.06] rounded-bl-md"
                   >
                     <div className="flex items-center gap-2 mb-2">
-                      <div className="w-5 h-5 rounded-md bg-gradient-to-br from-cyan-500/20 to-purple-500/20
-                        flex items-center justify-center">
+                      <div
+                        className="w-5 h-5 rounded-md bg-gradient-to-br from-cyan-500/20 to-purple-500/20
+                        flex items-center justify-center"
+                      >
                         <Brain className="w-3 h-3 text-cyan-400" />
                       </div>
                       <span className="text-[10px] text-slate-500 font-medium">NeuralAgent</span>
                       <div className="flex gap-0.5 ml-1">
-                        <div className="w-1 h-1 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <div className="w-1 h-1 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <div className="w-1 h-1 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                        <div
+                          className="w-1 h-1 rounded-full bg-cyan-400 animate-bounce"
+                          style={{ animationDelay: '0ms' }}
+                        />
+                        <div
+                          className="w-1 h-1 rounded-full bg-cyan-400 animate-bounce"
+                          style={{ animationDelay: '150ms' }}
+                        />
+                        <div
+                          className="w-1 h-1 rounded-full bg-cyan-400 animate-bounce"
+                          style={{ animationDelay: '300ms' }}
+                        />
                       </div>
                     </div>
                     <StreamingText text={streamingText} />
@@ -723,7 +1037,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                       <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
                     </div>
                     <div>
-                      <div className="text-xs text-cyan-400 font-medium">Conectando com Claude AI...</div>
+                      <div className="text-xs text-cyan-400 font-medium">
+                        Conectando com Claude AI...
+                      </div>
                       <div className="text-[10px] text-slate-500">Enviando contexto do mapa</div>
                     </div>
                   </div>
@@ -756,8 +1072,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
 
                 <div className="space-y-1">
                   {pendingActions.map((action, i) => (
-                    <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-lg
-                      bg-white/[0.02] text-[11px] text-slate-400">
+                    <div
+                      key={i}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg
+                      bg-white/[0.02] text-[11px] text-slate-400"
+                    >
                       <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
                       <span className="truncate">{action.description}</span>
                     </div>
@@ -771,8 +1090,10 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
 
           {/* ─── Input ───────────────────────────────────────────────── */}
           <div className="px-4 py-3 border-t border-white/5">
-            <div className="flex items-end gap-2 bg-white/[0.03] rounded-xl border border-white/[0.08]
-              focus-within:border-cyan-500/30 transition-all p-2">
+            <div
+              className="flex items-end gap-2 bg-white/[0.03] rounded-xl border border-white/[0.08]
+              focus-within:border-cyan-500/30 transition-all p-2"
+            >
               <textarea
                 ref={inputRef}
                 value={input}
@@ -780,19 +1101,22 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                 onKeyDown={handleKeyDown}
                 placeholder={
                   isProcessing
-                    ? "Aguarde o processamento..."
+                    ? 'Aguarde o processamento...'
                     : mode === 'agent'
-                    ? "Diga o que deseja fazer no mapa..."
-                    : mode === 'research'
-                    ? "O que deseja pesquisar?"
-                    : "Digite sua mensagem..."
+                      ? 'Diga o que deseja fazer no mapa...'
+                      : mode === 'research'
+                        ? 'O que deseja pesquisar?'
+                        : 'Digite sua mensagem...'
                 }
                 disabled={isProcessing}
                 rows={1}
                 className="flex-1 bg-transparent text-sm text-white placeholder-slate-500
                   resize-none outline-none min-h-[36px] max-h-[120px] py-1.5 px-2
                   disabled:opacity-50"
-                style={{ height: 'auto', overflowY: input.split('\n').length > 3 ? 'auto' : 'hidden' }}
+                style={{
+                  height: 'auto',
+                  overflowY: input.split('\n').length > 3 ? 'auto' : 'hidden',
+                }}
                 onInput={(e) => {
                   const target = e.target as HTMLTextAreaElement;
                   target.style.height = 'auto';
@@ -816,9 +1140,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
               <span className="text-[10px] text-slate-600">
                 Enter para enviar • Shift+Enter para quebra de linha
               </span>
-              <span className="text-[10px] text-slate-600">
-                Claude Haiku 4.5
-              </span>
+              <span className="text-[10px] text-slate-600">Claude Haiku 4.5</span>
             </div>
           </div>
         </motion.div>
@@ -861,8 +1183,10 @@ const MessageBubble: React.FC<{ message: AIAgentMessage }> = ({ message }) => {
         {/* Agent header */}
         {!isUser && (
           <div className="flex items-center gap-2 mb-1.5">
-            <div className="w-5 h-5 rounded-md bg-gradient-to-br from-cyan-500/20 to-purple-500/20
-              flex items-center justify-center">
+            <div
+              className="w-5 h-5 rounded-md bg-gradient-to-br from-cyan-500/20 to-purple-500/20
+              flex items-center justify-center"
+            >
               <Brain className="w-3 h-3 text-cyan-400" />
             </div>
             <span className="text-[10px] text-slate-500 font-medium">NeuralAgent</span>
@@ -879,10 +1203,13 @@ const MessageBubble: React.FC<{ message: AIAgentMessage }> = ({ message }) => {
           </div>
         )}
 
-        <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed
-          ${isUser
-            ? 'bg-cyan-500/10 text-cyan-100 border border-cyan-500/20 rounded-br-md'
-            : 'bg-white/[0.03] text-slate-200 border border-white/[0.06] rounded-bl-md'}`}
+        <div
+          className={`rounded-2xl px-4 py-3 text-sm leading-relaxed
+          ${
+            isUser
+              ? 'bg-cyan-500/10 text-cyan-100 border border-cyan-500/20 rounded-br-md'
+              : 'bg-white/[0.03] text-slate-200 border border-white/[0.06] rounded-bl-md'
+          }`}
         >
           <StreamingText text={message.content} />
         </div>
@@ -913,14 +1240,20 @@ const MessageBubble: React.FC<{ message: AIAgentMessage }> = ({ message }) => {
             )}
 
             <span className={`text-[10px] text-slate-600 ml-auto`}>
-              {new Date(message.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+              {new Date(message.timestamp).toLocaleTimeString('pt-BR', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
             </span>
           </div>
         )}
 
         {isUser && (
           <div className="text-[10px] text-slate-600 mt-1 text-right">
-            {new Date(message.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+            {new Date(message.timestamp).toLocaleTimeString('pt-BR', {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
           </div>
         )}
 

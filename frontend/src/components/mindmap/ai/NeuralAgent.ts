@@ -38,6 +38,7 @@ export interface AgentResponse {
   usage?: { input_tokens: number; output_tokens: number };
   model?: string;
   streaming?: boolean;
+  executionValidated?: boolean;
 }
 
 export interface AgentTodoItem {
@@ -180,6 +181,44 @@ export class NeuralAIAgent {
     return FALLBACK_PROD_API_URL;
   }
 
+  private isActionDrivenRequest(): boolean {
+    const actionableTypes = new Set([
+      'generate',
+      'expand',
+      'organize',
+      'task_convert',
+      'research',
+      'hypothesize',
+      'connect',
+      'visualize',
+      'chart',
+      'analyze',
+      'critique',
+      'summarize',
+    ]);
+
+    if (actionableTypes.has(this.agentType)) return true;
+    return this.config.mode === 'agent';
+  }
+
+  private buildExecutionDirective(): string {
+    if (!this.isActionDrivenRequest()) return '';
+
+    return [
+      '## DIRETRIZ DE EXECUÇÃO REAL (OBRIGATÓRIA)',
+      '- Você DEVE executar ações reais no mapa usando tools.',
+      '- Não descreva ações hipotéticas como se já tivessem sido executadas.',
+      '- Antes de concluir, execute pelo menos 1 tool call relevante para o pedido.',
+      '- Se nenhuma ação for possível, explique claramente por que e peça o dado faltante.',
+    ].join('\n');
+  }
+
+  private buildEffectiveSystemPrompt(): string {
+    const base = buildSystemPrompt(this.config.mode);
+    const executionDirective = this.buildExecutionDirective();
+    return executionDirective ? `${base}\n\n${executionDirective}` : base;
+  }
+
   // ─── Main Entry Point ─────────────────────────────────────────────────
 
   /**
@@ -203,6 +242,17 @@ export class NeuralAIAgent {
 
     if (agentType) {
       this.agentType = agentType;
+    }
+
+    const requiresExecution = this.isActionDrivenRequest();
+    if (requiresExecution && !this.executionContext) {
+      return {
+        response:
+          '❌ A IA está em modo de ação, mas o contexto de execução do mapa não foi inicializado. Recarregue o editor e tente novamente.',
+        actions: [],
+        confidence: 0,
+        executionValidated: false,
+      };
     }
 
     this.isProcessing = true;
@@ -280,6 +330,18 @@ export class NeuralAIAgent {
             }
 
             this.updateTodo('todo_3', 'completed', callbacks);
+
+            if (requiresExecution && successCount === 0) {
+              result.executionValidated = false;
+              result.response =
+                '⚠️ A IA tentou agir, mas nenhuma ação foi aplicada com sucesso no mapa. Ajustei o fluxo para não reportar sucesso falso.';
+            } else {
+              result.executionValidated = true;
+            }
+          } else if (requiresExecution) {
+            result.executionValidated = false;
+            result.response =
+              '⚠️ Nenhuma ação real foi executada no mapa. Ajuste sua instrução ou selecione um contexto mais específico.';
           }
         } catch (apiError) {
           const errMsg = apiError instanceof Error ? apiError.message : String(apiError);
@@ -298,10 +360,14 @@ export class NeuralAIAgent {
         }
       }
 
-      // Mark all todos as completed
-      this.currentTodos.forEach((t) => {
-        t.status = 'completed';
-      });
+      // Mark todos based on real execution outcome
+      if (result.executionValidated === false) {
+        this.markAllTodosFailed(callbacks);
+      } else {
+        this.currentTodos.forEach((t) => {
+          t.status = 'completed';
+        });
+      }
       callbacks?.onTodoUpdate?.([...this.currentTodos]);
 
       // Record agent response
@@ -338,6 +404,7 @@ export class NeuralAIAgent {
         actions: [],
         confidence: 0,
         todoList: this.currentTodos,
+        executionValidated: false,
       };
 
       const errorMsg: AIAgentMessage = {
@@ -398,7 +465,7 @@ export class NeuralAIAgent {
     const body = {
       model: 'claude-haiku-4-5', // FIXED: Always Haiku
       mode: this.config.mode,
-      systemPrompt: buildSystemPrompt(this.config.mode),
+      systemPrompt: this.buildEffectiveSystemPrompt(),
       messages,
       tools: AGENT_TOOLS,
       maxTokens: this.config.maxTokens,
@@ -451,6 +518,20 @@ export class NeuralAIAgent {
     let model = 'claude-haiku-4-5';
     let lastEventName = '';
     let toolsStarted = false;
+    const seenToolIds = new Set<string>();
+
+    const pushToolCall = (tool: { id?: string; name?: string; input?: any }) => {
+      if (!tool?.name) return;
+      const toolId = tool.id || `tool_${Date.now()}_${toolCalls.length}`;
+      if (seenToolIds.has(toolId)) return;
+      seenToolIds.add(toolId);
+      toolCalls.push({
+        type: 'tool_use',
+        id: toolId,
+        name: tool.name,
+        input: tool.input || {},
+      });
+    };
 
     try {
       let buffer = '';
@@ -517,12 +598,7 @@ export class NeuralAIAgent {
                 }
 
                 case 'tool_complete': {
-                  toolCalls.push({
-                    type: 'tool_use',
-                    id: data.id || `tool_${Date.now()}_${toolCalls.length}`,
-                    name: data.name,
-                    input: data.input,
-                  });
+                  pushToolCall({ id: data.id, name: data.name, input: data.input });
                   // Detailed completion message
                   const completionDetail = this.formatToolCompleteMessage(data.name, data.input);
                   callbacks?.onActionStep?.(completionDetail, '✅');
@@ -533,6 +609,21 @@ export class NeuralAIAgent {
                 case 'complete':
                   usage = data.usage;
                   model = data.model || 'claude-haiku-4-5';
+                  if (Array.isArray(data.content)) {
+                    for (const block of data.content) {
+                      if (block?.type === 'tool_use') {
+                        pushToolCall({
+                          id: block.id,
+                          name: block.name,
+                          input: block.input,
+                        });
+                      }
+
+                      if (block?.type === 'text' && !textAccumulator) {
+                        textAccumulator = block.text || '';
+                      }
+                    }
+                  }
                   break;
 
                 case 'error':
@@ -552,12 +643,7 @@ export class NeuralAIAgent {
                       this.updateTodo('todo_2', 'completed', callbacks);
                       this.updateTodo('todo_3', 'in-progress', callbacks);
                     }
-                    toolCalls.push({
-                      type: 'tool_use',
-                      id: `tool_${Date.now()}_${toolCalls.length}`,
-                      name: data.name,
-                      input: data.input,
-                    });
+                    pushToolCall({ name: data.name, input: data.input });
                     callbacks?.onToolComplete?.(data.name, data.input);
                   } else if (data.message) {
                     callbacks?.onThinkingUpdate?.(data.message);
@@ -583,6 +669,7 @@ export class NeuralAIAgent {
     // ── Execute tool calls on the map ──────────────────────────────────
     let actions: AIAgentAction[] = [];
     let toolResults: ExecutionResult[] | undefined;
+    const requiresExecution = this.isActionDrivenRequest();
 
     if (toolCalls.length > 0 && this.executionContext) {
       this.updateTodo('todo_3', 'in-progress', callbacks);
@@ -595,7 +682,13 @@ export class NeuralAIAgent {
 
       this.updateTodo('todo_3', 'completed', callbacks);
     } else if (toolCalls.length === 0) {
-      this.updateTodo('todo_3', 'completed', callbacks);
+      if (requiresExecution) {
+        this.updateTodo('todo_3', 'failed', callbacks);
+      } else {
+        this.updateTodo('todo_3', 'completed', callbacks);
+      }
+    } else if (!this.executionContext) {
+      this.updateTodo('todo_3', 'failed', callbacks);
     }
 
     // Mark finalize as done
@@ -628,6 +721,17 @@ export class NeuralAIAgent {
 
     this.updateTodo('todo_4', 'completed', callbacks);
 
+    const successfulToolExecutions = (toolResults || []).filter((r) => r.success).length;
+    const executionValidated = requiresExecution
+      ? successfulToolExecutions > 0 ||
+        toolCalls.some((t) => t.name === 'analyze_map' || t.name === 'find_nodes')
+      : true;
+
+    if (!executionValidated && requiresExecution) {
+      mainResponse =
+        '⚠️ Nenhuma ação real foi executada com sucesso no mapa nesta tentativa. Ajustei para não reportar sucesso falso. Tente um comando mais específico (ex: "crie 5 nós filhos sobre X").';
+    }
+
     return {
       response: mainResponse || 'Processamento concluído.',
       actions,
@@ -638,6 +742,7 @@ export class NeuralAIAgent {
       usage,
       model,
       streaming: true,
+      executionValidated,
     };
   }
 
@@ -664,7 +769,7 @@ export class NeuralAIAgent {
     const body = {
       model: 'claude-haiku-4-5', // FIXED: Always Haiku
       mode: this.config.mode,
-      systemPrompt: buildSystemPrompt(this.config.mode),
+      systemPrompt: this.buildEffectiveSystemPrompt(),
       messages,
       tools: AGENT_TOOLS,
       maxTokens: this.config.maxTokens,
@@ -734,6 +839,7 @@ export class NeuralAIAgent {
         todoList: this.currentTodos,
         usage: data.usage || data.data?.usage,
         model: 'claude-haiku-4-5',
+        executionValidated: toolCalls.length > 0,
       },
       toolCalls,
     };
