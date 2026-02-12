@@ -1,4 +1,5 @@
-REBUILD_TRIGGER=2026-02-12-14:30:00
-REASON=Force immediate redeploy - sync all uncommitted changes and save fixes
-COMMIT_b7a0256=chore: massive sync commit - align git repo with all changes
-COMMIT_dc65eb6=fix: resolve save failures - fix route ordering and edge idempotency
+REBUILD_TRIGGER=2026-02-12-14:45:00
+REASON=CRITICAL: Fix map reopen save failure - state corruption in hooks
+COMMIT_b485257=fix(CRITICAL): resolve map reopen save failure - state corruption in hooks
+PREVIOUS_FIXES=dc65eb6,b7a0256,787a7cf
+
