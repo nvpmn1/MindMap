@@ -20,6 +20,7 @@ import type {
 import { DEFAULT_NODE_DATA, DEFAULT_EDITOR_SETTINGS, NODE_TYPE_CONFIG } from './constants';
 import { useAuthStore } from '@/stores/authStore';
 import { mapsApi, nodesApi } from '@/lib/api';
+import { advancedSaveQueue } from '@/lib/advanced-save-queue';
 
 // ─── useEditorState ─────────────────────────────────────────────────────────
 
@@ -460,8 +461,22 @@ export function useMapPersistence(
   navigate: (path: string) => void
 ) {
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const deltaSaveTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const isSavingRef = useRef(false);
   const loadedRef = useRef(false);
+  const snapshotInitializedRef = useRef(false);
+  const queuedLocalCreatesRef = useRef<Set<string>>(new Set());
+  const lastSnapshotRef = useRef<{
+    mapTitle: string;
+    mapDescription: string;
+    nodes: Map<string, string>;
+    edges: Set<string>;
+  }>({
+    mapTitle: '',
+    mapDescription: '',
+    nodes: new Map(),
+    edges: new Set(),
+  });
   const isRemoteMap = mapId && mapId !== 'new' && mapId !== 'local' && !mapId.startsWith('local_');
   const { workspaces } = useAuthStore();
   const workspaceId = workspaces[0]?.id || '11111111-1111-1111-1111-111111111111';
@@ -679,67 +694,25 @@ export function useMapPersistence(
 
     try {
       if (isRemoteMap) {
-        // Load the advancedSaveQueue dynamically to queue all operations
-        const { advancedSaveQueue } = await import('@/lib/advanced-save-queue');
-
-        // Queue all operations at once - the queue will handle batching, retries, etc
-        // Map update
+        // Manual save now flushes only delta operations already tracked by autosave.
+        // Queue just pending metadata delta if needed.
         if (mapInfo?.title) {
-          advancedSaveQueue.enqueueOperation({
-            mapId,
-            type: 'map-update',
-            payload: {
-              title: mapInfo.title,
-              description: mapInfo.description || '',
-            },
-          });
-        }
-
-        // Node creates and updates
-        for (const node of nodes) {
-          if (!isUuid(node.id)) {
+          const nextTitle = mapInfo.title;
+          const nextDescription = mapInfo.description || '';
+          if (
+            nextTitle !== lastSnapshotRef.current.mapTitle ||
+            nextDescription !== lastSnapshotRef.current.mapDescription
+          ) {
             advancedSaveQueue.enqueueOperation({
               mapId,
-              type: 'node-create',
-              localId: node.id,
+              type: 'map-update',
               payload: {
-                id: node.id,
-                map_id: mapId,
-                type: node.data.type as any,
-                label: node.data.label,
-                content: node.data.description || '',
-                position_x: node.position.x,
-                position_y: node.position.y,
+                title: nextTitle,
+                description: nextDescription,
               },
             });
-          } else {
-            advancedSaveQueue.enqueueOperation({
-              mapId,
-              type: 'node-update',
-              payload: {
-                id: node.id,
-                position_x: node.position.x,
-                position_y: node.position.y,
-                label: node.data.label,
-                content: node.data.description || '',
-                type: node.data.type as any,
-              },
-            });
-          }
-        }
-
-        // Edge creates
-        for (const edge of edges) {
-          if (isUuid(edge.source) && isUuid(edge.target)) {
-            advancedSaveQueue.enqueueOperation({
-              mapId,
-              type: 'edge-create',
-              payload: {
-                map_id: mapId,
-                source_id: edge.source,
-                target_id: edge.target,
-              },
-            });
+            lastSnapshotRef.current.mapTitle = nextTitle;
+            lastSnapshotRef.current.mapDescription = nextDescription;
           }
         }
 
@@ -770,85 +743,143 @@ export function useMapPersistence(
     }
   }, [isRemoteMap, mapId, mapInfo, nodes, edges, setIsSaving, setLastSaved, isUuid]);
 
-  // Auto-save with 10-second interval for batch operations
-  // But if there are unsaved (non-UUID) nodes, save IMMEDIATELY every 3s
+  const enqueueDeltaChanges = useCallback(() => {
+    if (!mapId || !isRemoteMap) return;
+
+    // First pass seeds snapshot to avoid re-saving a freshly loaded map
+    if (!snapshotInitializedRef.current) {
+      const seededNodes = new Map<string, string>();
+      for (const node of nodes) {
+        seededNodes.set(
+          node.id,
+          `${node.position.x}|${node.position.y}|${node.data.label}|${node.data.description || ''}|${node.data.type}`
+        );
+      }
+      const seededEdges = new Set<string>();
+      for (const edge of edges) {
+        if (isUuid(edge.source) && isUuid(edge.target)) {
+          seededEdges.add(`${edge.source}__${edge.target}`);
+        }
+      }
+      lastSnapshotRef.current = {
+        mapTitle: mapInfo?.title || '',
+        mapDescription: mapInfo?.description || '',
+        nodes: seededNodes,
+        edges: seededEdges,
+      };
+      snapshotInitializedRef.current = true;
+      return;
+    }
+
+    if (mapInfo?.title) {
+      const nextTitle = mapInfo.title;
+      const nextDescription = mapInfo.description || '';
+      if (
+        nextTitle !== lastSnapshotRef.current.mapTitle ||
+        nextDescription !== lastSnapshotRef.current.mapDescription
+      ) {
+        advancedSaveQueue.enqueueOperation({
+          mapId,
+          type: 'map-update',
+          payload: {
+            title: nextTitle,
+            description: nextDescription,
+          },
+        });
+        lastSnapshotRef.current.mapTitle = nextTitle;
+        lastSnapshotRef.current.mapDescription = nextDescription;
+      }
+    }
+
+    const nextNodeSnapshot = new Map<string, string>();
+    for (const node of nodes) {
+      const fingerprint = `${node.position.x}|${node.position.y}|${node.data.label}|${node.data.description || ''}|${node.data.type}`;
+      nextNodeSnapshot.set(node.id, fingerprint);
+
+      if (!isUuid(node.id)) {
+        if (!queuedLocalCreatesRef.current.has(node.id)) {
+          advancedSaveQueue.enqueueOperation({
+            mapId,
+            type: 'node-create',
+            localId: node.id,
+            payload: {
+              id: node.id,
+              map_id: mapId,
+              type: node.data.type || 'idea',
+              label: node.data.label || 'Untitled',
+              content: node.data.description || '',
+              position_x: node.position.x || 0,
+              position_y: node.position.y || 0,
+            },
+          });
+          queuedLocalCreatesRef.current.add(node.id);
+        }
+        continue;
+      }
+
+      const previous = lastSnapshotRef.current.nodes.get(node.id);
+      if (previous !== fingerprint) {
+        advancedSaveQueue.enqueueOperation({
+          mapId,
+          type: 'node-update',
+          payload: {
+            id: node.id,
+            position_x: node.position.x,
+            position_y: node.position.y,
+            label: node.data.label,
+            content: node.data.description || '',
+            type: node.data.type as any,
+          },
+        });
+      }
+    }
+
+    for (const localId of Array.from(queuedLocalCreatesRef.current)) {
+      if (!nextNodeSnapshot.has(localId)) {
+        queuedLocalCreatesRef.current.delete(localId);
+      }
+    }
+
+    const nextEdgeSnapshot = new Set<string>();
+    for (const edge of edges) {
+      if (!isUuid(edge.source) || !isUuid(edge.target)) continue;
+      const edgeKey = `${edge.source}__${edge.target}`;
+      nextEdgeSnapshot.add(edgeKey);
+      if (!lastSnapshotRef.current.edges.has(edgeKey)) {
+        advancedSaveQueue.enqueueOperation({
+          mapId,
+          type: 'edge-create',
+          payload: {
+            map_id: mapId,
+            source_id: edge.source,
+            target_id: edge.target,
+          },
+        });
+      }
+    }
+
+    lastSnapshotRef.current.nodes = nextNodeSnapshot;
+    lastSnapshotRef.current.edges = nextEdgeSnapshot;
+  }, [mapId, isRemoteMap, mapInfo, nodes, edges, isUuid]);
+
+  // Delta autosave (debounced): queue only changed entities, never the full map
   useEffect(() => {
-    if (nodes.length === 0 || !mapId || !isRemoteMap) return;
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    if (!mapId || !isRemoteMap) return;
+    if (deltaSaveTimerRef.current) clearTimeout(deltaSaveTimerRef.current);
 
-    // Check if there are unsaved nodes (with temp IDs)
-    const unsavedNodes = nodes.filter((n) => !isUuid(n.id));
-    const hasUnsavedNodes = unsavedNodes.length > 0;
-
-    // If there are unsaved nodes, save every 3 seconds INSTEAD of 10
-    const saveInterval = hasUnsavedNodes ? 3000 : 10000;
-
-    autoSaveTimerRef.current = setTimeout(async () => {
-      if (isSavingRef.current) return;
-
+    deltaSaveTimerRef.current = setTimeout(() => {
       try {
-        const { advancedSaveQueue } = await import('@/lib/advanced-save-queue');
-
-        // Queue BOTH unsaved (node-create) and saved (node-update) nodes
-        for (const node of nodes) {
-          if (!isUuid(node.id)) {
-            // New node - queue create
-            advancedSaveQueue.enqueueOperation({
-              mapId,
-              type: 'node-create',
-              localId: node.id,
-              payload: {
-                id: node.id,
-                map_id: mapId,
-                type: node.data.type || 'idea',
-                label: node.data.label || 'Untitled',
-                content: node.data.description || '',
-                position_x: node.position.x || 0,
-                position_y: node.position.y || 0,
-              },
-            });
-          } else {
-            // Existing node - queue update
-            advancedSaveQueue.enqueueOperation({
-              mapId,
-              type: 'node-update',
-              payload: {
-                id: node.id,
-                position_x: node.position.x,
-                position_y: node.position.y,
-                label: node.data.label,
-                content: node.data.description || '',
-                type: node.data.type as any,
-              },
-            });
-          }
-        }
-
-        // Queue edge creates
-        for (const edge of edges) {
-          if (isUuid(edge.source) && isUuid(edge.target)) {
-            advancedSaveQueue.enqueueOperation({
-              mapId,
-              type: 'edge-create',
-              payload: {
-                map_id: mapId,
-                source_id: edge.source,
-                target_id: edge.target,
-              },
-            });
-          }
-        }
-
+        enqueueDeltaChanges();
         setLastSaved(new Date());
       } catch (err) {
-        console.error('[AutoSave] Error:', err);
+        console.error('[AutoSaveDelta] Error:', err);
       }
-    }, saveInterval);
+    }, 350);
 
     return () => {
-      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+      if (deltaSaveTimerRef.current) clearTimeout(deltaSaveTimerRef.current);
     };
-  }, [nodes, edges, mapId, isRemoteMap, setLastSaved, isUuid]);
+  }, [nodes, edges, mapInfo, mapId, isRemoteMap, enqueueDeltaChanges, setLastSaved]);
 
   // Before unload: force save to prevent data loss when user leaves page
   useEffect(() => {
@@ -859,7 +890,7 @@ export function useMapPersistence(
       const hasUnsavedNodes = nodes.some((n) => !isUuid(n.id));
       if (nodes.length > 0 || hasUnsavedNodes) {
         try {
-          const { advancedSaveQueue } = await import('@/lib/advanced-save-queue');
+          enqueueDeltaChanges();
           console.log('[BeforeUnload] Forcing queue sync before leaving page...');
           // Force all pending operations to sync immediately
           await advancedSaveQueue.forceSync();
@@ -874,7 +905,7 @@ export function useMapPersistence(
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isRemoteMap, mapId, nodes, isUuid]);
+  }, [isRemoteMap, mapId, nodes, isUuid, enqueueDeltaChanges]);
 
   // On visibility change: sync queue when user returns to tab (background tab sync)
   useEffect(() => {
@@ -884,7 +915,7 @@ export function useMapPersistence(
       // When page becomes visible (user switches back to tab)
       if (!document.hidden) {
         try {
-          const { advancedSaveQueue } = await import('@/lib/advanced-save-queue');
+          enqueueDeltaChanges();
           console.log('[VisibilityChange] Tab regained focus, syncing queue...');
           // Sync any pending operations while tab was in background
           await advancedSaveQueue.forceSync();
@@ -896,14 +927,25 @@ export function useMapPersistence(
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [isRemoteMap, mapId]);
+  }, [isRemoteMap, mapId, enqueueDeltaChanges]);
 
   // Reset internal state when mapId changes (before load)
   useEffect(() => {
     loadedRef.current = false; // Reset flag when mapId changes
     isSavingRef.current = false; // CRITICAL: Reset save flag to prevent hang
+    snapshotInitializedRef.current = false;
+    queuedLocalCreatesRef.current.clear();
+    lastSnapshotRef.current = {
+      mapTitle: '',
+      mapDescription: '',
+      nodes: new Map(),
+      edges: new Set(),
+    };
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
+    }
+    if (deltaSaveTimerRef.current) {
+      clearTimeout(deltaSaveTimerRef.current);
     }
   }, [mapId]);
 

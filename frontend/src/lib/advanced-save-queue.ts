@@ -47,7 +47,7 @@ class AdvancedSaveQueue {
   private lastSuccessfulSave: number | null = null;
   private deadLetter: QueuedOperation[] = [];
   private processIntervalId: NodeJS.Timeout | null = null;
-  private PROCESS_INTERVAL = 10000; // 10 seconds base interval
+  private PROCESS_INTERVAL = 1200; // 1.2 seconds base interval for snappier autosave
   private MAX_RETRIES = 4;
   private BATCH_SIZE = 50;
   private idMappings = new Map<string, Map<string, string>>(); // mapId -> localId -> serverId
@@ -140,6 +140,51 @@ class AdvancedSaveQueue {
   enqueueOperation(
     op: Omit<QueuedOperation, 'id' | 'retries' | 'maxRetries' | 'createdAt'>
   ): string {
+    // Coalesce map updates: keep only the latest metadata write for each map
+    if (op.type === 'map-update') {
+      for (const [existingId, existing] of this.queue) {
+        if (existing.mapId === op.mapId && existing.type === 'map-update') {
+          this.queue.delete(existingId);
+          this.deletePersistedOperation(existingId);
+        }
+      }
+    }
+
+    // Coalesce node updates by node id: keep only the most recent state
+    if (op.type === 'node-update') {
+      const nodeId = String(op.payload.id || '');
+      if (nodeId) {
+        for (const [existingId, existing] of this.queue) {
+          if (
+            existing.mapId === op.mapId &&
+            existing.type === 'node-update' &&
+            String(existing.payload.id || '') === nodeId
+          ) {
+            this.queue.delete(existingId);
+            this.deletePersistedOperation(existingId);
+          }
+        }
+      }
+    }
+
+    // Coalesce local node creates by local id to avoid duplicate create attempts
+    if (op.type === 'node-create') {
+      const localId = String(op.localId || op.payload.id || '');
+      if (localId) {
+        for (const [existingId, existing] of this.queue) {
+          const existingLocalId = String(existing.localId || existing.payload.id || '');
+          if (
+            existing.mapId === op.mapId &&
+            existing.type === 'node-create' &&
+            existingLocalId === localId
+          ) {
+            this.queue.delete(existingId);
+            this.deletePersistedOperation(existingId);
+          }
+        }
+      }
+    }
+
     if (op.type === 'edge-create') {
       const source = String(op.payload.source_id || '');
       const target = String(op.payload.target_id || '');
