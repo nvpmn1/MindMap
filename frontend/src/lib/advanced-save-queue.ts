@@ -45,6 +45,7 @@ class AdvancedSaveQueue {
   private queue: Map<string, QueuedOperation> = new Map();
   private isSaving = false;
   private lastSuccessfulSave: number | null = null;
+  private deadLetter: QueuedOperation[] = [];
   private processIntervalId: NodeJS.Timeout | null = null;
   private PROCESS_INTERVAL = 10000; // 10 seconds base interval
   private MAX_RETRIES = 4;
@@ -412,6 +413,13 @@ class AdvancedSaveQueue {
     // Check if should retry
     if (op.retries >= op.maxRetries) {
       console.warn(`[SaveQueue] Max retries exceeded for operation ${op.id}`);
+      op.lastError = op.lastError || 'Max retries exceeded';
+      this.deadLetter.push({ ...op });
+      if (this.deadLetter.length > 100) {
+        this.deadLetter = this.deadLetter.slice(this.deadLetter.length - 100);
+      }
+      this.queue.delete(op.id);
+      this.deletePersistedOperation(op.id);
       return { success: false };
     }
 
@@ -612,6 +620,9 @@ class AdvancedSaveQueue {
       }
     }
 
+    // Include dead-letter failures so UI can surface hard failures without blocking queue forever
+    failedOperations.push(...this.deadLetter);
+
     return {
       queueLength: this.queue.size,
       isSaving: this.isSaving,
@@ -663,6 +674,7 @@ class AdvancedSaveQueue {
   clear(): void {
     this.queue.clear();
     this.syncedEdgeKeys.clear();
+    this.deadLetter = [];
     if (this.db) {
       const transaction = this.db.transaction([this.storeName], 'readwrite');
       const store = transaction.objectStore(this.storeName);

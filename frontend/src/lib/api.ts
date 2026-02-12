@@ -95,6 +95,13 @@ class ApiClient {
   }
 
   /**
+   * Invalidate stale cache after mutating requests
+   */
+  private invalidateCache(): void {
+    this.requestCache.clear();
+  }
+
+  /**
    * Main fetch method with retry logic and error handling
    */
   private async fetch<T>(endpoint: string, options: FetchOptions = {}): Promise<ApiResponse<T>> {
@@ -194,6 +201,11 @@ class ApiClient {
           data: apiResponse,
           timestamp: Date.now(),
         });
+      }
+
+      // Any successful mutation invalidates cached reads to avoid stale editor state
+      if (method !== 'GET' && apiResponse.success) {
+        this.invalidateCache();
       }
 
       return apiResponse;
@@ -324,7 +336,7 @@ export const mapsApi = {
     return api.get(`/api/maps?${searchParams}`, { useCache: false });
   },
 
-  get: (mapId: string) => api.get(`/api/maps/${mapId}`),
+  get: (mapId: string) => api.get(`/api/maps/${mapId}`, { useCache: false }),
 
   create: (data: { workspace_id: string; title: string; description?: string }) =>
     api.post('/api/maps', data),
@@ -340,7 +352,7 @@ export const mapsApi = {
 };
 
 export const nodesApi = {
-  listByMap: (mapId: string) => api.get(`/api/nodes/map/${mapId}`),
+  listByMap: (mapId: string) => api.get(`/api/nodes/map/${mapId}`, { useCache: false }),
 
   get: (nodeId: string) => api.get(`/api/nodes/${nodeId}`),
 

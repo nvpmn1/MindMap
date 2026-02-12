@@ -48,6 +48,21 @@ const batchUpdateSchema = z.object({
     .array(
       z.object({
         id: z.string().uuid(),
+        label: z.string().min(1).max(500).optional(),
+        content: z.string().max(10000).nullable().optional(),
+        type: z
+          .enum([
+            'idea',
+            'task',
+            'note',
+            'reference',
+            'image',
+            'group',
+            'research',
+            'data',
+            'question',
+          ])
+          .optional(),
         position_x: z.number().optional(),
         position_y: z.number().optional(),
         width: z.number().nullable().optional(),

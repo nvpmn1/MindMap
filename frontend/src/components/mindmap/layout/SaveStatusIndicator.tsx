@@ -7,7 +7,7 @@
 import React, { useEffect, useState } from 'react';
 import { Cloud, CloudOff, CheckCircle2, AlertCircle, Loader2, WifiOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { robustMapSave } from '@/lib/robustMapSave';
+import { advancedSaveQueue } from '@/lib/advanced-save-queue';
 
 interface SaveStatusIndicatorProps {
   mapId?: string;
@@ -57,12 +57,24 @@ export const SaveStatusIndicator: React.FC<SaveStatusIndicatorProps> = ({ mapId 
   // Monitor pending saves with improved logic
   useEffect(() => {
     const checkStatus = () => {
-      const count = robustMapSave.getPendingCount();
+      const queueStatus = advancedSaveQueue.getStatus();
+      const count = queueStatus.queueLength;
       setPendingCount(count);
+      if (queueStatus.failedOperations.length > 0) {
+        setErrorMessage(queueStatus.failedOperations[queueStatus.failedOperations.length - 1].lastError || 'Erro ao salvar');
+      }
 
       if (!isOnline) {
         if (saveStatus !== 'offline') {
           setSaveStatus('offline');
+          setLastStatusChange(Date.now());
+        }
+        return;
+      }
+
+      if (queueStatus.failedOperations.length > 0) {
+        if (saveStatus !== 'error') {
+          setSaveStatus('error');
           setLastStatusChange(Date.now());
         }
         return;
@@ -73,6 +85,9 @@ export const SaveStatusIndicator: React.FC<SaveStatusIndicatorProps> = ({ mapId 
           setSaveStatus('saving');
           setLastStatusChange(Date.now());
         }
+      } else if (saveStatus === 'saving' || saveStatus === 'error') {
+        setSaveStatus('saved');
+        setLastStatusChange(Date.now());
       }
     };
 
