@@ -19,6 +19,12 @@ import type {
 import { AGENT_TOOLS, type AgentToolName } from './tools';
 import { buildSystemPrompt, buildMapContextMessage, formatConversationHistory } from './prompts';
 import { actionExecutor, type ExecutionContext, type ExecutionResult } from './ActionExecutor';
+import {
+  getAgentPlaybook,
+  describeExecutionTargets,
+  EXECUTION_IMPACT_WEIGHTS,
+  type AgentPlaybook,
+} from './agentPlaybooks';
 import { getAccessToken } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -82,6 +88,25 @@ type ContentBlock = ToolUseBlock | TextBlock;
 type AgentMessageContent = string | Array<Record<string, unknown>>;
 type AgentMessage = { role: 'user' | 'assistant'; content: AgentMessageContent };
 
+interface ExecutionStats {
+  successCount: number;
+  failCount: number;
+  mutatingSuccessCount: number;
+  nodesCreated: number;
+  nodesUpdated: number;
+  nodesDeleted: number;
+  edgesCreated: number;
+  edgesDeleted: number;
+  uniqueMutatingTools: number;
+  impactScore: number;
+}
+
+interface ExecutionEvaluation {
+  valid: boolean;
+  stats: ExecutionStats;
+  deficits: string[];
+}
+
 //  Neural Agent v4  Pure Agent Mode 
 
 export class NeuralAIAgent {
@@ -98,7 +123,7 @@ export class NeuralAIAgent {
     'create_tasks',
   ]);
 
-  private static readonly MAX_TOOL_LOOP_TURNS = 3;
+  private static readonly MAX_TOOL_LOOP_TURNS = 4;
 
   private config: AIAgentConfig;
   private conversationHistory: AIAgentMessage[] = [];
@@ -106,6 +131,7 @@ export class NeuralAIAgent {
   private executionContext: ExecutionContext | null = null;
   private currentTodos: AgentTodoItem[] = [];
   private agentType: string = 'chat';
+  private activePlaybook: AgentPlaybook = getAgentPlaybook('chat');
   private mapId: string | null = null;
 
   constructor() {
@@ -277,12 +303,24 @@ export class NeuralAIAgent {
   private buildExecutionDirective(): string {
     if (!this.isActionDrivenRequest()) return '';
 
+    const playbook = this.activePlaybook;
+    const targets = describeExecutionTargets(playbook.executionTargets);
+    const allowedTools = playbook.allowedTools.join(', ');
+    const directives = playbook.systemDirectives.map((item) => `- ${item}`);
+    const checklist = playbook.completionChecklist.map((item) => `- ${item}`);
+
     return [
-      '## DIRETRIZ DE EXECUO REAL (OBRIGATRIA)',
-      '- Voc DEVE executar aes reais no mapa usando tools.',
-      '- No descreva aes hipotticas como se j tivessem sido executadas.',
-      '- Antes de concluir, execute pelo menos 1 tool call relevante para o pedido.',
-      '- Se nenhuma ao for possvel, explique claramente por que e pea o dado faltante.',
+      '## CONTRATO DE EXECUCAO REAL (OBRIGATORIO)',
+      `- Playbook ativo: ${playbook.label}`,
+      `- Missao: ${playbook.mission}`,
+      `- Metas minimas: ${targets}`,
+      `- Tools permitidas neste modo: ${allowedTools}`,
+      '- Nao invente IDs de no pai, source ou target.',
+      '- Nao use tipos de no fora da lista valida (idea, task, note, reference, image, group, research, data, question).',
+      '- Nao descreva acao hipotetica como se ja estivesse aplicada.',
+      ...directives,
+      '## CHECKLIST DE ENTREGA',
+      ...checklist,
     ].join('\n');
   }
 
@@ -308,12 +346,139 @@ export class NeuralAIAgent {
     return NeuralAIAgent.MUTATING_TOOLS.has(toolName as AgentToolName);
   }
 
-  private countMutatingSuccess(results: ExecutionResult[] | undefined): number {
+  private calculateExecutionStats(results: ExecutionResult[] | undefined): ExecutionStats {
     if (!results || results.length === 0) {
-      return 0;
+      return {
+        successCount: 0,
+        failCount: 0,
+        mutatingSuccessCount: 0,
+        nodesCreated: 0,
+        nodesUpdated: 0,
+        nodesDeleted: 0,
+        edgesCreated: 0,
+        edgesDeleted: 0,
+        uniqueMutatingTools: 0,
+        impactScore: 0,
+      };
     }
 
-    return results.filter((result) => result.success && this.isMutatingTool(result.toolName)).length;
+    let successCount = 0;
+    let failCount = 0;
+    let mutatingSuccessCount = 0;
+    let nodesCreated = 0;
+    let nodesUpdated = 0;
+    let nodesDeleted = 0;
+    let edgesCreated = 0;
+    let edgesDeleted = 0;
+    const usedMutatingTools = new Set<string>();
+
+    for (const result of results) {
+      if (result.success) {
+        successCount += 1;
+      } else {
+        failCount += 1;
+      }
+
+      if (!result.success) {
+        continue;
+      }
+
+      if (this.isMutatingTool(result.toolName)) {
+        mutatingSuccessCount += 1;
+        usedMutatingTools.add(result.toolName);
+      }
+
+      nodesCreated += result.nodesCreated?.length || 0;
+      nodesUpdated += result.nodesUpdated?.length || 0;
+      nodesDeleted += result.nodesDeleted?.length || 0;
+      edgesCreated += result.edgesCreated?.length || 0;
+      edgesDeleted += result.edgesDeleted?.length || 0;
+    }
+
+    const impactScore =
+      nodesCreated * EXECUTION_IMPACT_WEIGHTS.nodesCreated +
+      nodesUpdated * EXECUTION_IMPACT_WEIGHTS.nodesUpdated +
+      nodesDeleted * EXECUTION_IMPACT_WEIGHTS.nodesDeleted +
+      edgesCreated * EXECUTION_IMPACT_WEIGHTS.edgesCreated +
+      edgesDeleted * EXECUTION_IMPACT_WEIGHTS.edgesDeleted +
+      mutatingSuccessCount * EXECUTION_IMPACT_WEIGHTS.mutatingActions;
+
+    return {
+      successCount,
+      failCount,
+      mutatingSuccessCount,
+      nodesCreated,
+      nodesUpdated,
+      nodesDeleted,
+      edgesCreated,
+      edgesDeleted,
+      uniqueMutatingTools: usedMutatingTools.size,
+      impactScore,
+    };
+  }
+
+  private evaluateExecution(
+    results: ExecutionResult[] | undefined,
+    requiresExecution: boolean
+  ): ExecutionEvaluation {
+    const stats = this.calculateExecutionStats(results);
+
+    if (!requiresExecution) {
+      return { valid: true, stats, deficits: [] };
+    }
+
+    const targets = this.activePlaybook.executionTargets;
+    const deficits: string[] = [];
+
+    if (stats.mutatingSuccessCount < targets.minMutatingActions) {
+      deficits.push(`acoes mutaveis ${stats.mutatingSuccessCount}/${targets.minMutatingActions}`);
+    }
+    if (stats.impactScore < targets.minImpactScore) {
+      deficits.push(`impacto ${stats.impactScore}/${targets.minImpactScore}`);
+    }
+    if (
+      typeof targets.minNodesCreated === 'number' &&
+      stats.nodesCreated < targets.minNodesCreated
+    ) {
+      deficits.push(`nos criados ${stats.nodesCreated}/${targets.minNodesCreated}`);
+    }
+    if (
+      typeof targets.minNodesUpdated === 'number' &&
+      stats.nodesUpdated < targets.minNodesUpdated
+    ) {
+      deficits.push(`nos atualizados ${stats.nodesUpdated}/${targets.minNodesUpdated}`);
+    }
+    if (
+      typeof targets.minEdgesCreated === 'number' &&
+      stats.edgesCreated < targets.minEdgesCreated
+    ) {
+      deficits.push(`arestas criadas ${stats.edgesCreated}/${targets.minEdgesCreated}`);
+    }
+    if (
+      typeof targets.minUniqueMutatingTools === 'number' &&
+      stats.uniqueMutatingTools < targets.minUniqueMutatingTools
+    ) {
+      deficits.push(
+        `variedade de tools ${stats.uniqueMutatingTools}/${targets.minUniqueMutatingTools}`
+      );
+    }
+
+    return {
+      valid: deficits.length === 0,
+      stats,
+      deficits,
+    };
+  }
+
+  private buildExecutionFailureMessage(evaluation: ExecutionEvaluation): string {
+    const deficitSummary =
+      evaluation.deficits.length > 0 ? evaluation.deficits.join(', ') : 'metas nao atingidas';
+    return [
+      `Execucao insuficiente para o menu "${this.activePlaybook.label}".`,
+      `Deficits: ${deficitSummary}.`,
+      `Metas esperadas: ${describeExecutionTargets(this.activePlaybook.executionTargets)}.`,
+      'Ajuste o comando para um alvo mais especifico ou execute novamente para completar o pacote.',
+    ].join('\n');
   }
 
   private hasToolUseContent(content: ContentBlock[] | undefined): boolean {
@@ -667,8 +832,23 @@ export class NeuralAIAgent {
     return protocolSafeMessages;
   }
 
-  private sanitizeRequestTools() {
-    return AGENT_TOOLS.map((tool) => ({
+  private sanitizeRequestTools(playbook: AgentPlaybook = this.activePlaybook) {
+    const allowedSet = new Set<string>(playbook.allowedTools.map((tool) => `${tool}`.trim()));
+    const preferredRank = new Map<string, number>(
+      playbook.preferredTools.map((tool, index) => [`${tool}`.trim(), index])
+    );
+
+    const scopedTools = AGENT_TOOLS.filter((tool) => allowedSet.has(`${tool.name}`.trim())).sort(
+      (a, b) => {
+        const aRank = preferredRank.get(`${a.name}`.trim()) ?? Number.MAX_SAFE_INTEGER;
+        const bRank = preferredRank.get(`${b.name}`.trim()) ?? Number.MAX_SAFE_INTEGER;
+        return aRank - bRank;
+      }
+    );
+
+    const effectiveTools = scopedTools.length > 0 ? scopedTools : AGENT_TOOLS;
+
+    return effectiveTools.map((tool) => ({
       name: `${tool.name}`.trim(),
       description: `${tool.description}`.trim(),
       input_schema:
@@ -713,6 +893,7 @@ export class NeuralAIAgent {
       this.setMapId(mapId);
     }
     this.agentType = this.resolveAgentType(message, agentType);
+    this.activePlaybook = getAgentPlaybook(this.agentType);
 
     const requiresExecution = this.isActionDrivenRequest();
     if (!this.mapId) {
@@ -789,27 +970,26 @@ export class NeuralAIAgent {
             result.stopReason = apiResult.stopReason;
             result.toolCallsCount = apiResult.toolCalls.length;
 
-            const successCount = execResults.filter((r) => r.success).length;
-            const failCount = execResults.filter((r) => !r.success).length;
-            const mutatingSuccessCount = this.countMutatingSuccess(execResults);
-            result.mutationsApplied = mutatingSuccessCount;
-            if (successCount > 0) {
-              result.response += `\n\n${successCount} acao(oes) executada(s) com sucesso${failCount > 0 ? `, ${failCount} falhou(aram)` : ''}.`;
+            const evaluation = this.evaluateExecution(execResults, requiresExecution);
+            result.mutationsApplied = evaluation.stats.mutatingSuccessCount;
+            if (evaluation.stats.successCount > 0) {
+              result.response += `\n\n${evaluation.stats.successCount} acao(oes) executada(s) com sucesso${
+                evaluation.stats.failCount > 0
+                  ? `, ${evaluation.stats.failCount} falhou(aram)`
+                  : ''
+              }.`;
             }
 
-            this.updateTodo('todo_3', 'completed', callbacks);
-
-            if (requiresExecution && mutatingSuccessCount === 0) {
-              result.executionValidated = false;
-              result.response =
-                'A IA tentou agir, mas nenhuma acao mutavel foi aplicada com sucesso no mapa.';
-            } else {
-              result.executionValidated = true;
+            this.updateTodo('todo_3', evaluation.valid ? 'completed' : 'failed', callbacks);
+            result.executionValidated = evaluation.valid;
+            if (!evaluation.valid) {
+              result.response = this.buildExecutionFailureMessage(evaluation);
             }
           } else if (requiresExecution) {
             result.executionValidated = false;
-            result.response =
-              'Nenhuma acao real foi executada no mapa. Ajuste sua instrucao ou selecione um contexto mais especifico.';
+            result.response = this.buildExecutionFailureMessage(
+              this.evaluateExecution(undefined, requiresExecution)
+            );
           }
         } catch (apiError) {
           const errMsg = apiError instanceof Error ? apiError.message : String(apiError);
@@ -839,7 +1019,9 @@ export class NeuralAIAgent {
         this.hasToolUseContent(result.assistantContent)
       ) {
         callbacks?.onThinkingUpdate?.(
-          'Primeira execucao nao aplicou mutacoes. Executando ciclo avancado de tool_result...'
+          `Execucao abaixo da meta (${describeExecutionTargets(
+            this.activePlaybook.executionTargets
+          )}). Iniciando ciclo avancado de tool_result...`
         );
 
         const recovered = await this.runToolResultContinuation(
@@ -971,7 +1153,9 @@ export class NeuralAIAgent {
       content: this.buildToolResultMessageContent(
         initialCanonicalToolCalls,
         initialResultPayload,
-        'Continue com acoes praticas. Execute pelo menos uma ferramenta mutavel antes de concluir.'
+        `Continue com acoes praticas. Atinja esta meta: ${describeExecutionTargets(
+          this.activePlaybook.executionTargets
+        )}.`
       ),
     });
 
@@ -998,18 +1182,18 @@ export class NeuralAIAgent {
     let latestModel = initialResult.model;
     let latestStopReason = initialResult.stopReason;
     let latestAssistantContent = initialResult.assistantContent;
-    let mutatingSuccessCount = this.countMutatingSuccess(allToolResults);
+    let executionEvaluation = this.evaluateExecution(allToolResults, requiresExecution);
 
     for (
       let turn = 0;
-      turn < NeuralAIAgent.MAX_TOOL_LOOP_TURNS && mutatingSuccessCount === 0;
+      turn < NeuralAIAgent.MAX_TOOL_LOOP_TURNS && !executionEvaluation.valid;
       turn += 1
     ) {
       callbacks?.onThinkingUpdate?.(
-        `Ciclo avancado ${turn + 1}/${NeuralAIAgent.MAX_TOOL_LOOP_TURNS}: buscando mutacao real no mapa...`
+        `Ciclo avancado ${turn + 1}/${NeuralAIAgent.MAX_TOOL_LOOP_TURNS}: metas pendentes (${executionEvaluation.deficits.join(', ')})`
       );
 
-      const apiTurn = await this.callAgentAPIWithMessages(requestMessages, false);
+      const apiTurn = await this.callAgentAPIWithMessages(requestMessages, requiresExecution);
       latestText = apiTurn.agentResponse.response || latestText;
       latestUsage = apiTurn.agentResponse.usage || latestUsage;
       latestModel = apiTurn.agentResponse.model || latestModel;
@@ -1043,25 +1227,25 @@ export class NeuralAIAgent {
       allToolResults.push(...executionResults);
       allActions.push(...this.toolResultsToActions(canonicalTurnToolCalls, executionResults));
 
-      mutatingSuccessCount = this.countMutatingSuccess(allToolResults);
+      executionEvaluation = this.evaluateExecution(allToolResults, requiresExecution);
 
       requestMessages.push({
         role: 'user',
         content: this.buildToolResultMessageContent(
           canonicalTurnToolCalls,
           executionResults,
-          mutatingSuccessCount > 0
-            ? 'Acoes mutaveis aplicadas. Finalize com resumo objetivo ou execute mais melhorias relevantes.'
-            : 'Nenhuma mutacao aplicada ainda. Execute agora pelo menos uma acao mutavel no mapa.'
+          executionEvaluation.valid
+            ? 'Metas batidas. Finalize com resumo objetivo.'
+            : `Metas ainda nao atendidas: ${executionEvaluation.deficits.join(', ')}. Continue executando tool calls mutaveis.`
         ),
       });
     }
 
-    const executionValidated = requiresExecution ? mutatingSuccessCount > 0 : true;
+    const executionValidated = executionEvaluation.valid;
     const responseText =
       executionValidated || !requiresExecution
         ? latestText
-        : 'A IA executou apenas operacoes de leitura/analise. Nenhuma mutacao real foi aplicada no mapa nesta tentativa.';
+        : this.buildExecutionFailureMessage(executionEvaluation);
 
     return {
       ...initialResult,
@@ -1075,7 +1259,7 @@ export class NeuralAIAgent {
       assistantContent: latestAssistantContent,
       executionValidated,
       executedOnMap: allToolResults.length > 0,
-      mutationsApplied: mutatingSuccessCount,
+      mutationsApplied: executionEvaluation.stats.mutatingSuccessCount,
       toolCallsCount: allToolCalls.length,
     };
   }
@@ -1389,12 +1573,11 @@ export class NeuralAIAgent {
 
     this.updateTodo('todo_4', 'completed', callbacks);
 
-    const mutatingSuccessCount = this.countMutatingSuccess(toolResults);
-    const executionValidated = requiresExecution ? mutatingSuccessCount > 0 : true;
+    const evaluation = this.evaluateExecution(toolResults, requiresExecution);
+    const executionValidated = evaluation.valid;
 
     if (!executionValidated && requiresExecution) {
-      mainResponse =
-        'Nenhuma acao mutavel foi executada com sucesso no mapa nesta tentativa. Ajuste o comando para acao concreta.';
+      mainResponse = this.buildExecutionFailureMessage(evaluation);
     }
 
     return {
@@ -1409,7 +1592,7 @@ export class NeuralAIAgent {
       streaming: true,
       executionValidated,
       executedOnMap: canonicalToolCalls.length > 0 && !!this.executionContext,
-      mutationsApplied: mutatingSuccessCount,
+      mutationsApplied: evaluation.stats.mutatingSuccessCount,
       toolCallsCount: canonicalToolCalls.length,
       assistantContent,
       stopReason,

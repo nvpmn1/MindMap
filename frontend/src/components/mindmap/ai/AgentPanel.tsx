@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // NeuralMap - AI Agent Panel v3 (Complete Redesign)
 // Real-time streaming UI with TODO list, thinking, and step-by-step progress
 // ============================================================================
@@ -39,6 +39,11 @@ import {
 } from 'lucide-react';
 import { neuralAgent } from './NeuralAgent';
 import type { AgentTodoItem, StreamCallbacks } from './NeuralAgent';
+import {
+  buildQuickActionPrompt,
+  getAgentPlaybook,
+  type AgentPlaybookId,
+} from './agentPlaybooks';
 import type {
   AIAgentMode,
   AIAgentAction,
@@ -74,16 +79,48 @@ interface AgentPanelProps {
   onSave?: () => void | Promise<void>;
 }
 
-// ─── Quick Actions ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Quick Actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface QuickAction {
-  id: string;
+  id: Exclude<AgentPlaybookId, 'chat'>;
   label: string;
   icon: LucideIcon;
   prompt: string;
   mode: AIAgentMode;
   color: string;
   requiresExecution?: boolean;
+}
+
+const VALID_NODE_TYPES = new Set<NeuralNodeType>([
+  'idea',
+  'task',
+  'note',
+  'reference',
+  'image',
+  'group',
+  'research',
+  'data',
+  'question',
+]);
+
+const NODE_TYPE_ALIAS: Record<string, NeuralNodeType> = {
+  decision: 'question',
+  milestone: 'task',
+  risk: 'question',
+  resource: 'reference',
+  process: 'note',
+};
+
+function normalizeRuntimeNodeType(value: unknown): NeuralNodeType {
+  if (typeof value !== 'string') {
+    return 'idea';
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (VALID_NODE_TYPES.has(normalized as NeuralNodeType)) {
+    return normalized as NeuralNodeType;
+  }
+  return NODE_TYPE_ALIAS[normalized] || 'idea';
 }
 
 const QUICK_ACTIONS: QuickAction[] = [
@@ -101,7 +138,7 @@ const QUICK_ACTIONS: QuickAction[] = [
     id: 'expand',
     label: 'Expandir',
     icon: GitBranch,
-    prompt: 'Expanda e aprofunde o nó selecionado com sub-tópicos detalhados',
+    prompt: 'Expanda e aprofunde o nÃ³ selecionado com sub-tÃ³picos detalhados',
     mode: 'agent',
     color: 'text-blue-400',
     requiresExecution: true,
@@ -111,7 +148,7 @@ const QUICK_ACTIONS: QuickAction[] = [
     label: 'Sintetizar',
     icon: BookOpen,
     prompt:
-      'Sintetize o conteúdo do mapa em um resumo executivo claro e anexe essa síntese ao mapa como nós úteis',
+      'Sintetize o conteÃºdo do mapa em um resumo executivo claro e anexe essa sÃ­ntese ao mapa como nÃ³s Ãºteis',
     mode: 'agent',
     color: 'text-teal-400',
     requiresExecution: true,
@@ -121,7 +158,7 @@ const QUICK_ACTIONS: QuickAction[] = [
     label: 'Analisar Mapa',
     icon: Eye,
     prompt:
-      'Analise completamente meu mapa mental, identifique padrões, lacunas e sugira melhorias aplicando ao menos uma melhoria prática',
+      'Analise completamente meu mapa mental, identifique padrÃµes, lacunas e sugira melhorias aplicando ao menos uma melhoria prÃ¡tica',
     mode: 'agent',
     color: 'text-cyan-400',
     requiresExecution: true,
@@ -139,7 +176,7 @@ const QUICK_ACTIONS: QuickAction[] = [
     id: 'research',
     label: 'Pesquisar',
     icon: Search,
-    prompt: 'Pesquise aprofundadamente sobre o tema do mapa e adicione nós de pesquisa com fontes',
+    prompt: 'Pesquise aprofundadamente sobre o tema do mapa e adicione nÃ³s de pesquisa com fontes',
     mode: 'agent',
     color: 'text-violet-400',
     requiresExecution: true,
@@ -148,10 +185,10 @@ const QUICK_ACTIONS: QuickAction[] = [
   // Advanced Agents
   {
     id: 'hypothesize',
-    label: 'Hipóteses',
+    label: 'HipÃ³teses',
     icon: HelpCircle,
     prompt:
-      'Formule hipóteses e cenários possíveis baseados no conteúdo do mapa e registre no mapa como nós',
+      'Formule hipÃ³teses e cenÃ¡rios possÃ­veis baseados no conteÃºdo do mapa e registre no mapa como nÃ³s',
     mode: 'agent',
     color: 'text-yellow-400',
     requiresExecution: true,
@@ -160,27 +197,27 @@ const QUICK_ACTIONS: QuickAction[] = [
     id: 'task_convert',
     label: 'Criar Tarefas',
     icon: CheckSquare,
-    prompt: 'Crie um plano de ação detalhado com tarefas, prioridades e prazos',
+    prompt: 'Crie um plano de aÃ§Ã£o detalhado com tarefas, prioridades e prazos',
     mode: 'agent',
     color: 'text-emerald-400',
     requiresExecution: true,
   },
   {
     id: 'critique',
-    label: 'Crítica Construtiva',
+    label: 'CrÃ­tica Construtiva',
     icon: AlertCircle,
     prompt:
-      'Ofereça crítica construtiva e sugestões de melhoria para o mapa, aplicando as melhorias mais importantes',
+      'OfereÃ§a crÃ­tica construtiva e sugestÃµes de melhoria para o mapa, aplicando as melhorias mais importantes',
     mode: 'agent',
     color: 'text-red-400',
     requiresExecution: true,
   },
   {
     id: 'connect',
-    label: 'Descobrir Conexões',
+    label: 'Descobrir ConexÃµes',
     icon: GitBranch,
     prompt:
-      'Descubra conexões ocultas e relações não-óbvias entre conceitos e crie as conexões no mapa',
+      'Descubra conexÃµes ocultas e relaÃ§Ãµes nÃ£o-Ã³bvias entre conceitos e crie as conexÃµes no mapa',
     mode: 'agent',
     color: 'text-pink-400',
     requiresExecution: true,
@@ -189,7 +226,7 @@ const QUICK_ACTIONS: QuickAction[] = [
     id: 'visualize',
     label: 'Melhorar Visual',
     icon: Wand2,
-    prompt: 'Melhore visual e organização do mapa com ações reais de estrutura e conexões',
+    prompt: 'Melhore visual e organizaÃ§Ã£o do mapa com aÃ§Ãµes reais de estrutura e conexÃµes',
     mode: 'agent',
     color: 'text-rose-400',
     requiresExecution: true,
@@ -198,14 +235,14 @@ const QUICK_ACTIONS: QuickAction[] = [
     id: 'chart',
     label: 'Dashboard',
     icon: BarChart3,
-    prompt: 'Crie um dashboard analítico com gráficos e métricas sobre o mapa usando nós de dados',
+    prompt: 'Crie um dashboard analÃ­tico com grÃ¡ficos e mÃ©tricas sobre o mapa usando nÃ³s de dados',
     mode: 'agent',
     color: 'text-pink-400',
     requiresExecution: true,
   },
 ];
 
-// ─── Mode Config ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Mode Config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const MODE_CONFIG: Record<
   AIAgentMode,
@@ -215,7 +252,7 @@ const MODE_CONFIG: Record<
     label: 'Agent Mode',
     icon: Zap,
     color: 'text-cyan-400',
-    desc: 'Executa ações diretamente no mapa',
+    desc: 'Executa aÃ§Ãµes diretamente no mapa',
   },
   assistant: {
     label: 'Assistente',
@@ -227,23 +264,23 @@ const MODE_CONFIG: Record<
     label: 'Pesquisa',
     icon: BookOpen,
     color: 'text-violet-400',
-    desc: 'Análise profunda e hipóteses',
+    desc: 'AnÃ¡lise profunda e hipÃ³teses',
   },
   creative: {
     label: 'Criativo',
     icon: Sparkles,
     color: 'text-amber-400',
-    desc: 'Ideação e brainstorming',
+    desc: 'IdeaÃ§Ã£o e brainstorming',
   },
   analytical: {
-    label: 'Analítico',
+    label: 'AnalÃ­tico',
     icon: Target,
     color: 'text-emerald-400',
-    desc: 'Dados, gráficos e métricas',
+    desc: 'Dados, grÃ¡ficos e mÃ©tricas',
   },
 };
 
-// ─── TODO Item Component ────────────────────────────────────────────────────
+// â”€â”€â”€ TODO Item Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const TodoItem: React.FC<{ item: AgentTodoItem; index: number }> = ({ item, index }) => {
   const statusConfig: Record<
@@ -262,7 +299,7 @@ const TodoItem: React.FC<{ item: AgentTodoItem; index: number }> = ({ item, inde
       icon: CheckCircle2,
       color: 'text-emerald-400',
       bg: 'bg-emerald-500/10',
-      label: 'Concluído',
+      label: 'ConcluÃ­do',
     },
     failed: { icon: AlertCircle, color: 'text-red-400', bg: 'bg-red-500/10', label: 'Falhou' },
   };
@@ -305,7 +342,7 @@ const TodoItem: React.FC<{ item: AgentTodoItem; index: number }> = ({ item, inde
   );
 };
 
-// ─── Streaming Text Component ───────────────────────────────────────────────
+// â”€â”€â”€ Streaming Text Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const StreamingText: React.FC<{ text: string }> = ({ text }) => {
   return (
@@ -346,7 +383,7 @@ const StreamingText: React.FC<{ text: string }> = ({ text }) => {
           );
         }
         // List items
-        if (line.startsWith('- ') || line.startsWith('• ')) {
+        if (line.startsWith('- ') || line.startsWith('â€¢ ')) {
           return (
             <div key={i} className="ml-2 text-slate-300">
               {line}
@@ -362,7 +399,7 @@ const StreamingText: React.FC<{ text: string }> = ({ text }) => {
           );
         }
         // Success/emoji lines
-        if (line.startsWith('✅') || line.startsWith('⚡') || line.startsWith('❌')) {
+        if (line.startsWith('âœ…') || line.startsWith('âš¡') || line.startsWith('âŒ')) {
           return (
             <div key={i} className="font-medium">
               {line}
@@ -375,23 +412,23 @@ const StreamingText: React.FC<{ text: string }> = ({ text }) => {
   );
 };
 
-// ─── Tool Call Display ──────────────────────────────────────────────────────
+// â”€â”€â”€ Tool Call Display â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const ToolCallDisplay: React.FC<{ toolName: string; isComplete: boolean }> = ({
   toolName,
   isComplete,
 }) => {
   const toolLabels: Record<string, string> = {
-    create_node: '📌 Criando nó',
-    update_node: '✏️ Atualizando nó',
-    delete_node: '🗑️ Removendo nó',
-    batch_create_nodes: '📦 Criando múltiplos nós',
-    batch_update_nodes: '📦 Atualizando nós em lote',
-    create_edge: '🔗 Criando conexão',
-    delete_edge: '✂️ Removendo conexão',
-    analyze_map: '📊 Analisando mapa',
-    reorganize_map: '🗂️ Reorganizando',
-    find_nodes: '🔍 Buscando nós',
+    create_node: 'ðŸ“Œ Criando nÃ³',
+    update_node: 'âœï¸ Atualizando nÃ³',
+    delete_node: 'ðŸ—‘ï¸ Removendo nÃ³',
+    batch_create_nodes: 'ðŸ“¦ Criando mÃºltiplos nÃ³s',
+    batch_update_nodes: 'ðŸ“¦ Atualizando nÃ³s em lote',
+    create_edge: 'ðŸ”— Criando conexÃ£o',
+    delete_edge: 'âœ‚ï¸ Removendo conexÃ£o',
+    analyze_map: 'ðŸ“Š Analisando mapa',
+    reorganize_map: 'ðŸ—‚ï¸ Reorganizando',
+    find_nodes: 'ðŸ” Buscando nÃ³s',
   };
 
   return (
@@ -405,13 +442,13 @@ const ToolCallDisplay: React.FC<{ toolName: string; isComplete: boolean }> = ({
       ) : (
         <Loader2 className="w-3.5 h-3.5 text-purple-400 animate-spin" />
       )}
-      <span className="text-xs text-purple-300">{toolLabels[toolName] || `🔧 ${toolName}`}</span>
-      {isComplete && <span className="text-[10px] text-emerald-400">✓</span>}
+      <span className="text-xs text-purple-300">{toolLabels[toolName] || `ðŸ”§ ${toolName}`}</span>
+      {isComplete && <span className="text-[10px] text-emerald-400">âœ“</span>}
     </motion.div>
   );
 };
 
-// ─── Main Component ─────────────────────────────────────────────────────────
+// â”€â”€â”€ Main Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const AgentPanel: React.FC<AgentPanelProps> = ({
   isOpen,
@@ -479,7 +516,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
           {
             id: `error_${Date.now()}`,
             role: 'system',
-            content: '❌ Nao foi possivel identificar o mapa atual para executar o modo agente.',
+            content: 'âŒ Nao foi possivel identificar o mapa atual para executar o modo agente.',
             timestamp: new Date().toISOString(),
           },
         ]);
@@ -510,7 +547,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
       // Setup streaming callbacks
       const callbacks: StreamCallbacks = {
         onThinkingStart: () => {
-          setThinkingText('Analisando contexto e planejando ações...');
+          setThinkingText('Analisando contexto e planejando aÃ§Ãµes...');
         },
         onThinkingUpdate: (text) => {
           setThinkingText(text);
@@ -534,7 +571,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         onActionStep: (step, icon) => {
           setActionSteps((prev) => [
             ...prev,
-            { message: step, icon: icon || '⚡', timestamp: Date.now() },
+            { message: step, icon: icon || 'âš¡', timestamp: Date.now() },
           ]);
         },
         onComplete: (response) => {
@@ -590,13 +627,30 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
       };
 
       try {
-        // ── Set up ExecutionContext so tool calls execute DIRECTLY on the map ──
+        // â”€â”€ Set up ExecutionContext so tool calls execute DIRECTLY on the map â”€â”€
         if (createNodeFn && updateNodeDataFn && deleteNodeFn && setEdgesFn) {
           const executionContext: ExecutionContext = {
             nodes: [...nodes],
             edges: [...edges],
             createNode: (type: NeuralNodeType, label: string, parentId?: string) => {
-              const createdNode = createNodeFn(type, undefined, parentId || selectedNodeId, { label });
+              const normalizedType = normalizeRuntimeNodeType(type);
+              const hasExplicitParent = typeof parentId === 'string' && parentId.trim().length > 0;
+              const explicitParentExists =
+                hasExplicitParent &&
+                executionContext.nodes.some((node) => node.id === String(parentId).trim());
+              const selectedParentExists =
+                !!selectedNodeId && executionContext.nodes.some((node) => node.id === selectedNodeId);
+              const safeParentId = explicitParentExists
+                ? String(parentId).trim()
+                : selectedParentExists
+                  ? selectedNodeId || undefined
+                  : undefined;
+
+              if (hasExplicitParent && !explicitParentExists) {
+                console.warn('[AgentPanel] Ignoring invalid parentId from AI tool call:', parentId);
+              }
+
+              const createdNode = createNodeFn(normalizedType, undefined, safeParentId, { label });
               executionContext.nodes.push(createdNode);
               return createdNode;
             },
@@ -615,6 +669,29 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
               );
             },
             createEdge: (sourceId: string, targetId: string, label?: string) => {
+              if (sourceId === targetId) {
+                return null;
+              }
+
+              const sourceExists = executionContext.nodes.some((node) => node.id === sourceId);
+              const targetExists = executionContext.nodes.some((node) => node.id === targetId);
+              if (!sourceExists || !targetExists) {
+                console.warn('[AgentPanel] Ignoring edge with missing nodes:', {
+                  sourceId,
+                  targetId,
+                  sourceExists,
+                  targetExists,
+                });
+                return null;
+              }
+
+              const duplicateEdge = executionContext.edges.find(
+                (edge) => edge.source === sourceId && edge.target === targetId
+              );
+              if (duplicateEdge) {
+                return duplicateEdge;
+              }
+
               const edgeId = `edge_${sourceId}_${targetId}_${Date.now()}`;
               const newEdge: PowerEdge = {
                 id: edgeId,
@@ -659,7 +736,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
           {
             id: `error_${Date.now()}`,
             role: 'system',
-            content: `❌ ${errMsg}`,
+            content: `âŒ ${errMsg}`,
             timestamp: new Date().toISOString(),
           },
         ]);
@@ -681,7 +758,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
       {
         id: `system_${Date.now()}`,
         role: 'system',
-        content: `✅ ${pendingActions.length} ações aplicadas ao mapa com sucesso!`,
+        content: `âœ… ${pendingActions.length} aÃ§Ãµes aplicadas ao mapa com sucesso!`,
         timestamp: new Date().toISOString(),
       },
     ]);
@@ -691,12 +768,18 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     (action: QuickAction) => {
       setMode(action.mode);
       neuralAgent.setMode(action.mode);
+      const playbook = getAgentPlaybook(action.id);
+      const playbookPrompt = buildQuickActionPrompt(playbook);
 
       const strictExecutionSuffix = action.requiresExecution
-        ? '\n\nIMPORTANTE: execute ações REAIS no mapa usando ferramentas (tool-use). Não apenas explique. Só finalize após executar pelo menos 1 ação concreta.'
+        ? '\n\nIMPORTANTE: execute mudancas reais no mapa e so finalize quando o contrato do playbook estiver completo.'
         : '';
 
-      handleSend(`${action.prompt}${strictExecutionSuffix}`, action.id);
+      const mergedPrompt = [action.prompt, playbookPrompt, strictExecutionSuffix]
+        .filter((part) => part && part.trim().length > 0)
+        .join('\n\n');
+
+      handleSend(mergedPrompt, action.id);
     },
     [handleSend]
   );
@@ -736,7 +819,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
             bg-[#0a0f1a]/95 backdrop-blur-xl border-l border-cyan-500/20
             shadow-[-8px_0_32px_rgba(6,182,212,0.08)]`}
         >
-          {/* ─── Header ──────────────────────────────────────────────── */}
+          {/* â”€â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
             <div className="flex items-center gap-3">
               <div className="relative">
@@ -760,7 +843,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
               <div>
                 <h3 className="text-sm font-semibold text-white">NeuralAgent</h3>
                 <p className="text-[10px] text-slate-500">
-                  Claude AI • {isProcessing ? '⚡ Processando...' : 'Agent Mode'}
+                  Claude AI â€¢ {isProcessing ? 'âš¡ Processando...' : 'Agent Mode'}
                 </p>
               </div>
             </div>
@@ -836,20 +919,20 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
             </div>
           </div>
 
-          {/* ─── Context Bar ─────────────────────────────────────────── */}
+          {/* â”€â”€â”€ Context Bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
           {selectedNodeId && (
             <div className="px-4 py-2 bg-cyan-500/5 border-b border-cyan-500/10">
               <div className="flex items-center gap-2 text-xs text-cyan-400">
                 <Target className="w-3.5 h-3.5" />
                 <span className="font-medium">Contexto:</span>
                 <span className="text-cyan-300 truncate">
-                  {nodes.find((n) => n.id === selectedNodeId)?.data.label || 'Nó selecionado'}
+                  {nodes.find((n) => n.id === selectedNodeId)?.data.label || 'NÃ³ selecionado'}
                 </span>
               </div>
             </div>
           )}
 
-          {/* ─── Messages ────────────────────────────────────────────── */}
+          {/* â”€â”€â”€ Messages â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
           <div
             className="flex-1 overflow-y-auto px-4 py-3 space-y-4 scrollbar-thin
             scrollbar-thumb-white/10 scrollbar-track-transparent"
@@ -872,7 +955,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                     Agent Mode com Claude AI
                   </h4>
                   <p className="text-xs text-slate-400 max-w-[300px] mx-auto">
-                    IA real powered by Claude. Executo ações diretamente no mapa com raciocínio em
+                    IA real powered by Claude. Executo aÃ§Ãµes diretamente no mapa com raciocÃ­nio em
                     tempo real.
                   </p>
                 </div>
@@ -899,7 +982,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
 
                 <div className="pt-2 text-center">
                   <p className="text-[10px] text-slate-600">
-                    🧠 Powered by Claude (Anthropic) • Resultados reais via API
+                    ðŸ§  Powered by Claude (Anthropic) â€¢ Resultados reais via API
                   </p>
                 </div>
               </motion.div>
@@ -910,7 +993,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
               <MessageBubble key={msg.id} message={msg} />
             ))}
 
-            {/* ─── STREAMING LIVE ZONE ──────────────────────────────── */}
+            {/* â”€â”€â”€ STREAMING LIVE ZONE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
             {isProcessing && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -1058,7 +1141,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs text-cyan-400 font-medium">
                     <Zap className="w-3.5 h-3.5" />
-                    {pendingActions.length} ações para aplicar
+                    {pendingActions.length} aÃ§Ãµes para aplicar
                   </div>
                   <button
                     onClick={handleApply}
@@ -1089,7 +1172,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* ─── Input ───────────────────────────────────────────────── */}
+          {/* â”€â”€â”€ Input â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
           <div className="px-4 py-3 border-t border-white/5">
             <div
               className="flex items-end gap-2 bg-white/[0.03] rounded-xl border border-white/[0.08]
@@ -1139,7 +1222,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
             </div>
             <div className="flex items-center justify-between mt-2 px-1">
               <span className="text-[10px] text-slate-600">
-                Enter para enviar • Shift+Enter para quebra de linha
+                Enter para enviar â€¢ Shift+Enter para quebra de linha
               </span>
               <span className="text-[10px] text-slate-600">Claude Haiku 4.5</span>
             </div>
@@ -1150,7 +1233,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
   );
 };
 
-// ─── Message Bubble ─────────────────────────────────────────────────────────
+// â”€â”€â”€ Message Bubble â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const MessageBubble: React.FC<{ message: AIAgentMessage }> = ({ message }) => {
   const [showReasoning, setShowReasoning] = useState(false);
@@ -1198,7 +1281,7 @@ const MessageBubble: React.FC<{ message: AIAgentMessage }> = ({ message }) => {
             )}
             {usage && (
               <span className="text-[10px] text-emerald-600 ml-auto">
-                ⚡ {usage.input_tokens + usage.output_tokens} tokens
+                âš¡ {usage.input_tokens + usage.output_tokens} tokens
               </span>
             )}
           </div>
@@ -1225,7 +1308,7 @@ const MessageBubble: React.FC<{ message: AIAgentMessage }> = ({ message }) => {
                   hover:text-slate-300 transition-colors rounded-md hover:bg-white/5"
               >
                 <Eye className="w-3 h-3" />
-                {showReasoning ? 'Ocultar raciocínio' : 'Ver raciocínio'}
+                {showReasoning ? 'Ocultar raciocÃ­nio' : 'Ver raciocÃ­nio'}
               </button>
             )}
 
@@ -1268,7 +1351,7 @@ const MessageBubble: React.FC<{ message: AIAgentMessage }> = ({ message }) => {
               className="mt-2 px-3 py-2 rounded-lg bg-amber-500/5 border border-amber-500/10
                 text-[11px] text-amber-300/80 overflow-hidden"
             >
-              💭 {metadata.reasoning}
+              ðŸ’­ {metadata.reasoning}
             </motion.div>
           )}
         </AnimatePresence>
@@ -1294,3 +1377,4 @@ const MessageBubble: React.FC<{ message: AIAgentMessage }> = ({ message }) => {
 };
 
 export default AgentPanel;
+

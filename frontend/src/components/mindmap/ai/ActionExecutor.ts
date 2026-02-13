@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // NeuralMap - AI Action Executor
 // Converts AI tool_use calls into concrete map mutations
 // ============================================================================
@@ -40,7 +40,7 @@ function normalizeNodeType(value: unknown): NeuralNodeType {
   return NODE_TYPE_ALIASES[normalized] || 'idea';
 }
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface ExecutionResult {
   success: boolean;
@@ -65,9 +65,21 @@ export interface ExecutionContext {
   deleteEdge: (sourceId: string, targetId: string) => void;
 }
 
-// ─── Action Executor ────────────────────────────────────────────────────────
+// â”€â”€â”€ Action Executor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export class ActionExecutor {
+  private resolveValidNodeId(value: unknown, ctx: ExecutionContext): string | undefined {
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+
+    const normalized = value.trim();
+    if (!normalized) {
+      return undefined;
+    }
+
+    return ctx.nodes.some((node) => node.id === normalized) ? normalized : undefined;
+  }
 
   /**
    * Execute a single tool call from the AI
@@ -132,7 +144,7 @@ export class ActionExecutor {
     ctx: ExecutionContext,
   ): ExecutionResult[] {
     const results: ExecutionResult[] = [];
-    // tempId → real ID mapping for batch operations
+    // tempId â†’ real ID mapping for batch operations
     const idMap = new Map<string, string>();
 
     for (const call of toolCalls) {
@@ -153,7 +165,7 @@ export class ActionExecutor {
     return results;
   }
 
-  // ─── Individual Executors ──────────────────────────────────────────────
+  // â”€â”€â”€ Individual Executors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private execCreateNode(input: any, ctx: ExecutionContext): ExecutionResult {
     const {
@@ -179,7 +191,8 @@ export class ActionExecutor {
     } = input;
     
     const nodeType = normalizeNodeType(type);
-    const node = ctx.createNode(nodeType, label, parentId);
+    const resolvedParentId = this.resolveValidNodeId(parentId, ctx);
+    const node = ctx.createNode(nodeType, label, resolvedParentId);
     
     // Apply additional data
     const updates: Partial<NeuralNodeData> = {};
@@ -214,7 +227,7 @@ export class ActionExecutor {
     return {
       success: true,
       toolName: 'create_node',
-      description: `Criado nó "${label}" (${nodeType})`,
+      description: `Criado nÃ³ "${label}" (${nodeType})`,
       nodesCreated: [node.id],
     };
   }
@@ -222,7 +235,7 @@ export class ActionExecutor {
   private execCreateNodes(input: any, ctx: ExecutionContext): ExecutionResult {
     const nodes = Array.isArray(input?.nodes) ? input.nodes : [];
     if (nodes.length === 0) {
-      return { success: false, toolName: 'create_nodes', description: 'Nenhum nó para criar', error: 'Empty nodes array' };
+      return { success: false, toolName: 'create_nodes', description: 'Nenhum nÃ³ para criar', error: 'Empty nodes array' };
     }
 
     const createdIds: string[] = [];
@@ -252,7 +265,7 @@ export class ActionExecutor {
     return {
       success: true,
       toolName: 'create_nodes',
-      description: `${createdIds.length} nós criados` ,
+      description: `${createdIds.length} nÃ³s criados` ,
       nodesCreated: createdIds,
     };
   }
@@ -271,7 +284,7 @@ export class ActionExecutor {
 
     const node = ctx.nodes.find(n => n.id === nodeId);
     if (!node) {
-      return { success: false, toolName: 'update_node', description: `Nó ${nodeId} não encontrado`, error: 'Node not found' };
+      return { success: false, toolName: 'update_node', description: `NÃ³ ${nodeId} nÃ£o encontrado`, error: 'Node not found' };
     }
 
     // Build the data update
@@ -329,7 +342,7 @@ export class ActionExecutor {
 
     const node = ctx.nodes.find(n => n.id === nodeId);
     if (!node) {
-      return { success: false, toolName: 'delete_node', description: `Nó ${nodeId} não encontrado`, error: 'Node not found' };
+      return { success: false, toolName: 'delete_node', description: `NÃ³ ${nodeId} nÃ£o encontrado`, error: 'Node not found' };
     }
 
     const label = node.data.label;
@@ -356,23 +369,48 @@ export class ActionExecutor {
       };
     }
 
-    const edge = ctx.createEdge(sourceId, targetId, label);
+    const resolvedSourceId = this.resolveValidNodeId(sourceId, ctx);
+    const resolvedTargetId = this.resolveValidNodeId(targetId, ctx);
+    if (!resolvedSourceId || !resolvedTargetId) {
+      return {
+        success: false,
+        toolName: 'create_edge',
+        description: `Conexao ignorada: no inexistente (${sourceId} -> ${targetId})`,
+        error: 'Source or target node not found',
+      };
+    }
+
+    if (resolvedSourceId === resolvedTargetId) {
+      return {
+        success: false,
+        toolName: 'create_edge',
+        description: 'Conexao ignorada: source e target iguais',
+        error: 'Source and target are the same node',
+      };
+    }
+
+    const edge = ctx.createEdge(resolvedSourceId, resolvedTargetId, label);
     if (!edge) {
-      return { success: false, toolName: 'create_edge', description: 'Falha ao criar conexão', error: 'Edge creation failed' };
+      return {
+        success: false,
+        toolName: 'create_edge',
+        description: 'Falha ao criar conexao',
+        error: 'Edge creation failed',
+      };
     }
 
     return {
       success: true,
       toolName: 'create_edge',
-      description: `Conexão criada: ${sourceId} → ${targetId}`,
-      edgesCreated: [{ source: sourceId, target: targetId }],
+      description: `Conexao criada: ${resolvedSourceId} -> ${resolvedTargetId}`,
+      edgesCreated: [{ source: resolvedSourceId, target: resolvedTargetId }],
     };
   }
 
   private execCreateEdges(input: any, ctx: ExecutionContext): ExecutionResult {
     const edges = Array.isArray(input?.edges) ? input.edges : [];
     if (edges.length === 0) {
-      return { success: false, toolName: 'create_edges', description: 'Nenhuma conexão para criar', error: 'Empty edges array' };
+      return { success: false, toolName: 'create_edges', description: 'Nenhuma conexÃ£o para criar', error: 'Empty edges array' };
     }
 
     const created: Array<{ source: string; target: string }> = [];
@@ -392,7 +430,7 @@ export class ActionExecutor {
     return {
       success: true,
       toolName: 'create_edges',
-      description: `${created.length} conexões criadas`,
+      description: `${created.length} conexÃµes criadas`,
       edgesCreated: created,
     };
   }
@@ -414,7 +452,7 @@ export class ActionExecutor {
     return {
       success: true,
       toolName: 'delete_edge',
-      description: `Conexão removida: ${sourceId} → ${targetId}`,
+      description: `ConexÃ£o removida: ${sourceId} â†’ ${targetId}`,
       edgesDeleted: [{ source: sourceId, target: targetId }],
     };
   }
@@ -422,7 +460,7 @@ export class ActionExecutor {
   private execBatchCreate(input: any, ctx: ExecutionContext): ExecutionResult {
     const { nodes: nodeSpecs } = input;
     if (!Array.isArray(nodeSpecs) || nodeSpecs.length === 0) {
-      return { success: false, toolName: 'batch_create_nodes', description: 'Nenhum nó para criar', error: 'Empty nodes array' };
+      return { success: false, toolName: 'batch_create_nodes', description: 'Nenhum nÃ³ para criar', error: 'Empty nodes array' };
     }
 
     const idMap: Record<string, string> = {};
@@ -442,14 +480,15 @@ export class ActionExecutor {
       if (resolvedParentId && idMap[resolvedParentId]) {
         resolvedParentId = idMap[resolvedParentId];
       }
+      const safeParentId = this.resolveValidNodeId(resolvedParentId, ctx);
 
       const node = ctx.createNode(
         normalizeNodeType(spec.type || 'idea'),
         spec.label,
-        resolvedParentId,
+        safeParentId,
       );
 
-      // Map tempId → real ID
+      // Map tempId â†’ real ID
       if (spec.tempId) {
         idMap[spec.tempId] = node.id;
       }
@@ -483,7 +522,7 @@ export class ActionExecutor {
     return {
       success: true,
       toolName: 'batch_create_nodes',
-      description: `${createdIds.length} nós criados em lote`,
+      description: `${createdIds.length} nÃ³s criados em lote`,
       nodesCreated: createdIds,
       data: { idMap },
     };
@@ -492,7 +531,7 @@ export class ActionExecutor {
   private execBatchUpdate(input: any, ctx: ExecutionContext): ExecutionResult {
     const { updates } = input;
     if (!Array.isArray(updates) || updates.length === 0) {
-      return { success: false, toolName: 'batch_update_nodes', description: 'Nenhuma atualização', error: 'Empty updates array' };
+      return { success: false, toolName: 'batch_update_nodes', description: 'Nenhuma atualizaÃ§Ã£o', error: 'Empty updates array' };
     }
 
     const updatedIds: string[] = [];
@@ -516,7 +555,7 @@ export class ActionExecutor {
     return {
       success: true,
       toolName: 'batch_update_nodes',
-      description: `${updatedIds.length} nós atualizados em lote`,
+      description: `${updatedIds.length} nÃ³s atualizados em lote`,
       nodesUpdated: updatedIds,
     };
   }
@@ -570,23 +609,23 @@ export class ActionExecutor {
     };
 
     // Identify issues
-    if (orphans.length > 0) analysis.issues.push(`${orphans.length} nós desconectados`);
+    if (orphans.length > 0) analysis.issues.push(`${orphans.length} nÃ³s desconectados`);
     if (avgProgress < 20 && tasks.length > 0) analysis.issues.push('Progresso geral muito baixo');
     if (nodes.filter(n => !n.data.description).length > nodes.length * 0.5) {
-      analysis.issues.push('Mais de 50% dos nós sem descrição');
+      analysis.issues.push('Mais de 50% dos nÃ³s sem descriÃ§Ã£o');
     }
 
     // Suggestions
-    if (tasks.length === 0) analysis.suggestions.push('Converter ideias principais em tarefas acionáveis');
-    if (density < 0.1) analysis.suggestions.push('Adicionar mais conexões entre nós relacionados');
+    if (tasks.length === 0) analysis.suggestions.push('Converter ideias principais em tarefas acionÃ¡veis');
+    if (density < 0.1) analysis.suggestions.push('Adicionar mais conexÃµes entre nÃ³s relacionados');
     if (nodes.filter(n => n.data.type === 'research').length === 0) {
-      analysis.suggestions.push('Adicionar nós de pesquisa para aprofundar o tema');
+      analysis.suggestions.push('Adicionar nÃ³s de pesquisa para aprofundar o tema');
     }
 
     return {
       success: true,
       toolName: 'analyze_map',
-      description: `Análise completa: ${nodes.length} nós, ${edges.length} conexões, ${avgProgress}% progresso`,
+      description: `AnÃ¡lise completa: ${nodes.length} nÃ³s, ${edges.length} conexÃµes, ${avgProgress}% progresso`,
       data: analysis,
     };
   }
@@ -599,7 +638,7 @@ export class ActionExecutor {
     return {
       success: true,
       toolName: 'reorganize_map',
-      description: `Reorganização planejada: estratégia ${strategy}`,
+      description: `ReorganizaÃ§Ã£o planejada: estratÃ©gia ${strategy}`,
       data: { strategy, applied: true },
     };
   }
@@ -631,7 +670,7 @@ export class ActionExecutor {
     return {
       success: true,
       toolName: 'create_tasks',
-      description: `${createdIds.length} tarefas criadas como nós`,
+      description: `${createdIds.length} tarefas criadas como nÃ³s`,
       nodesCreated: createdIds,
     };
   }
@@ -659,7 +698,7 @@ export class ActionExecutor {
     return {
       success: true,
       toolName: 'add_citations',
-      description: 'Citações registradas',
+      description: 'CitaÃ§Ãµes registradas',
       data: input,
     };
   }
@@ -668,7 +707,7 @@ export class ActionExecutor {
     return {
       success: true,
       toolName: 'generate_report',
-      description: 'Relatório gerado',
+      description: 'RelatÃ³rio gerado',
       data: input,
     };
   }
@@ -677,7 +716,7 @@ export class ActionExecutor {
     return {
       success: true,
       toolName: 'find_patterns',
-      description: 'Padrões analisados',
+      description: 'PadrÃµes analisados',
       data: input,
     };
   }
@@ -712,12 +751,12 @@ export class ActionExecutor {
     return {
       success: true,
       toolName: 'find_nodes',
-      description: `${found.length} nós encontrados`,
+      description: `${found.length} nÃ³s encontrados`,
       data: { nodes: found },
     };
   }
 
-  // ─── Helper: Resolve tempIds in inputs ────────────────────────────────
+  // â”€â”€â”€ Helper: Resolve tempIds in inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private resolveIds(input: any, idMap: Map<string, string>): any {
     if (!input || typeof input !== 'object') return input;
