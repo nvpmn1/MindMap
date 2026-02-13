@@ -559,22 +559,33 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
           };
           setMessages((prev) => [...prev, agentMsg]);
 
-          if (response.actions.length > 0) {
+          const executedOnMap = response.executedOnMap === true;
+          if (response.actions.length > 0 && !executedOnMap) {
             setPendingActions(response.actions);
+          } else {
+            setPendingActions([]);
+          }
 
-            // Trigger save after streaming completes with actions
-            if (onSave) {
-              setTimeout(() => {
-                onSave();
-                console.log('[AgentPanel] Auto-save triggered after streaming complete');
-              }, 500);
-            }
+          if (executedOnMap && (response.mutationsApplied || 0) > 0 && onSave) {
+            setTimeout(() => {
+              onSave();
+              console.log('[AgentPanel] Auto-save triggered after agent execution');
+            }, 500);
           }
         },
         onError: (error) => {
           setIsStreaming(false);
           setStreamingText('');
           setThinkingText('');
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `error_${Date.now()}`,
+              role: 'system',
+              content: `Erro na IA: ${error}`,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
         },
       };
 
@@ -615,7 +626,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
           neuralAgent.setExecutionContext(executionContext);
         }
 
-        const result = await neuralAgent.processMessage(
+        await neuralAgent.processMessage(
           msgText,
           nodes,
           edges,
@@ -624,46 +635,6 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
           agentType,
           mapId
         );
-
-        // Auto-apply actions to the map (Agent Mode = no manual "Apply" needed)
-        if (result.actions.length > 0) {
-          onApplyActions(result.actions);
-
-          // Trigger save after AI actions complete
-          if (onSave) {
-            setTimeout(() => {
-              onSave();
-              console.log('[AgentPanel] Auto-save triggered after AI actions');
-            }, 500); // Small delay to let state updates settle
-          }
-        }
-
-        // If streaming didn't fire onComplete (regular API fallback), handle it here
-        if (!result.streaming) {
-          setIsStreaming(false);
-          setStreamingText('');
-          setThinkingText('');
-
-          const agentMsg: AIAgentMessage = {
-            id: `agent_${Date.now()}`,
-            role: 'agent',
-            content: result.response,
-            timestamp: new Date().toISOString(),
-            metadata: {
-              mode,
-              actions: result.actions,
-              reasoning: result.thinking,
-              confidence: result.confidence,
-              usage: result.usage,
-              todoList: result.todoList,
-            },
-          };
-          setMessages((prev) => [...prev, agentMsg]);
-
-          if (result.actions.length > 0) {
-            setPendingActions(result.actions);
-          }
-        }
       } catch (error) {
         setIsStreaming(false);
         setStreamingText('');

@@ -46,17 +46,84 @@ const actionTypeDetection: Array<{ type: string; pattern: RegExp }> = [
 
 type LegacyAgentMessage = {
   role?: 'user' | 'assistant';
-  content?: string;
+  content?: string | Array<Record<string, unknown>>;
 };
+
+const MUTATING_TOOL_NAMES = new Set<string>([
+  'create_node',
+  'create_nodes',
+  'batch_create_nodes',
+  'update_node',
+  'batch_update_nodes',
+  'delete_node',
+  'create_edge',
+  'create_edges',
+  'delete_edge',
+  'create_tasks',
+]);
+
+function extractTextFromMessageContent(
+  content: string | Array<Record<string, unknown>> | undefined
+): string {
+  if (typeof content === 'string') {
+    return content;
+  }
+
+  if (!Array.isArray(content)) {
+    return '';
+  }
+
+  const textParts: string[] = [];
+  for (const block of content) {
+    if (!block || typeof block !== 'object') {
+      continue;
+    }
+
+    const textValue = block.text;
+    if (typeof textValue === 'string') {
+      textParts.push(textValue);
+      continue;
+    }
+
+    const contentValue = block.content;
+    if (typeof contentValue === 'string') {
+      textParts.push(contentValue);
+    }
+  }
+
+  return textParts.join(' ').trim();
+}
 
 function getLastUserMessage(messages: LegacyAgentMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
-    if (messages[i]?.role === 'user' && typeof messages[i]?.content === 'string') {
-      return messages[i]?.content || '';
+    if (messages[i]?.role === 'user') {
+      const text = extractTextFromMessageContent(messages[i]?.content);
+      if (text.length > 0) {
+        return text;
+      }
     }
   }
 
   return '';
+}
+
+function countMutatingToolUses(contentBlocks: unknown[]): number {
+  let count = 0;
+
+  for (const block of contentBlocks) {
+    if (!block || typeof block !== 'object') {
+      continue;
+    }
+
+    const typedBlock = block as { type?: unknown; name?: unknown };
+    if (typedBlock.type === 'tool_use' && typeof typedBlock.name === 'string') {
+      if (MUTATING_TOOL_NAMES.has(typedBlock.name)) {
+        count += 1;
+      }
+    }
+  }
+
+  return count;
 }
 
 function detectLegacyAgentType(
@@ -714,7 +781,7 @@ const agentSchema = z.object({
   messages: z.array(
     z.object({
       role: z.enum(['user', 'assistant']),
-      content: z.string(),
+      content: z.union([z.string(), z.array(z.record(z.unknown()))]),
     })
   ),
   tools: z.array(
@@ -728,6 +795,7 @@ const agentSchema = z.object({
   temperature: z.number().min(0).max(1).optional().default(0.7),
   force_tool_use: z.boolean().optional().default(false),
   require_action: z.boolean().optional().default(false),
+  require_mutating_action: z.boolean().optional().default(false),
   disable_parallel_tool_use: z.boolean().optional().default(true),
 });
 
@@ -754,14 +822,18 @@ router.post(
       temperature,
       force_tool_use,
       require_action,
+      require_mutating_action,
       disable_parallel_tool_use,
     } = parsed.data;
     const startTime = Date.now();
 
     await ensureMapAccess(req, map_id);
     const normalizedMessages = messages.filter(
-      (message): message is { role: 'user' | 'assistant'; content: string } =>
-        (message.role === 'user' || message.role === 'assistant') && typeof message.content === 'string'
+      (
+        message
+      ): message is { role: 'user' | 'assistant'; content: string | Array<Record<string, unknown>> } =>
+        (message.role === 'user' || message.role === 'assistant') &&
+        (typeof message.content === 'string' || Array.isArray(message.content))
     );
     if (normalizedMessages.length === 0) {
       throw new ValidationError('At least one valid message is required');
@@ -791,6 +863,7 @@ router.post(
         toolChoice,
         disableParallelToolUse: disable_parallel_tool_use,
         requireAction: require_action,
+        requireMutatingAction: require_mutating_action,
         userId: req.user?.id,
       },
       'AI Agent request received'
@@ -820,6 +893,9 @@ router.post(
       const toolUseCount = Array.isArray(response.content)
         ? response.content.filter((block: any) => block?.type === 'tool_use').length
         : 0;
+      const mutatingToolUseCount = Array.isArray(response.content)
+        ? countMutatingToolUses(response.content)
+        : 0;
 
       if (require_action && toolUseCount === 0) {
         return res.status(422).json({
@@ -827,6 +903,17 @@ router.post(
           error: 'Agent did not emit a tool_use block for this action-required request',
           stop_reason: response.stop_reason,
           agent_type: detectedAgentType,
+        });
+      }
+
+      if (require_mutating_action && mutatingToolUseCount === 0) {
+        return res.status(422).json({
+          success: false,
+          error: 'Agent used only read-only tools. A mutating tool call is required for this request.',
+          stop_reason: response.stop_reason,
+          agent_type: detectedAgentType,
+          tool_use_count: toolUseCount,
+          mutating_tool_use_count: mutatingToolUseCount,
         });
       }
 
@@ -840,6 +927,7 @@ router.post(
           outputTokens: response.usage?.output_tokens,
           stopReason: response.stop_reason,
           toolUseCount,
+          mutatingToolUseCount,
           userId: req.user?.id,
         },
         'AI Agent response completed'
@@ -856,6 +944,7 @@ router.post(
           agent_type: detectedAgentType,
           map_id,
           tool_use_count: toolUseCount,
+          mutating_tool_use_count: mutatingToolUseCount,
         },
         content: response.content,
         stop_reason: response.stop_reason,
@@ -864,6 +953,7 @@ router.post(
         agent_type: detectedAgentType,
         map_id,
         tool_use_count: toolUseCount,
+        mutating_tool_use_count: mutatingToolUseCount,
         durationMs,
       });
     } catch (error) {
@@ -936,13 +1026,17 @@ router.post(
       temperature,
       force_tool_use,
       require_action,
+      require_mutating_action,
       disable_parallel_tool_use,
     } = parsed.data;
     const selectedModel = model || 'auto';
     await ensureMapAccess(req, map_id);
     const normalizedMessages = messages.filter(
-      (message): message is { role: 'user' | 'assistant'; content: string } =>
-        (message.role === 'user' || message.role === 'assistant') && typeof message.content === 'string'
+      (
+        message
+      ): message is { role: 'user' | 'assistant'; content: string | Array<Record<string, unknown>> } =>
+        (message.role === 'user' || message.role === 'assistant') &&
+        (typeof message.content === 'string' || Array.isArray(message.content))
     );
     if (normalizedMessages.length === 0) {
       throw new ValidationError('At least one valid message is required');
@@ -968,6 +1062,7 @@ router.post(
         toolChoice,
         disableParallelToolUse: disable_parallel_tool_use,
         requireAction: require_action,
+        requireMutatingAction: require_mutating_action,
         userId: req.user?.id,
       },
       'AI Agent STREAM request received'
@@ -980,7 +1075,11 @@ router.post(
     res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
     res.flushHeaders();
 
+    const streamedToolNames: string[] = [];
     const sendEvent = (event: string, data: any) => {
+      if (event === 'tool_complete' && typeof data?.name === 'string') {
+        streamedToolNames.push(data.name);
+      }
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
 
@@ -1002,6 +1101,25 @@ router.post(
         },
         sendEvent
       );
+
+      const streamedToolUseCount = streamedToolNames.length;
+      const streamedMutatingToolUseCount = streamedToolNames.filter((name) =>
+        MUTATING_TOOL_NAMES.has(name)
+      ).length;
+
+      if (require_action && streamedToolUseCount === 0) {
+        sendEvent('validation_warning', {
+          error: 'Agent did not emit a tool_use block for this action-required request',
+          tool_use_count: streamedToolUseCount,
+          mutating_tool_use_count: streamedMutatingToolUseCount,
+        });
+      } else if (require_mutating_action && streamedMutatingToolUseCount === 0) {
+        sendEvent('validation_warning', {
+          error: 'Agent used only read-only tools. A mutating tool call is required for this request.',
+          tool_use_count: streamedToolUseCount,
+          mutating_tool_use_count: streamedMutatingToolUseCount,
+        });
+      }
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : 'Unknown error';
       sendEvent('error', { error: errMsg });

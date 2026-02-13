@@ -166,12 +166,48 @@ export type AIAgentType = 'generate' | 'expand' | 'summarize' | 'to_tasks' | 'ch
 interface AgentRawParams {
   model: string;
   systemPrompt: string;
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  messages: Array<{
+    role: 'user' | 'assistant';
+    content: string | Array<Record<string, unknown>>;
+  }>;
   tools: Array<{ name: string; description: string; input_schema: any }>;
   maxTokens: number;
   temperature: number;
   toolChoice?: { type: 'auto' | 'any' | 'none' } | { type: 'tool'; name: string };
   disableParallelToolUse?: boolean;
+}
+
+function serializeMessageContent(content: string | Array<Record<string, unknown>>): string {
+  if (typeof content === 'string') {
+    return content;
+  }
+
+  if (!Array.isArray(content)) {
+    return '';
+  }
+
+  return content
+    .map((block) => {
+      if (!block || typeof block !== 'object') {
+        return '';
+      }
+
+      if (typeof block.text === 'string') {
+        return block.text;
+      }
+
+      if (typeof block.content === 'string') {
+        return block.content;
+      }
+
+      try {
+        return JSON.stringify(block);
+      } catch {
+        return '';
+      }
+    })
+    .filter(Boolean)
+    .join(' ');
 }
 
 // Orchestrator input
@@ -577,7 +613,7 @@ Seja conciso mas completo em suas respostas.`,
     let modelSelection: any = null;
 
     if (model === 'auto' || !model) {
-      const inputContent = `${systemPrompt}\n${messages.map(m => m.content).join('\n')}`;
+      const inputContent = `${systemPrompt}\n${messages.map((m) => serializeMessageContent(m.content)).join('\n')}`;
       const contextLength = inputContent.length;
       
       modelSelection = autoSelectModel('chat', { 
@@ -716,7 +752,7 @@ Seja conciso mas completo em suas respostas.`,
     let modelSelection: any = null;
 
     if (model === 'auto' || !model) {
-      const inputContent = `${systemPrompt}\n${messages.map(m => m.content).join('\n')}`;
+      const inputContent = `${systemPrompt}\n${messages.map((m) => serializeMessageContent(m.content)).join('\n')}`;
       const contextLength = inputContent.length;
       
       modelSelection = autoSelectModel('chat', { 
