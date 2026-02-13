@@ -11,6 +11,7 @@ const router = Router();
 
 // Validation schemas
 const createNodeSchema = z.object({
+  id: z.string().uuid().optional(),
   map_id: z.string().uuid('Invalid map ID'),
   parent_id: z.string().uuid().nullable().optional(),
   type: z
@@ -48,6 +49,7 @@ const batchUpdateSchema = z.object({
     .array(
       z.object({
         id: z.string().uuid(),
+        parent_id: z.string().uuid().nullable().optional(),
         label: z.string().min(1).max(500).optional(),
         content: z.string().max(10000).nullable().optional(),
         type: z
@@ -77,6 +79,7 @@ const batchUpdateSchema = z.object({
 });
 
 const createEdgeSchema = z.object({
+  id: z.string().uuid().optional(),
   map_id: z.string().uuid('Invalid map ID'),
   source_id: z.string().uuid('Invalid source node ID'),
   target_id: z.string().uuid('Invalid target node ID'),
@@ -84,6 +87,12 @@ const createEdgeSchema = z.object({
   label: z.string().max(200).nullable().optional(),
   style: z.record(z.any()).optional().default({}),
   animated: z.boolean().optional().default(false),
+});
+
+const deleteEdgeByConnectionSchema = z.object({
+  map_id: z.string().uuid('Invalid map ID'),
+  source_id: z.string().uuid('Invalid source node ID'),
+  target_id: z.string().uuid('Invalid target node ID'),
 });
 
 /**
@@ -119,7 +128,7 @@ router.get(
  * Get single node with details
  */
 router.get(
-  '/:nodeId',
+  '/:nodeId([0-9a-fA-F-]{36})',
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
     const { nodeId } = req.params;
@@ -168,7 +177,28 @@ router.post(
         throw new NotFoundError(`Map ${parsed.data.map_id} not found`);
       }
 
+      if (parsed.data.parent_id) {
+        const { data: parentNode, error: parentNodeError } = await req.supabase
+          .from('nodes')
+          .select('id, map_id')
+          .eq('id', parsed.data.parent_id)
+          .maybeSingle();
+
+        if (parentNodeError || !parentNode || parentNode.map_id !== parsed.data.map_id) {
+          logger.warn(
+            {
+              parentId: parsed.data.parent_id,
+              mapId: parsed.data.map_id,
+              error: parentNodeError?.message,
+            },
+            'Invalid parent node for node creation'
+          );
+          throw new ValidationError('Parent node does not belong to the same map');
+        }
+      }
+
       const nodeData: Insertable<'nodes'> & { type?: string } = {
+        ...(parsed.data.id ? { id: parsed.data.id } : {}),
         map_id: parsed.data.map_id,
         parent_id: parsed.data.parent_id || null,
         type: parsed.data.type as any,
@@ -192,23 +222,62 @@ router.post(
         .single();
 
       if (error) {
+        if (error.code === '23505' && parsed.data.id) {
+          const { data: existingNode } = await req.supabase
+            .from('nodes')
+            .select('*')
+            .eq('id', parsed.data.id)
+            .eq('map_id', parsed.data.map_id)
+            .maybeSingle();
+
+          if (existingNode) {
+            return res.status(200).json({
+              success: true,
+              data: existingNode,
+              meta: { duplicate: true },
+            });
+          }
+        }
+
         logger.error({ error: error.message, code: error.code, nodeData }, 'Failed to create node');
         throw new Error(`Database error: ${error.message}`);
       }
 
       // Create edge from parent if specified
       if (parsed.data.parent_id) {
-        const { error: edgeError } = await req.supabase.from('edges').insert({
-          map_id: parsed.data.map_id,
-          source_id: parsed.data.parent_id,
-          target_id: node.id,
-          type: 'default',
-        });
+        const { data: existingEdge } = await req.supabase
+          .from('edges')
+          .select('id')
+          .eq('map_id', parsed.data.map_id)
+          .eq('source_id', parsed.data.parent_id)
+          .eq('target_id', node.id)
+          .maybeSingle();
 
-        if (edgeError) {
-          logger.warn({ error: edgeError.message }, 'Failed to create edge');
+        if (!existingEdge) {
+          const { error: edgeError } = await req.supabase.from('edges').insert({
+            map_id: parsed.data.map_id,
+            source_id: parsed.data.parent_id,
+            target_id: node.id,
+            type: 'default',
+          });
+
+          if (edgeError && edgeError.code !== '23505') {
+            logger.error(
+              {
+                mapId: parsed.data.map_id,
+                parentId: parsed.data.parent_id,
+                nodeId: node.id,
+                error: edgeError.message,
+              },
+              'Failed to create parent edge, rolling back node'
+            );
+            await req.supabase.from('nodes').delete().eq('id', node.id);
+            throw new Error('Failed to create node relationship');
+          }
         }
       }
+
+      await touchMap(req.supabase, node.map_id);
 
       // Log activity
       try {
@@ -253,8 +322,8 @@ router.patch(
     }
 
     const { nodes } = parsed.data;
-    const results: any[] = [];
-    const errors: any[] = [];
+    const results: Array<{ id: string; map_id: string }> = [];
+    const errors: Array<{ id: string; error: string }> = [];
 
     // Update nodes in parallel
     await Promise.all(
@@ -268,7 +337,7 @@ router.patch(
             updated_at: new Date().toISOString(),
           })
           .eq('id', id)
-          .select('id')
+          .select('id, map_id')
           .single();
 
         if (error) {
@@ -281,12 +350,35 @@ router.patch(
 
     logger.debug({ count: results.length, userId: req.user.id }, 'Batch node update');
 
+    const touchedMaps = new Set<string>(results.map((item) => item.map_id));
+    await Promise.all(Array.from(touchedMaps).map((id) => touchMap(req.supabase, id)));
+
+    if (errors.length > 0) {
+      logger.warn(
+        {
+          userId: req.user.id,
+          attempted: nodes.length,
+          updated: results.length,
+          failed: errors.length,
+          errors,
+        },
+        'Batch node update had failures'
+      );
+      return res.status(207).json({
+        success: true,
+        data: {
+          updated: results.length,
+          failed: errors.length,
+          errors,
+        },
+      });
+    }
+
     res.json({
-      success: errors.length === 0,
+      success: true,
       data: {
         updated: results.length,
-        failed: errors.length,
-        errors: errors.length > 0 ? errors : undefined,
+        failed: 0,
       },
     });
   })
@@ -297,7 +389,7 @@ router.patch(
  * Update node
  */
 router.patch(
-  '/:nodeId',
+  '/:nodeId([0-9a-fA-F-]{36})',
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
     const { nodeId } = req.params;
@@ -305,6 +397,33 @@ router.patch(
     const parsed = updateNodeSchema.safeParse(req.body);
     if (!parsed.success) {
       throw new ValidationError(parsed.error.errors[0].message);
+    }
+
+    if (parsed.data.parent_id) {
+      const { data: parentNode, error: parentNodeError } = await req.supabase
+        .from('nodes')
+        .select('id, map_id')
+        .eq('id', parsed.data.parent_id)
+        .maybeSingle();
+
+      if (parentNodeError || !parentNode) {
+        throw new ValidationError('Parent node not found');
+      }
+
+      const { data: currentNode, error: currentNodeError } = await req.supabase
+        .from('nodes')
+        .select('map_id')
+        .eq('id', nodeId)
+        .maybeSingle();
+
+      if (
+        currentNodeError ||
+        !currentNode ||
+        currentNode.map_id !== parentNode.map_id ||
+        parsed.data.parent_id === nodeId
+      ) {
+        throw new ValidationError('Invalid parent assignment');
+      }
     }
 
     const updateData: Updatable<'nodes'> & { type?: string } = {
@@ -323,6 +442,8 @@ router.patch(
       throw new NotFoundError('Node not found or access denied');
     }
 
+    await touchMap(req.supabase, node.map_id);
+
     logger.debug({ nodeId, userId: req.user.id }, 'Node updated');
 
     res.json({
@@ -337,7 +458,7 @@ router.patch(
  * Delete node and its children
  */
 router.delete(
-  '/:nodeId',
+  '/:nodeId([0-9a-fA-F-]{36})',
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
     const { nodeId } = req.params;
@@ -392,6 +513,8 @@ router.delete(
       'node_deleted',
       `Deleted node "${node.label}"`
     );
+
+    await touchMap(req.supabase, node.map_id);
 
     res.json({
       success: true,
@@ -458,9 +581,10 @@ router.post(
     }
 
     // Check for existing edge
-    const { data: existing, error: existingError } = await req.supabase
+    const { data: existing } = await req.supabase
       .from('edges')
       .select('id')
+      .eq('map_id', map_id)
       .eq('source_id', source_id)
       .eq('target_id', target_id)
       .maybeSingle();
@@ -491,9 +615,66 @@ router.post(
 
     logger.debug({ edgeId: edge.id, mapId: edge.map_id }, 'Edge created');
 
+    await touchMap(req.supabase, edge.map_id);
+
     res.status(201).json({
       success: true,
       data: edge,
+    });
+  })
+);
+
+/**
+ * DELETE /api/nodes/edges
+ * Delete edge by connection tuple (map/source/target)
+ */
+router.delete(
+  '/edges',
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const parsed = deleteEdgeByConnectionSchema.safeParse(req.query);
+    if (!parsed.success) {
+      throw new ValidationError(parsed.error.errors[0].message);
+    }
+
+    const { map_id, source_id, target_id } = parsed.data;
+
+    const { data: edge, error: fetchError } = await req.supabase
+      .from('edges')
+      .select('id, map_id')
+      .eq('map_id', map_id)
+      .eq('source_id', source_id)
+      .eq('target_id', target_id)
+      .maybeSingle();
+
+    if (fetchError) {
+      logger.error(
+        { error: fetchError.message, map_id, source_id, target_id },
+        'Failed to fetch edge by connection'
+      );
+      throw new Error('Failed to delete edge');
+    }
+
+    if (!edge) {
+      return res.json({
+        success: true,
+        message: 'Edge already deleted',
+      });
+    }
+
+    const { error } = await req.supabase.from('edges').delete().eq('id', edge.id);
+
+    if (error) {
+      logger.error({ error: error.message, edgeId: edge.id }, 'Failed to delete edge');
+      throw new Error('Failed to delete edge');
+    }
+
+    await touchMap(req.supabase, edge.map_id);
+
+    res.json({
+      success: true,
+      message: 'Edge deleted successfully',
+      data: { id: edge.id },
     });
   })
 );
@@ -508,12 +689,32 @@ router.delete(
   asyncHandler(async (req: Request, res: Response) => {
     const { edgeId } = req.params;
 
+    const { data: edge, error: fetchError } = await req.supabase
+      .from('edges')
+      .select('id, map_id')
+      .eq('id', edgeId)
+      .maybeSingle();
+
+    if (fetchError) {
+      logger.error({ error: fetchError.message, edgeId }, 'Failed to fetch edge');
+      throw new Error('Failed to delete edge');
+    }
+
+    if (!edge) {
+      return res.json({
+        success: true,
+        message: 'Edge already deleted',
+      });
+    }
+
     const { error } = await req.supabase.from('edges').delete().eq('id', edgeId);
 
     if (error) {
       logger.error({ error: error.message, edgeId }, 'Failed to delete edge');
       throw new Error('Failed to delete edge');
     }
+
+    await touchMap(req.supabase, edge.map_id);
 
     res.json({
       success: true,
@@ -637,6 +838,14 @@ async function getDescendantIds(supabase: any, parentId: string): Promise<string
   );
 
   return [...childIds, ...grandchildIds.flat()];
+}
+
+async function touchMap(supabase: any, mapId: string): Promise<void> {
+  try {
+    await supabase.from('maps').update({ updated_at: new Date().toISOString() }).eq('id', mapId);
+  } catch (error) {
+    logger.warn({ error, mapId }, 'Failed to touch map timestamp');
+  }
 }
 
 /**

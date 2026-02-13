@@ -26,16 +26,25 @@ export const SaveStatusIndicator: React.FC<SaveStatusIndicatorProps> = ({ mapId 
 
   // Monitor network status
   useEffect(() => {
-    const handleOnline = () => {
+    const handleOnline = async () => {
       console.log('[SaveStatus] Back online - triggering sync');
       setIsOnline(true);
       setSaveStatus('saving');
       setLastStatusChange(Date.now());
-      // Trigger sync
-      setTimeout(() => {
-        setSaveStatus('saved');
+      try {
+        const result = await advancedSaveQueue.forceSync({
+          timeoutMs: 4000,
+          mapId,
+          includeDeadLetter: true,
+        });
+        if (result.drained) {
+          setSaveStatus('saved');
+        }
+      } catch {
+        setSaveStatus('error');
+      } finally {
         setLastStatusChange(Date.now());
-      }, 1500);
+      }
     };
 
     const handleOffline = () => {
@@ -52,12 +61,12 @@ export const SaveStatusIndicator: React.FC<SaveStatusIndicatorProps> = ({ mapId 
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [mapId]);
 
   // Monitor pending saves with improved logic
   useEffect(() => {
     const checkStatus = () => {
-      const queueStatus = advancedSaveQueue.getStatus();
+      const queueStatus = advancedSaveQueue.getStatus(mapId);
       const count = queueStatus.queueLength;
       setPendingCount(count);
       if (queueStatus.failedOperations.length > 0) {
@@ -98,7 +107,7 @@ export const SaveStatusIndicator: React.FC<SaveStatusIndicatorProps> = ({ mapId 
     checkStatus(); // Check immediately
 
     return () => clearInterval(interval);
-  }, [isOnline, saveStatus]);
+  }, [isOnline, mapId, saveStatus]);
 
   // Auto-hide after success with reasonable timeout
   useEffect(() => {

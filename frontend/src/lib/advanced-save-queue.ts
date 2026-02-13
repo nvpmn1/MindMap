@@ -20,13 +20,20 @@ const isUuid = (id: string) => UUID_RE.test(id);
 export interface QueuedOperation {
   id: string;
   mapId: string;
-  type: 'map-update' | 'node-create' | 'node-update' | 'edge-create' | 'edge-delete';
+  type:
+    | 'map-update'
+    | 'node-create'
+    | 'node-update'
+    | 'node-delete'
+    | 'edge-create'
+    | 'edge-delete';
   payload: Record<string, any>;
   retries: number;
   maxRetries: number;
   lastError?: string;
   createdAt: number;
   nextRetryAt?: number;
+  dependencyAttempts?: number;
   localId?: string; // For tracking local node IDs to UUID mapping
 }
 
@@ -37,6 +44,13 @@ export interface SaveStatus {
   pendingByType: Record<string, number>;
   activeRetries: number;
   failedOperations: QueuedOperation[];
+}
+
+export interface ForceSyncResult {
+  drained: boolean;
+  remaining: number;
+  timedOut: boolean;
+  failed: number;
 }
 
 // ─── Queue Manager ──────────────────────────────────────────────────────
@@ -140,6 +154,72 @@ class AdvancedSaveQueue {
   enqueueOperation(
     op: Omit<QueuedOperation, 'id' | 'retries' | 'maxRetries' | 'createdAt'>
   ): string {
+    if (op.type === 'node-delete') {
+      const nodeId = String(op.payload.id || '');
+      if (nodeId) {
+        for (const [existingId, existing] of this.queue) {
+          if (existing.mapId !== op.mapId) continue;
+
+          if (
+            existing.type === 'node-delete' &&
+            String(existing.payload.id || existing.localId || '') === nodeId
+          ) {
+            return existing.id;
+          }
+
+          if (
+            (existing.type === 'node-create' || existing.type === 'node-update') &&
+            String(existing.payload.id || existing.localId || '') === nodeId
+          ) {
+            this.queue.delete(existingId);
+            this.deletePersistedOperation(existingId);
+            continue;
+          }
+
+          if (existing.type === 'edge-create' || existing.type === 'edge-delete') {
+            const source = String(existing.payload.source_id || '');
+            const target = String(existing.payload.target_id || '');
+            if (source === nodeId || target === nodeId) {
+              this.queue.delete(existingId);
+              this.deletePersistedOperation(existingId);
+            }
+          }
+        }
+      }
+    }
+
+    if (op.type === 'node-update') {
+      let nodeId = String(op.payload.id || '');
+      const mappedNodeId = this.resolveNodeId(op.mapId, nodeId);
+      if (mappedNodeId && mappedNodeId !== nodeId) {
+        op.payload.id = mappedNodeId;
+        nodeId = mappedNodeId;
+      }
+      if (nodeId) {
+        for (const [existingId, existing] of this.queue) {
+          if (
+            existing.mapId === op.mapId &&
+            existing.type === 'node-delete' &&
+            String(existing.payload.id || '') === nodeId
+          ) {
+            return existing.id;
+          }
+
+          // If node is not persisted yet, fold update into pending create operation.
+          if (
+            existing.mapId === op.mapId &&
+            existing.type === 'node-create' &&
+            String(existing.localId || existing.payload.id || '') === nodeId
+          ) {
+            existing.payload = { ...existing.payload, ...op.payload };
+            this.queue.set(existingId, existing);
+            this.persistOperation(existing);
+            return existingId;
+          }
+        }
+      }
+    }
+
     // Coalesce map updates: keep only the latest metadata write for each map
     if (op.type === 'map-update') {
       for (const [existingId, existing] of this.queue) {
@@ -171,6 +251,16 @@ class AdvancedSaveQueue {
     if (op.type === 'node-create') {
       const localId = String(op.localId || op.payload.id || '');
       if (localId) {
+        for (const [, existing] of this.queue) {
+          if (
+            existing.mapId === op.mapId &&
+            existing.type === 'node-delete' &&
+            String(existing.payload.id || '') === localId
+          ) {
+            return existing.id;
+          }
+        }
+
         for (const [existingId, existing] of this.queue) {
           const existingLocalId = String(existing.localId || existing.payload.id || '');
           if (
@@ -185,10 +275,69 @@ class AdvancedSaveQueue {
       }
     }
 
+    if (op.type === 'edge-delete') {
+      const edgeId = String(op.payload.id || '');
+      const sourceId = String(op.payload.source_id || '');
+      const targetId = String(op.payload.target_id || '');
+      let removedPendingCreate = false;
+
+      for (const [existingId, existing] of this.queue) {
+        if (existing.mapId !== op.mapId) continue;
+
+        if (existing.type === 'edge-delete') {
+          const existingEdgeId = String(existing.payload.id || '');
+          const existingSource = String(existing.payload.source_id || '');
+          const existingTarget = String(existing.payload.target_id || '');
+          const isSameById = edgeId && existingEdgeId && edgeId === existingEdgeId;
+          const isSameByConnection =
+            sourceId &&
+            targetId &&
+            existingSource === sourceId &&
+            existingTarget === targetId;
+          if (isSameById || isSameByConnection) {
+            return existing.id;
+          }
+        }
+
+        if (existing.type === 'edge-create') {
+          const existingEdgeId = String(existing.payload.id || '');
+          const existingSource = String(existing.payload.source_id || '');
+          const existingTarget = String(existing.payload.target_id || '');
+          const isSameById = edgeId && existingEdgeId && edgeId === existingEdgeId;
+          const isSameByConnection =
+            sourceId &&
+            targetId &&
+            existingSource === sourceId &&
+            existingTarget === targetId;
+          if (isSameById || isSameByConnection) {
+            removedPendingCreate = true;
+            this.queue.delete(existingId);
+            this.deletePersistedOperation(existingId);
+          }
+        }
+      }
+
+      // Edge was created and removed before reaching backend.
+      if (removedPendingCreate && (!edgeId || !isUuid(edgeId))) {
+        return `op_skipped_${Date.now()}`;
+      }
+    }
+
     if (op.type === 'edge-create') {
       const source = String(op.payload.source_id || '');
       const target = String(op.payload.target_id || '');
       if (source && target) {
+        for (const [, existing] of this.queue) {
+          if (
+            existing.mapId === op.mapId &&
+            existing.type === 'node-delete' &&
+            (String(existing.payload.id || '') === source ||
+              String(existing.payload.id || '') === target)
+          ) {
+            return existing.id;
+          }
+        }
+
         const key = `${source}__${target}`;
         const synced = this.syncedEdgeKeys.get(op.mapId);
         if (synced?.has(key)) {
@@ -300,6 +449,7 @@ class AdvancedSaveQueue {
     const mapUpdates = operations.filter((op) => op.type === 'map-update');
     const nodeCreates = operations.filter((op) => op.type === 'node-create');
     const nodeUpdates = operations.filter((op) => op.type === 'node-update');
+    const nodeDeletes = operations.filter((op) => op.type === 'node-delete');
     const edgeCreates = operations.filter((op) => op.type === 'edge-create');
     const edgeDeletes = operations.filter((op) => op.type === 'edge-delete');
 
@@ -310,8 +460,10 @@ class AdvancedSaveQueue {
       if (mapUpdates.length > 0) {
         const lastMapUpdate = mapUpdates[mapUpdates.length - 1];
         try {
-          await this.executeWithRetry(lastMapUpdate);
-          processed.push(lastMapUpdate);
+          const result = await this.executeWithRetry(lastMapUpdate);
+          if (result.success) {
+            processed.push(lastMapUpdate);
+          }
         } catch (err) {
           console.warn(`[SaveQueue] Failed to update map metadata:`, err);
         }
@@ -319,19 +471,25 @@ class AdvancedSaveQueue {
 
       // Step 2: Create new nodes in batch
       if (nodeCreates.length > 0) {
-        for (let i = 0; i < nodeCreates.length; i += this.BATCH_SIZE) {
-          const batch = nodeCreates.slice(i, i + this.BATCH_SIZE);
+        const orderedNodeCreates = this.sortNodeCreateOperations(mapId, nodeCreates);
+        for (let i = 0; i < orderedNodeCreates.length; i += this.BATCH_SIZE) {
+          const batch = orderedNodeCreates.slice(i, i + this.BATCH_SIZE);
           for (const op of batch) {
             try {
               const result = await this.executeWithRetry(op);
-              if (result.success && result.serverId) {
-                // Store ID mapping for future edge creation
-                if (!this.idMappings.has(mapId)) {
-                  this.idMappings.set(mapId, new Map());
+              if (result.success) {
+                if (result.serverId) {
+                  // Store ID mapping for future edge creation
+                  if (!this.idMappings.has(mapId)) {
+                    this.idMappings.set(mapId, new Map());
+                  }
+                  const mappingKey = String(op.localId || op.payload.id || '');
+                  if (mappingKey) {
+                    this.idMappings.get(mapId)!.set(mappingKey, result.serverId);
+                  }
                 }
-                this.idMappings.get(mapId)!.set(op.localId || op.payload.id, result.serverId);
+                processed.push(op);
               }
-              processed.push(op);
             } catch (err) {
               console.warn(`[SaveQueue] Failed to create node ${op.payload.id}:`, err);
             }
@@ -350,8 +508,8 @@ class AdvancedSaveQueue {
         for (let i = 0; i < nodeUpdateMap.size; i += this.BATCH_SIZE) {
           const batch = Array.from(nodeUpdateMap.values()).slice(i, i + this.BATCH_SIZE);
           try {
-            await this.executeBatchNodeUpdate(batch);
-            processed.push(...batch);
+            const processedBatch = await this.executeBatchNodeUpdate(batch);
+            processed.push(...processedBatch);
           } catch (err) {
             console.warn(
               `[SaveQueue] Batch node update failed, falling back to individual updates:`,
@@ -360,8 +518,10 @@ class AdvancedSaveQueue {
             // Fallback: Individual updates
             for (const op of batch) {
               try {
-                await this.executeWithRetry(op);
-                processed.push(op);
+                const result = await this.executeWithRetry(op);
+                if (result.success) {
+                  processed.push(op);
+                }
               } catch (innerErr) {
                 console.warn(
                   `[SaveQueue] Individual node update failed for ${op.payload.id}:`,
@@ -388,7 +548,7 @@ class AdvancedSaveQueue {
         for (const op of edgeCreateMap.values()) {
           const sourceId = String(op.payload.source_id || '');
           const targetId = String(op.payload.target_id || '');
-          const edgeKey = `${sourceId}__${targetId}`;
+          let edgeKey = `${sourceId}__${targetId}`;
           const synced = this.syncedEdgeKeys.get(mapId);
 
           if (synced?.has(edgeKey)) {
@@ -397,12 +557,17 @@ class AdvancedSaveQueue {
           }
 
           try {
-            await this.executeWithRetry(op);
-            if (!this.syncedEdgeKeys.has(mapId)) {
-              this.syncedEdgeKeys.set(mapId, new Set());
+            const result = await this.executeWithRetry(op);
+            if (result.success) {
+              const resolvedSource = String(op.payload.source_id || sourceId);
+              const resolvedTarget = String(op.payload.target_id || targetId);
+              edgeKey = `${resolvedSource}__${resolvedTarget}`;
+              if (!this.syncedEdgeKeys.has(mapId)) {
+                this.syncedEdgeKeys.set(mapId, new Set());
+              }
+              this.syncedEdgeKeys.get(mapId)!.add(edgeKey);
+              processed.push(op);
             }
-            this.syncedEdgeKeys.get(mapId)!.add(edgeKey);
-            processed.push(op);
           } catch (err: any) {
             // 409 conflict usually means edge already exists - safe to ignore
             if (err?.statusCode === 409) {
@@ -423,10 +588,33 @@ class AdvancedSaveQueue {
       if (edgeDeletes.length > 0) {
         for (const op of edgeDeletes) {
           try {
-            await this.executeWithRetry(op);
-            processed.push(op);
+            const result = await this.executeWithRetry(op);
+            if (result.success) {
+              processed.push(op);
+            }
           } catch (err) {
             console.warn(`[SaveQueue] Failed to delete edge:`, err);
+          }
+        }
+      }
+
+      // Step 6: Delete nodes after edge cleanup
+      if (nodeDeletes.length > 0) {
+        const nodeDeleteMap = new Map<string, QueuedOperation>();
+        for (const op of nodeDeletes) {
+          const nodeId = String(op.payload.id || '');
+          if (!nodeId) continue;
+          nodeDeleteMap.set(nodeId, op);
+        }
+
+        for (const op of nodeDeleteMap.values()) {
+          try {
+            const result = await this.executeWithRetry(op);
+            if (result.success) {
+              processed.push(op);
+            }
+          } catch (err) {
+            console.warn(`[SaveQueue] Failed to delete node:`, err);
           }
         }
       }
@@ -459,12 +647,7 @@ class AdvancedSaveQueue {
     if (op.retries >= op.maxRetries) {
       console.warn(`[SaveQueue] Max retries exceeded for operation ${op.id}`);
       op.lastError = op.lastError || 'Max retries exceeded';
-      this.deadLetter.push({ ...op });
-      if (this.deadLetter.length > 100) {
-        this.deadLetter = this.deadLetter.slice(this.deadLetter.length - 100);
-      }
-      this.queue.delete(op.id);
-      this.deletePersistedOperation(op.id);
+      this.moveToDeadLetter(op);
       return { success: false };
     }
 
@@ -480,18 +663,87 @@ class AdvancedSaveQueue {
         case 'map-update':
           console.log('[SaveQueue] Updating map:', op.payload);
           result = await mapsApi.update(op.mapId, op.payload);
+          this.assertApiSuccess(result, op.type);
           break;
 
         case 'node-create':
           console.log('[SaveQueue] Creating node:', op.payload.id);
-          result = await nodesApi.create(op.payload as any);
+          {
+            const payload = { ...op.payload } as Record<string, any>;
+
+            if (payload.parent_id) {
+              const resolvedParentId = this.resolveNodeId(op.mapId, String(payload.parent_id));
+              if (!resolvedParentId) {
+                this.deferOperation(op, 250);
+                return { success: false };
+              }
+              payload.parent_id = resolvedParentId;
+            }
+
+            // Temporary client ids are not valid UUIDs for server-side primary key usage.
+            if (payload.id && !isUuid(String(payload.id))) {
+              delete payload.id;
+            }
+
+            result = await nodesApi.create(payload as any);
+          }
+          this.assertApiSuccess(result, op.type);
+          if (!result?.data?.id || !isUuid(String(result.data.id))) {
+            throw new Error('Node create returned invalid server id');
+          }
           return {
-            success: result?.success !== false,
+            success: true,
             serverId: result?.data?.id,
           };
 
         case 'node-update':
-          result = await nodesApi.update(op.payload.id, op.payload);
+          {
+            const rawNodeId = String(op.payload.id || '');
+            if (!rawNodeId) {
+              return { success: true };
+            }
+
+            const resolvedNodeId = this.resolveNodeId(op.mapId, rawNodeId);
+            if (!resolvedNodeId) {
+              this.deferOperation(op, 250);
+              return { success: false };
+            }
+
+            const payload = { ...op.payload, id: resolvedNodeId } as Record<string, any>;
+
+            if (payload.parent_id !== undefined && payload.parent_id !== null) {
+              const resolvedParentId = this.resolveNodeId(op.mapId, String(payload.parent_id));
+              if (!resolvedParentId) {
+                this.deferOperation(op, 250);
+                return { success: false };
+              }
+              payload.parent_id = resolvedParentId;
+              op.payload.parent_id = resolvedParentId;
+            }
+
+            op.payload.id = resolvedNodeId;
+            result = await nodesApi.update(resolvedNodeId, payload as any);
+          }
+          this.assertApiSuccess(result, op.type);
+          break;
+
+        case 'node-delete':
+          {
+            let nodeId = String(op.payload.id || '');
+            if (!nodeId) {
+              return { success: true };
+            }
+            if (!isUuid(nodeId)) {
+              const resolvedNodeId = this.resolveNodeId(op.mapId, nodeId);
+              if (!resolvedNodeId) {
+                // Node never reached server (or mapping unavailable) - treat as reconciled locally.
+                return { success: true };
+              }
+              nodeId = resolvedNodeId;
+            }
+            result = await nodesApi.delete(nodeId, op.payload.cascade !== false);
+          }
+          this.assertApiSuccess(result, op.type);
           break;
 
         case 'edge-create':
@@ -501,7 +753,33 @@ class AdvancedSaveQueue {
             '->',
             op.payload.target_id
           );
-          result = await nodesApi.createEdge(op.payload as any);
+          {
+            const payload = { ...op.payload } as Record<string, any>;
+            const sourceId = this.resolveNodeId(op.mapId, String(payload.source_id || ''));
+            const targetId = this.resolveNodeId(op.mapId, String(payload.target_id || ''));
+
+            if (!sourceId || !targetId) {
+              this.deferOperation(op, 250);
+              return { success: false };
+            }
+
+            if (sourceId === targetId) {
+              return { success: true };
+            }
+
+            payload.source_id = sourceId;
+            payload.target_id = targetId;
+
+            if (payload.id && !isUuid(String(payload.id))) {
+              delete payload.id;
+            }
+
+            // Persist resolved ids back into operation payload for dedupe/status accounting.
+            op.payload.source_id = sourceId;
+            op.payload.target_id = targetId;
+
+            result = await nodesApi.createEdge(payload as any);
+          }
           if (result?.success === false) {
             const maybeConflict =
               (result as any)?.error?.code === 'CONFLICT' ||
@@ -510,15 +788,41 @@ class AdvancedSaveQueue {
             if (maybeConflict) {
               return { success: true };
             }
+            this.assertApiSuccess(result, op.type);
           }
           return {
-            success: result?.success !== false,
+            success: true,
             serverId: result?.data?.id,
           };
 
         case 'edge-delete':
-          result = await nodesApi.deleteEdge(op.payload.id);
-          break;
+          {
+            const edgeId = String(op.payload.id || '');
+            if (edgeId && isUuid(edgeId)) {
+              result = await nodesApi.deleteEdge(edgeId);
+              this.assertApiSuccess(result, op.type);
+              break;
+            }
+
+            const rawSource = String(op.payload.source_id || '');
+            const rawTarget = String(op.payload.target_id || '');
+            const sourceId = this.resolveNodeId(op.mapId, rawSource) || rawSource;
+            const targetId = this.resolveNodeId(op.mapId, rawTarget) || rawTarget;
+            const mapId = String(op.payload.map_id || op.mapId || '');
+
+            if (mapId && sourceId && targetId && isUuid(sourceId) && isUuid(targetId)) {
+              result = await nodesApi.deleteEdgeByConnection({
+                map_id: mapId,
+                source_id: sourceId,
+                target_id: targetId,
+              });
+              this.assertApiSuccess(result, op.type);
+              break;
+            }
+
+            // Edge could not be resolved to a persistent identifier.
+            return { success: true };
+          }
 
         default:
           throw new Error(`Unknown operation type: ${op.type}`);
@@ -526,6 +830,8 @@ class AdvancedSaveQueue {
 
       // Clear error and remove from queue
       op.lastError = undefined;
+      op.nextRetryAt = undefined;
+      op.dependencyAttempts = 0;
       return { success: true };
     } catch (err: any) {
       // Handle specific errors
@@ -537,25 +843,39 @@ class AdvancedSaveQueue {
         message: errorMessage,
       });
 
-      // 404 = resource not found on batch update - try individual updates instead
-      if (statusCode === 404 && op.type === 'node-update') {
-        console.warn(`[SaveQueue] Got 404 on node update, will fall back to individual updates`);
-        // Don't immediately fail - let the caller know to retry
+      // 409 = conflict - could be duplicate (especially for edges)
+      if (statusCode === 409 && op.type === 'edge-create') {
+        console.log(`[SaveQueue] Conflict (409) for operation ${op.id} - treating as duplicate`);
+        return { success: true };
       }
 
-      // 409 = conflict - could be duplicate (especially for edges)
-      if (statusCode === 409) {
-        console.log(
-          `[SaveQueue] Conflict (409) for operation ${op.id} - likely duplicate, will retry`
-        );
-        // Still retry, as it might be transient
+      if (statusCode === 409 && op.type === 'node-create') {
+        const existingNodeId = String(op.payload.id || '');
+        if (isUuid(existingNodeId)) {
+          return { success: true, serverId: existingNodeId };
+        }
+      }
+
+      // Treat only idempotent delete/update cleanup operations as reconciled on 404.
+      if (statusCode === 404) {
+        if (op.type === 'node-delete' || op.type === 'edge-delete' || op.type === 'map-update') {
+          console.log(
+            `[SaveQueue] Resource not found (404) for ${op.type}; treating as already reconciled`
+          );
+          return { success: true };
+        }
+
+        op.lastError = `Resource not found for ${op.type}: ${errorMessage}`;
+        this.moveToDeadLetter(op);
+        return { success: false };
       }
 
       // 401/403 = auth errors - don't retry, fail immediately
       if (statusCode === 401 || statusCode === 403) {
         console.error('[SaveQueue] Authentication error - user may not be logged in');
         op.lastError = 'Authentication failed: ' + errorMessage;
-        throw err;
+        this.moveToDeadLetter(op);
+        return { success: false };
       }
 
       // Network/server error - retry with backoff
@@ -572,17 +892,52 @@ class AdvancedSaveQueue {
   /**
    * Execute batch node update with better error handling
    */
-  private async executeBatchNodeUpdate(ops: QueuedOperation[]): Promise<void> {
+  private async executeBatchNodeUpdate(ops: QueuedOperation[]): Promise<QueuedOperation[]> {
     const BATCH_TIMEOUT = 15000; // 15 seconds timeout
 
     try {
-      const payload = ops.map((op) => ({
+      const readyOps: QueuedOperation[] = [];
+
+      for (const op of ops) {
+        const rawNodeId = String(op.payload.id || '');
+        const resolvedNodeId = this.resolveNodeId(op.mapId, rawNodeId);
+        if (!resolvedNodeId) {
+          this.deferOperation(op, 250);
+          continue;
+        }
+
+        const resolvedPayload = { ...op.payload, id: resolvedNodeId } as Record<string, any>;
+
+        if (resolvedPayload.parent_id !== undefined && resolvedPayload.parent_id !== null) {
+          const resolvedParentId = this.resolveNodeId(op.mapId, String(resolvedPayload.parent_id));
+          if (!resolvedParentId) {
+            this.deferOperation(op, 250);
+            continue;
+          }
+          resolvedPayload.parent_id = resolvedParentId;
+        }
+
+        op.payload = resolvedPayload;
+        readyOps.push(op);
+      }
+
+      if (readyOps.length === 0) {
+        return [];
+      }
+
+      const payload = readyOps.map((op) => ({
         id: op.payload.id,
+        ...(op.payload.parent_id !== undefined && { parent_id: op.payload.parent_id }),
         position_x: op.payload.position_x,
         position_y: op.payload.position_y,
         ...(op.payload.label && { label: op.payload.label }),
         ...(op.payload.content !== undefined && { content: op.payload.content }),
         ...(op.payload.type && { type: op.payload.type }),
+        ...(op.payload.width !== undefined && { width: op.payload.width }),
+        ...(op.payload.height !== undefined && { height: op.payload.height }),
+        ...(op.payload.collapsed !== undefined && { collapsed: op.payload.collapsed }),
+        ...(op.payload.style !== undefined && { style: op.payload.style }),
+        ...(op.payload.data !== undefined && { data: op.payload.data }),
       }));
 
       console.log('[SaveQueue] Attempting batch node update with', payload.length, 'nodes');
@@ -593,19 +948,63 @@ class AdvancedSaveQueue {
         setTimeout(() => reject(new Error('Batch update timeout')), BATCH_TIMEOUT);
       });
 
-      await Promise.race([batchPromise, timeoutPromise]);
-      console.log('[SaveQueue] Batch node update succeeded');
+      const result = await Promise.race([batchPromise, timeoutPromise]);
+      this.assertApiSuccess(result, 'node-update-batch');
 
-      // Remove from queue only if successful
-      for (const op of ops) {
-        this.queue.delete(op.id);
-        this.deletePersistedOperation(op.id);
+      const failedCount = Number((result as any)?.data?.failed || 0);
+      if (failedCount > 0) {
+        throw new Error(
+          `Batch update returned partial failure (${failedCount}/${payload.length} failed)`
+        );
       }
+
+      console.log('[SaveQueue] Batch node update succeeded');
+      return readyOps;
     } catch (err: any) {
       console.warn('[SaveQueue] Batch update failed, will retry individual updates:', err?.message);
-      // Don't throw - let individual updates handle the retry logic
       throw err;
     }
+  }
+
+  private assertApiSuccess(result: any, operation: string): void {
+    if (result?.success === false) {
+      const message =
+        result?.error?.message || result?.message || `Operation ${operation} returned success=false`;
+      const code = result?.error?.code || 'API_ERROR';
+      const err: any = new Error(message);
+      err.code = code;
+      err.statusCode = code === 'CONFLICT' ? 409 : 400;
+      throw err;
+    }
+  }
+
+  private resolveNodeId(mapId: string, nodeId: string): string | null {
+    if (!nodeId) return null;
+    if (isUuid(nodeId)) return nodeId;
+    return this.idMappings.get(mapId)?.get(nodeId) || null;
+  }
+
+  private deferOperation(op: QueuedOperation, delayMs: number): void {
+    op.dependencyAttempts = (op.dependencyAttempts || 0) + 1;
+    op.lastError = 'Waiting for dependency';
+    if (op.dependencyAttempts >= op.maxRetries * 10) {
+      this.moveToDeadLetter(op);
+      return;
+    }
+    op.nextRetryAt = Date.now() + delayMs;
+    this.persistOperation(op);
+  }
+
+  private moveToDeadLetter(op: QueuedOperation): void {
+    this.deadLetter.push({
+      ...op,
+      nextRetryAt: undefined,
+    });
+    if (this.deadLetter.length > 100) {
+      this.deadLetter = this.deadLetter.slice(this.deadLetter.length - 100);
+    }
+    this.queue.delete(op.id);
+    this.deletePersistedOperation(op.id);
   }
 
   /**
@@ -641,19 +1040,22 @@ class AdvancedSaveQueue {
   /**
    * Get current queue status
    */
-  getStatus(): SaveStatus {
+  getStatus(mapId?: string): SaveStatus {
     const pendingByType: Record<string, number> = {
       'map-update': 0,
       'node-create': 0,
       'node-update': 0,
+      'node-delete': 0,
       'edge-create': 0,
       'edge-delete': 0,
     };
 
     let activeRetries = 0;
     const failedOperations: QueuedOperation[] = [];
+    const queueOps = this.getQueueOperations(mapId);
+    const deadLetterOps = this.getDeadLetterOperations(mapId);
 
-    for (const [, op] of this.queue) {
+    for (const op of queueOps) {
       pendingByType[op.type]++;
 
       if (op.retries > 0) {
@@ -666,11 +1068,11 @@ class AdvancedSaveQueue {
     }
 
     // Include dead-letter failures so UI can surface hard failures without blocking queue forever
-    failedOperations.push(...this.deadLetter);
+    failedOperations.push(...deadLetterOps);
 
     return {
-      queueLength: this.queue.size,
-      isSaving: this.isSaving,
+      queueLength: queueOps.length,
+      isSaving: this.isSaving && (mapId ? queueOps.length > 0 : true),
       lastSuccessfulSave: this.lastSuccessfulSave,
       pendingByType,
       activeRetries,
@@ -685,11 +1087,84 @@ class AdvancedSaveQueue {
     return this.idMappings.get(mapId) || new Map();
   }
 
+  requeueFailedOperations(mapId?: string): number {
+    const toRequeue = this.getDeadLetterOperations(mapId);
+    if (toRequeue.length === 0) return 0;
+
+    this.deadLetter = this.deadLetter.filter((op) => {
+      if (!mapId) return false;
+      return op.mapId !== mapId;
+    });
+
+    for (const op of toRequeue) {
+      const requeued: QueuedOperation = {
+        ...op,
+        id: `op_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+        retries: 0,
+        createdAt: Date.now(),
+        lastError: undefined,
+        nextRetryAt: undefined,
+        dependencyAttempts: 0,
+      };
+      this.queue.set(requeued.id, requeued);
+      this.persistOperation(requeued);
+    }
+
+    void this.processQueue();
+    return toRequeue.length;
+  }
+
+  clearFailedOperations(mapId?: string): number {
+    const before = this.deadLetter.length;
+    this.deadLetter = this.deadLetter.filter((op) => {
+      if (!mapId) return false;
+      return op.mapId !== mapId;
+    });
+    return before - this.deadLetter.length;
+  }
+
   /**
    * Force immediate processing (for Ctrl+S or unload)
    */
-  async forceSync(): Promise<void> {
-    await this.processQueue();
+  async forceSync(options: { timeoutMs?: number; mapId?: string; includeDeadLetter?: boolean } = {}): Promise<ForceSyncResult> {
+    const timeoutMs = options.timeoutMs ?? 8000;
+    const startedAt = Date.now();
+    const mapId = options.mapId;
+
+    if (options.includeDeadLetter) {
+      this.requeueFailedOperations(mapId);
+    }
+
+    while (Date.now() - startedAt < timeoutMs) {
+      if (!this.isSaving) {
+        await this.processQueue();
+      }
+
+      const queueOps = this.getQueueOperations(mapId);
+      if (queueOps.length === 0) {
+        return {
+          drained: true,
+          remaining: 0,
+          timedOut: false,
+          failed: this.getDeadLetterOperations(mapId).length,
+        };
+      }
+
+      const nextRetryAt = queueOps
+        .map((op) => op.nextRetryAt || 0)
+        .filter((ts) => ts > Date.now())
+        .sort((a, b) => a - b)[0];
+
+      const waitMs = nextRetryAt ? Math.min(Math.max(nextRetryAt - Date.now(), 100), 750) : 150;
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+
+    return {
+      drained: this.getQueueOperations(mapId).length === 0,
+      remaining: this.getQueueOperations(mapId).length,
+      timedOut: true,
+      failed: this.getDeadLetterOperations(mapId).length,
+    };
   }
 
   /**
@@ -709,6 +1184,8 @@ class AdvancedSaveQueue {
     }
 
     this.syncedEdgeKeys.delete(mapId);
+    this.idMappings.delete(mapId);
+    this.deadLetter = this.deadLetter.filter((op) => op.mapId !== mapId);
 
     return canceledCount;
   }
@@ -719,12 +1196,77 @@ class AdvancedSaveQueue {
   clear(): void {
     this.queue.clear();
     this.syncedEdgeKeys.clear();
+    this.idMappings.clear();
     this.deadLetter = [];
     if (this.db) {
       const transaction = this.db.transaction([this.storeName], 'readwrite');
       const store = transaction.objectStore(this.storeName);
       store.clear();
     }
+  }
+
+  private getQueueOperations(mapId?: string): QueuedOperation[] {
+    const values = Array.from(this.queue.values());
+    if (!mapId) return values;
+    return values.filter((op) => op.mapId === mapId);
+  }
+
+  private getDeadLetterOperations(mapId?: string): QueuedOperation[] {
+    if (!mapId) return [...this.deadLetter];
+    return this.deadLetter.filter((op) => op.mapId === mapId);
+  }
+
+  private getNodeOperationKey(op: QueuedOperation): string {
+    return String(op.localId || op.payload.id || '');
+  }
+
+  private sortNodeCreateOperations(mapId: string, operations: QueuedOperation[]): QueuedOperation[] {
+    const operationByNodeId = new Map<string, QueuedOperation>();
+    for (const op of operations) {
+      const key = this.getNodeOperationKey(op);
+      if (key) {
+        operationByNodeId.set(key, op);
+      }
+    }
+
+    const depthCache = new Map<string, number>();
+    const activePath = new Set<string>();
+
+    const getDepth = (op: QueuedOperation): number => {
+      const key = this.getNodeOperationKey(op);
+      if (!key) return 0;
+
+      const cached = depthCache.get(key);
+      if (cached !== undefined) {
+        return cached;
+      }
+
+      if (activePath.has(key)) {
+        return 0;
+      }
+
+      activePath.add(key);
+
+      const parentRaw = String(op.payload.parent_id || '');
+      let depth = 0;
+      if (parentRaw) {
+        const mappedParentId = this.resolveNodeId(mapId, parentRaw) || parentRaw;
+        const parentOp = operationByNodeId.get(mappedParentId);
+        depth = parentOp ? getDepth(parentOp) + 1 : 1;
+      }
+
+      activePath.delete(key);
+      depthCache.set(key, depth);
+      return depth;
+    };
+
+    return [...operations].sort((a, b) => {
+      const depthDiff = getDepth(a) - getDepth(b);
+      if (depthDiff !== 0) {
+        return depthDiff;
+      }
+      return a.createdAt - b.createdAt;
+    });
   }
 
   /**

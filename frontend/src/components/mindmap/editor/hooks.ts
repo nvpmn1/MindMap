@@ -22,7 +22,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { mapsApi, nodesApi } from '@/lib/api';
 import { advancedSaveQueue } from '@/lib/advanced-save-queue';
 
-// ─── useEditorState ─────────────────────────────────────────────────────────
+// useEditorState
 
 export function useEditorState() {
   const { mapId } = useParams<{ mapId: string }>();
@@ -120,23 +120,40 @@ export function useEditorState() {
   };
 }
 
-// ─── useNodeOperations ──────────────────────────────────────────────────────
+// useNodeOperations
 
 export function useNodeOperations(
   nodes: PowerNode[],
   edges: PowerEdge[],
   setNodes: React.Dispatch<React.SetStateAction<PowerNode[]>>,
   setEdges: React.Dispatch<React.SetStateAction<PowerEdge[]>>,
-  selectedNodeId: string | null,
+  _selectedNodeId: string | null,
   saveToHistory: () => void,
-  mapId?: string
+  _mapId?: string
 ) {
   const { screenToFlowPosition, getViewport } = useReactFlow();
 
-  const generateId = useCallback(
-    () => `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    []
-  );
+  const generateId = useCallback(() => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.floor(Math.random() * 16);
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }, []);
+
+  const generateEdgeId = useCallback(() => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.floor(Math.random() * 16);
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }, []);
 
   const createNode = useCallback(
     (
@@ -190,7 +207,7 @@ export function useNodeOperations(
 
       // Create edge if has parent
       if (parentId) {
-        const edgeId = `edge_${parentId}_${id}`;
+        const edgeId = generateEdgeId();
         setEdges((prev) => [
           ...prev,
           {
@@ -204,68 +221,6 @@ export function useNodeOperations(
         ]);
       }
 
-      // Save to API if remote map
-      if (mapId && mapId !== 'new' && mapId !== 'local' && !mapId.startsWith('local_')) {
-        nodesApi
-          .create({
-            map_id: mapId,
-            type: type as any,
-            label: newNode.data.label,
-            content: newNode.data.description || '',
-            position_x: nodePosition!.x,
-            position_y: nodePosition!.y,
-          } as any)
-          .then((response: any) => {
-            const created = response?.data;
-            if (!created?.id) return;
-
-            const newId = created.id as string;
-
-            setNodes((prev) =>
-              prev.map((node) => (node.id === id ? { ...node, id: newId } : node))
-            );
-
-            setEdges((prev) =>
-              prev.map((edge) => {
-                const source = edge.source === id ? newId : edge.source;
-                const target = edge.target === id ? newId : edge.target;
-                return source !== edge.source || target !== edge.target
-                  ? { ...edge, source, target }
-                  : edge;
-              })
-            );
-
-            // Save edge to API if parent exists
-            if (parentId) {
-              const isUuid = (tid: string) =>
-                /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tid);
-              const resolvedParentId = parentId;
-              if (isUuid(resolvedParentId)) {
-                nodesApi
-                  .createEdge({
-                    map_id: mapId,
-                    source_id: resolvedParentId,
-                    target_id: newId,
-                  })
-                  .then((edgeRes: any) => {
-                    if (edgeRes?.data?.id) {
-                      setEdges((prev) =>
-                        prev.map((e) =>
-                          e.id === `edge_${parentId}_${id}` ||
-                          e.id === `edge_${resolvedParentId}_${newId}`
-                            ? { ...e, id: edgeRes.data.id }
-                            : e
-                        )
-                      );
-                    }
-                  })
-                  .catch(() => {});
-              }
-            }
-          })
-          .catch(() => {});
-      }
-
       return newNode;
     },
     [
@@ -275,9 +230,9 @@ export function useNodeOperations(
       setEdges,
       saveToHistory,
       generateId,
+      generateEdgeId,
       screenToFlowPosition,
       getViewport,
-      mapId,
     ]
   );
 
@@ -288,29 +243,8 @@ export function useNodeOperations(
           node.id === nodeId ? { ...node, data: { ...node.data, ...data } } : node
         )
       );
-
-      // Persist to API for remote nodes
-      const isUuidId = (id: string) =>
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-
-      if (isUuidId(nodeId) && mapId && mapId !== 'new' && !mapId.startsWith('local')) {
-        // Debounced update - will be handled by the auto-save timer
-        // For immediate label/content changes, update directly
-        if (data.label || data.description !== undefined || data.type) {
-          const updatePayload: any = {};
-          if (data.label) updatePayload.label = data.label;
-          if (data.description !== undefined) updatePayload.content = data.description || '';
-          if (data.type) updatePayload.type = data.type;
-
-          if (Object.keys(updatePayload).length > 0) {
-            nodesApi.update(nodeId, updatePayload).catch(() => {
-              // Will be synced on next save
-            });
-          }
-        }
-      }
     },
-    [setNodes, mapId]
+    [setNodes]
   );
 
   const deleteNode = useCallback(
@@ -328,19 +262,9 @@ export function useNodeOperations(
       setNodes((prev) => prev.filter((n) => !toDelete.has(n.id)));
       setEdges((prev) => prev.filter((e) => !toDelete.has(e.source) && !toDelete.has(e.target)));
 
-      // Delete from API if it's a real UUID (server-side node)
-      const isUuidId = (id: string) =>
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-
-      if (isUuidId(nodeId) && mapId && mapId !== 'new' && !mapId.startsWith('local')) {
-        nodesApi.delete(nodeId, true).catch(() => {
-          // Deletion will be reconciled on next full save
-        });
-      }
-
-      toast.success('Nó removido', { duration: 2500 });
+      toast.success('No removido', { duration: 2500 });
     },
-    [edges, setNodes, setEdges, saveToHistory, mapId]
+    [edges, setNodes, setEdges, saveToHistory]
   );
 
   const duplicateNode = useCallback(
@@ -353,10 +277,10 @@ export function useNodeOperations(
         original.data.type,
         { x: original.position.x + 50, y: original.position.y + 50 },
         null,
-        { ...original.data, label: `${original.data.label} (cópia)` }
+        { ...original.data, label: `${original.data.label} (copia)` }
       );
 
-      toast.success('Nó duplicado', { duration: 2500 });
+      toast.success('No duplicado', { duration: 2500 });
       return newNode;
     },
     [nodes, createNode, saveToHistory]
@@ -367,13 +291,13 @@ export function useNodeOperations(
       const sourceId = connection.source!;
       const targetId = connection.target!;
 
-      // 🚫 Validation 1: Prevent self-loops (connecting node to itself)
+      // Validation 1: Prevent self-loops (connecting node to itself)
       if (sourceId === targetId) {
         toast.error('Um nó não pode se conectar a si mesmo!', { duration: 3000 });
         return;
       }
 
-      // 🚫 Validation 2: Check if nodes exist
+      // Validation 2: Check if nodes exist
       const sourceExists = nodes.some((n) => n.id === sourceId);
       const targetExists = nodes.some((n) => n.id === targetId);
       if (!sourceExists || !targetExists) {
@@ -381,16 +305,20 @@ export function useNodeOperations(
         return;
       }
 
-      // 🚫 Validation 3: Prevent duplicate connections
-      const edgeId = `edge_${sourceId}_${targetId}`;
-      const reversEdgeId = `edge_${targetId}_${sourceId}`;
-      const edgeExists = edges.some((e) => e.id === edgeId || e.id === reversEdgeId);
+      // Validation 3: Prevent duplicate connections (source->target or inverse)
+      const edgeExists = edges.some(
+        (e) =>
+          (e.source === sourceId && e.target === targetId) ||
+          (e.source === targetId && e.target === sourceId)
+      );
       if (edgeExists) {
         toast.error('Já existe uma conexão entre esses nós!', { duration: 3000 });
         return;
       }
 
-      // ✅ All validations passed - create connection
+      const edgeId = generateEdgeId();
+
+      // All validations passed - create connection
       saveToHistory();
       setEdges((prev) => [
         ...prev,
@@ -404,35 +332,9 @@ export function useNodeOperations(
         },
       ]);
 
-      // ✨ Success feedback
-      toast.success('✨ Conexão criada com sucesso!', { duration: 2500 });
-
-      // Persist edge to API if remote map
-      if (mapId && mapId !== 'new' && mapId !== 'local' && !mapId.startsWith('local_')) {
-        // Only save if both node IDs are real UUIDs (not local temp IDs)
-        const isUuid = (id: string) =>
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-        if (isUuid(sourceId) && isUuid(targetId)) {
-          nodesApi
-            .createEdge({
-              map_id: mapId,
-              source_id: sourceId,
-              target_id: targetId,
-            })
-            .then((response: any) => {
-              const created = response?.data;
-              if (created?.id) {
-                // Update local edge with server ID
-                setEdges((prev) =>
-                  prev.map((e) => (e.id === edgeId ? { ...e, id: created.id } : e))
-                );
-              }
-            })
-            .catch((err: any) => {});
-        }
-      }
+      toast.success('Conexão criada com sucesso!', { duration: 2500 });
     },
-    [setEdges, saveToHistory, mapId]
+    [nodes, edges, setEdges, saveToHistory, generateEdgeId]
   );
 
   return {
@@ -445,7 +347,7 @@ export function useNodeOperations(
   };
 }
 
-// ─── useMapPersistence ──────────────────────────────────────────────────────
+// useMapPersistence
 
 export function useMapPersistence(
   mapId: string | undefined,
@@ -460,23 +362,30 @@ export function useMapPersistence(
   setLastSaved: (date: Date | null) => void,
   navigate: (path: string) => void
 ) {
-  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  type EdgeSnapshot = {
+    fingerprint: string;
+    source: string;
+    target: string;
+  };
+
   const deltaSaveTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const isSavingRef = useRef(false);
   const loadedRef = useRef(false);
   const snapshotInitializedRef = useRef(false);
-  const queuedLocalCreatesRef = useRef<Set<string>>(new Set());
+  const lastSuccessfulSaveRef = useRef<number | null>(null);
+  const lastFailureRecoveryRef = useRef(0);
   const lastSnapshotRef = useRef<{
     mapTitle: string;
     mapDescription: string;
     nodes: Map<string, string>;
-    edges: Set<string>;
+    edges: Map<string, EdgeSnapshot>;
   }>({
     mapTitle: '',
     mapDescription: '',
     nodes: new Map(),
-    edges: new Set(),
+    edges: new Map(),
   });
+
   const isRemoteMap = mapId && mapId !== 'new' && mapId !== 'local' && !mapId.startsWith('local_');
   const { workspaces } = useAuthStore();
   const workspaceId = workspaces[0]?.id || '11111111-1111-1111-1111-111111111111';
@@ -486,10 +395,239 @@ export function useMapPersistence(
     []
   );
 
-  // Create default map when loading fails
+  const generateUuid = useCallback(() => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.floor(Math.random() * 16);
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }, []);
+
+  const getBackupKey = useCallback((id: string) => `neuralmap_backup_${id}`, []);
+
+  const stableStringify = useCallback((value: unknown): string => {
+    const normalize = (input: unknown): unknown => {
+      if (Array.isArray(input)) {
+        return input.map((item) => normalize(item));
+      }
+
+      if (input && typeof input === 'object') {
+        const entries = Object.entries(input as Record<string, unknown>)
+          .filter(([, v]) => typeof v !== 'function')
+          .sort(([a], [b]) => a.localeCompare(b));
+
+        const out: Record<string, unknown> = {};
+        for (const [key, val] of entries) {
+          out[key] = normalize(val);
+        }
+        return out;
+      }
+
+      return input;
+    };
+
+    return JSON.stringify(normalize(value));
+  }, []);
+
+  const sanitizeNodeData = useCallback(
+    (data: NeuralNodeData): Record<string, unknown> =>
+      JSON.parse(stableStringify(data)) as Record<string, unknown>,
+    [stableStringify]
+  );
+
+  const nodeFingerprint = useCallback(
+    (node: PowerNode): string =>
+      stableStringify({
+        id: node.id,
+        position: {
+          x: node.position?.x || 0,
+          y: node.position?.y || 0,
+        },
+        data: sanitizeNodeData(node.data),
+      }),
+    [sanitizeNodeData, stableStringify]
+  );
+
+  const edgeFingerprint = useCallback(
+    (edge: PowerEdge): string =>
+      stableStringify({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+      }),
+    [stableStringify]
+  );
+
+  const buildEdgeSnapshot = useCallback(
+    (edge: PowerEdge): EdgeSnapshot => ({
+      fingerprint: edgeFingerprint(edge),
+      source: edge.source,
+      target: edge.target,
+    }),
+    [edgeFingerprint]
+  );
+
+  const normalizeGraphIds = useCallback(
+    (inputNodes: PowerNode[], inputEdges: PowerEdge[]): { nodes: PowerNode[]; edges: PowerEdge[] } => {
+      const nodeIdMap = new Map<string, string>();
+
+      for (const node of inputNodes) {
+        if (!isUuid(node.id)) {
+          nodeIdMap.set(node.id, generateUuid());
+        }
+      }
+
+      const normalizedNodes = inputNodes.map((node) => ({
+        ...node,
+        id: nodeIdMap.get(node.id) || node.id,
+      }));
+
+      const normalizedEdges = inputEdges
+        .map((edge) => {
+          const source = nodeIdMap.get(edge.source) || edge.source;
+          const target = nodeIdMap.get(edge.target) || edge.target;
+          if (!isUuid(source) || !isUuid(target) || source === target) {
+            return null;
+          }
+          return {
+            ...edge,
+            id: isUuid(edge.id) ? edge.id : generateUuid(),
+            source,
+            target,
+          } as PowerEdge;
+        })
+        .filter((edge): edge is PowerEdge => edge !== null);
+
+      return { nodes: normalizedNodes, edges: normalizedEdges };
+    },
+    [generateUuid, isUuid]
+  );
+
+  const seedSnapshot = useCallback(
+    (info: MapInfo | null, nextNodes: PowerNode[], nextEdges: PowerEdge[]) => {
+      const nodeMap = new Map<string, string>();
+      const edgeMap = new Map<string, EdgeSnapshot>();
+
+      for (const node of nextNodes) {
+        nodeMap.set(node.id, nodeFingerprint(node));
+      }
+
+      for (const edge of nextEdges) {
+        edgeMap.set(edge.id, buildEdgeSnapshot(edge));
+      }
+
+      lastSnapshotRef.current = {
+        mapTitle: info?.title || '',
+        mapDescription: info?.description || '',
+        nodes: nodeMap,
+        edges: edgeMap,
+      };
+      snapshotInitializedRef.current = true;
+    },
+    [buildEdgeSnapshot, nodeFingerprint]
+  );
+
+  const persistEmergencyBackup = useCallback(() => {
+    if (!mapId) return;
+
+    try {
+      localStorage.setItem(
+        getBackupKey(mapId),
+        JSON.stringify({
+          mapInfo,
+          nodes,
+          edges,
+          savedAt: new Date().toISOString(),
+        })
+      );
+    } catch {
+      // Best effort only.
+    }
+  }, [mapId, mapInfo, nodes, edges, getBackupKey]);
+
+  const resolveServerIdMappings = useCallback(() => {
+    if (!mapId || !isRemoteMap) return;
+
+    const mapping = advancedSaveQueue.getIdMapping(mapId);
+    if (mapping.size === 0) return;
+
+    setNodes((prev) => {
+      let changed = false;
+      const next = prev.map((node) => {
+        const serverId = mapping.get(node.id);
+        if (serverId && serverId !== node.id) {
+          changed = true;
+          return { ...node, id: serverId };
+        }
+        return node;
+      });
+      return changed ? next : prev;
+    });
+
+    setEdges((prev) => {
+      let changed = false;
+      const next = prev.map((edge) => {
+        const source = mapping.get(edge.source) || edge.source;
+        const target = mapping.get(edge.target) || edge.target;
+        if (source !== edge.source || target !== edge.target) {
+          changed = true;
+          return { ...edge, source, target };
+        }
+        return edge;
+      });
+      return changed ? next : prev;
+    });
+
+    const mappedNodeSnapshot = new Map<string, string>();
+    for (const [nodeId, fingerprint] of lastSnapshotRef.current.nodes) {
+      mappedNodeSnapshot.set(mapping.get(nodeId) || nodeId, fingerprint);
+    }
+
+    const mappedEdgeSnapshot = new Map<string, EdgeSnapshot>();
+    for (const [edgeId, edgeSnap] of lastSnapshotRef.current.edges) {
+      mappedEdgeSnapshot.set(edgeId, {
+        ...edgeSnap,
+        source: mapping.get(edgeSnap.source) || edgeSnap.source,
+        target: mapping.get(edgeSnap.target) || edgeSnap.target,
+      });
+    }
+
+    lastSnapshotRef.current.nodes = mappedNodeSnapshot;
+    lastSnapshotRef.current.edges = mappedEdgeSnapshot;
+  }, [mapId, isRemoteMap, setNodes, setEdges]);
+
+  const restoreEmergencyBackup = useCallback((): boolean => {
+    if (!mapId) return false;
+
+    const backupRaw = localStorage.getItem(getBackupKey(mapId));
+    if (!backupRaw) return false;
+
+    try {
+      const backup = JSON.parse(backupRaw);
+      const backupMapInfo: MapInfo = backup.mapInfo || {
+        id: mapId,
+        title: 'Mapa (backup local)',
+      };
+      const backupNodes: PowerNode[] = Array.isArray(backup.nodes) ? backup.nodes : [];
+      const backupEdges: PowerEdge[] = Array.isArray(backup.edges) ? backup.edges : [];
+      const normalized = normalizeGraphIds(backupNodes, backupEdges);
+
+      setMapInfo(backupMapInfo);
+      setNodes(normalized.nodes);
+      setEdges(normalized.edges);
+      seedSnapshot(backupMapInfo, normalized.nodes, normalized.edges);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [mapId, getBackupKey, normalizeGraphIds, seedSnapshot, setEdges, setMapInfo, setNodes]);
+
   const createDefaultMap = useCallback(() => {
     const centralNode: PowerNode = {
-      id: 'central_1',
+      id: generateUuid(),
       type: 'power',
       position: { x: 0, y: 0 },
       data: {
@@ -501,271 +639,278 @@ export function useMapPersistence(
         priority: 'high',
       },
     };
-    setMapInfo({ id: mapId || 'local', title: 'Novo Mapa Neural' });
+
+    const info: MapInfo = { id: mapId || 'local', title: 'Novo Mapa Neural' };
+    setMapInfo(info);
     setNodes([centralNode]);
     setEdges([]);
-  }, [mapId, setNodes, setEdges, setMapInfo]);
+    seedSnapshot(info, [centralNode], []);
+  }, [generateUuid, mapId, seedSnapshot, setEdges, setMapInfo, setNodes]);
 
-  // Load map from API
+  const withRetry = useCallback(
+    async <T>(operation: () => Promise<T>, attempts = 3, initialDelayMs = 400): Promise<T> => {
+      let currentDelay = initialDelayMs;
+      let lastError: unknown = null;
+
+      for (let attempt = 1; attempt <= attempts; attempt += 1) {
+        try {
+          return await operation();
+        } catch (error) {
+          lastError = error;
+          if (attempt >= attempts) break;
+
+          await new Promise((resolve) => setTimeout(resolve, currentDelay));
+          currentDelay = Math.min(currentDelay * 2, 2500);
+        }
+      }
+
+      throw lastError;
+    },
+    []
+  );
+
   const loadMap = useCallback(async () => {
     if (!mapId || loadedRef.current) return;
+
     loadedRef.current = true;
     setIsLoading(true);
 
     try {
       if (mapId === 'new') {
-        // Create new map via API and redirect to it
-        // mapsApi imported at top
         try {
-          const response = await mapsApi.create({
-            title: 'Novo Mapa Neural',
-            description: 'Meu novo mapa neural colaborativo',
-            workspace_id: workspaceId,
-          });
-          const created = response.data as any;
+          const response = await withRetry(
+            () =>
+              mapsApi.create({
+                title: 'Novo Mapa Neural',
+                description: 'Meu novo mapa neural colaborativo',
+                workspace_id: workspaceId,
+              }),
+            3,
+            600
+          );
+
+          const created = response.data as { id?: string } | undefined;
           if (created?.id) {
             navigate(`/map/${created.id}`);
             return;
           }
         } catch (err) {
           console.error('[LoadMap] Failed to create new map:', err);
-          toast.error('Erro ao criar mapa. Verifique a conexão.', { duration: 4000 });
+          toast.error('Erro ao criar mapa. Verifique sua conexao.', { duration: 4000 });
         }
+
         setIsLoading(false);
         return;
       }
 
-      if (isRemoteMap) {
-        try {
-          // Load map data, nodes, and edges in parallel
-          const [mapResponse, nodesResponse, edgesResponse] = await Promise.all([
-            mapsApi.get(mapId),
-            nodesApi.listByMap(mapId),
-            nodesApi.getEdges(mapId).catch(() => ({ data: [] })),
-          ]);
-
-          if (mapResponse.data) {
-            const mapData = mapResponse.data as any;
-            setMapInfo({
-              id: mapData.id,
-              title: mapData.title,
-              description: mapData.description || '',
-              createdAt: mapData.created_at,
-              updatedAt: mapData.updated_at,
-            });
-          }
-
-          if (nodesResponse.data && Array.isArray(nodesResponse.data)) {
-            const loadedNodes: PowerNode[] = (nodesResponse.data as any[]).map((n: any) => ({
-              id: n.id,
-              type: 'power',
-              position: { x: n.position_x || 0, y: n.position_y || 0 },
-              data: {
-                label: n.label || 'Sem título',
-                type: n.type || 'idea',
-                description: n.content || '',
-                ...DEFAULT_NODE_DATA,
-                ...(typeof n.data === 'object' && n.data !== null ? n.data : {}),
-              },
-            }));
-
-            setNodes(loadedNodes);
-
-            // If no nodes exist yet, create a root node on server
-            if (loadedNodes.length === 0 && mapResponse.data) {
-              const mapData = mapResponse.data as any;
-              try {
-                const created = await nodesApi.create({
-                  map_id: mapId,
-                  type: 'idea',
-                  label: mapData.title || 'Tema Central',
-                  content: '',
-                  position_x: 0,
-                  position_y: 0,
-                });
-                const node = created?.data as any;
-                const centralNode: PowerNode = {
-                  id: node?.id || 'central_1',
-                  type: 'power',
-                  position: { x: 0, y: 0 },
-                  data: {
-                    label: mapData.title || 'Tema Central',
-                    type: 'idea',
-                    description: '',
-                    ...DEFAULT_NODE_DATA,
-                    status: 'active',
-                    priority: 'high',
-                  },
-                };
-                setNodes([centralNode]);
-              } catch {
-                const centralNode: PowerNode = {
-                  id: 'central_1',
-                  type: 'power',
-                  position: { x: 0, y: 0 },
-                  data: {
-                    label: mapData.title || 'Tema Central',
-                    type: 'idea',
-                    description: '',
-                    ...DEFAULT_NODE_DATA,
-                    status: 'active',
-                    priority: 'high',
-                  },
-                };
-                setNodes([centralNode]);
-              }
-            }
-          }
-
-          // Load edges
-          if (edgesResponse.data && Array.isArray(edgesResponse.data)) {
-            const loadedEdges: PowerEdge[] = (edgesResponse.data as any[]).map((e: any) => ({
-              id: e.id,
-              source: e.source_id,
-              target: e.target_id,
-              type: 'power',
-              animated: e.animated ?? true,
-              data: { style: 'neural' as const, ...(e.style || {}) },
-            }));
-            setEdges(loadedEdges);
-          } else {
-            // Try to build edges from parent_id as fallback
-            if (nodesResponse.data && Array.isArray(nodesResponse.data)) {
-              const parentEdges: PowerEdge[] = [];
-              (nodesResponse.data as any[]).forEach((n: any) => {
-                if (n.parent_id) {
-                  parentEdges.push({
-                    id: `edge_${n.parent_id}_${n.id}`,
-                    source: n.parent_id,
-                    target: n.id,
-                    type: 'power',
-                    animated: true,
-                    data: { style: 'neural' as const },
-                  });
-                }
-              });
-              if (parentEdges.length > 0) setEdges(parentEdges);
-            }
-          }
-        } catch (err) {
-          console.error('[LoadMap] API error:', err);
-          toast.error('Erro ao carregar mapa. Verifique sua conexão.', { duration: 4000 });
-          createDefaultMap();
-        }
-      } else {
-        // Local map
+      if (!isRemoteMap) {
         const saved = localStorage.getItem(`neuralmap_${mapId}`);
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
-            setMapInfo(parsed.mapInfo || { id: mapId, title: 'Mapa Local' });
-            setNodes(parsed.nodes || []);
-            setEdges(parsed.edges || []);
+            const info = parsed.mapInfo || { id: mapId, title: 'Mapa Local' };
+            const localNodes = Array.isArray(parsed.nodes) ? parsed.nodes : [];
+            const localEdges = Array.isArray(parsed.edges) ? parsed.edges : [];
+
+            setMapInfo(info);
+            setNodes(localNodes);
+            setEdges(localEdges);
+            seedSnapshot(info, localNodes, localEdges);
           } catch {
             createDefaultMap();
           }
         } else {
           createDefaultMap();
         }
+        return;
+      }
+
+      try {
+        const mapResponse = await withRetry(() => mapsApi.get(mapId, { includeGraph: true }), 3, 500);
+        const mapData = mapResponse.data as any;
+        if (!mapData?.id) {
+          throw new Error('Map payload is missing id');
+        }
+
+        let nodesPayload: any[] | null = Array.isArray(mapData.nodes) ? mapData.nodes : null;
+        let edgesPayload: any[] | null = Array.isArray(mapData.edges) ? mapData.edges : null;
+
+        if (!nodesPayload || !edgesPayload) {
+          const [nodesFallback, edgesFallback] = await Promise.all([
+            !nodesPayload ? withRetry(() => nodesApi.listByMap(mapId), 3, 500) : Promise.resolve(null),
+            !edgesPayload
+              ? withRetry(
+                  async () => {
+                    try {
+                      return await nodesApi.getEdges(mapId);
+                    } catch {
+                      return { success: true, data: [] } as any;
+                    }
+                  },
+                  2,
+                  400
+                )
+              : Promise.resolve(null),
+          ]);
+
+          if (!nodesPayload) {
+            nodesPayload = Array.isArray((nodesFallback as any)?.data) ? ((nodesFallback as any).data as any[]) : [];
+          }
+          if (!edgesPayload) {
+            edgesPayload = Array.isArray((edgesFallback as any)?.data) ? ((edgesFallback as any).data as any[]) : [];
+          }
+        }
+
+        const info: MapInfo = {
+          id: mapData.id,
+          title: mapData.title,
+          description: mapData.description || '',
+          createdAt: mapData.created_at,
+          updatedAt: mapData.updated_at,
+        };
+
+        const loadedNodes: PowerNode[] = Array.isArray(nodesPayload)
+          ? (nodesPayload as any[]).map((n) => ({
+              id: n.id,
+              type: 'power',
+              position: { x: n.position_x || 0, y: n.position_y || 0 },
+              data: {
+                label: n.label || 'Sem titulo',
+                type: n.type || 'idea',
+                description: n.content || '',
+                ...DEFAULT_NODE_DATA,
+                ...(typeof n.data === 'object' && n.data !== null ? n.data : {}),
+              },
+            }))
+          : [];
+
+        let normalizedNodes = loadedNodes;
+        if (loadedNodes.length === 0) {
+          const rootPayload: Record<string, unknown> = {
+            id: generateUuid(),
+            map_id: mapId,
+            type: 'idea',
+            label: mapData.title || 'Tema Central',
+            content: '',
+            position_x: 0,
+            position_y: 0,
+          };
+
+          const createdRoot = await withRetry(() => nodesApi.create(rootPayload as any), 2, 400);
+          const rootNode = createdRoot?.data as any;
+
+          normalizedNodes = [
+            {
+              id: rootNode?.id || String(rootPayload.id),
+              type: 'power',
+              position: { x: 0, y: 0 },
+              data: {
+                label: mapData.title || 'Tema Central',
+                type: 'idea',
+                description: '',
+                ...DEFAULT_NODE_DATA,
+                status: 'active',
+                priority: 'high',
+              },
+            },
+          ];
+        }
+
+        const loadedEdges: PowerEdge[] = Array.isArray(edgesPayload)
+          ? (edgesPayload as any[]).map((e) => ({
+              id: e.id,
+              source: e.source_id,
+              target: e.target_id,
+              type: 'power',
+              animated: e.animated ?? true,
+              data: { style: 'neural' as const, ...(e.style || {}) },
+            }))
+          : [];
+
+        const normalizedEdges =
+          loadedEdges.length > 0
+            ? loadedEdges
+            : normalizedNodes
+                .map((n) => {
+                  const source = (nodesPayload as any[])?.find(
+                    (raw) => raw.id === n.id
+                  )?.parent_id;
+                  if (!source) return null;
+                  return {
+                    id: generateUuid(),
+                    source,
+                    target: n.id,
+                    type: 'power',
+                    animated: true,
+                    data: { style: 'neural' as const },
+                  } as PowerEdge;
+                })
+                .filter((edge): edge is PowerEdge => edge !== null);
+
+        setMapInfo(info);
+        setNodes(normalizedNodes);
+        setEdges(normalizedEdges);
+        seedSnapshot(info, normalizedNodes, normalizedEdges);
+      } catch (err: any) {
+        console.error('[LoadMap] API error:', err);
+
+        if (err?.statusCode === 404) {
+          toast.error('Mapa nao encontrado ou sem acesso.', { duration: 4000 });
+          navigate('/maps');
+          return;
+        }
+
+        if (restoreEmergencyBackup()) {
+          toast.error('Servidor indisponivel. Mapa carregado do backup local.', {
+            duration: 5000,
+          });
+          return;
+        }
+
+        toast.error('Erro ao carregar mapa. Verifique sua conexao.', { duration: 4000 });
+        createDefaultMap();
       }
     } finally {
       setIsLoading(false);
     }
   }, [
-    mapId,
-    isRemoteMap,
-    navigate,
-    setNodes,
-    setEdges,
-    setMapInfo,
-    setIsLoading,
     createDefaultMap,
+    generateUuid,
+    isRemoteMap,
+    mapId,
+    navigate,
+    restoreEmergencyBackup,
+    seedSnapshot,
+    setEdges,
+    setIsLoading,
+    setMapInfo,
+    setNodes,
+    withRetry,
     workspaceId,
-    isUuid,
   ]);
-
-  // Simplified manual save using advanced queue
-  const saveMap = useCallback(async () => {
-    if (!mapId || isSavingRef.current) return;
-    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-
-    isSavingRef.current = true;
-    setIsSaving(true);
-
-    try {
-      if (isRemoteMap) {
-        // Manual save now flushes only delta operations already tracked by autosave.
-        // Queue just pending metadata delta if needed.
-        if (mapInfo?.title) {
-          const nextTitle = mapInfo.title;
-          const nextDescription = mapInfo.description || '';
-          if (
-            nextTitle !== lastSnapshotRef.current.mapTitle ||
-            nextDescription !== lastSnapshotRef.current.mapDescription
-          ) {
-            advancedSaveQueue.enqueueOperation({
-              mapId,
-              type: 'map-update',
-              payload: {
-                title: nextTitle,
-                description: nextDescription,
-              },
-            });
-            lastSnapshotRef.current.mapTitle = nextTitle;
-            lastSnapshotRef.current.mapDescription = nextDescription;
-          }
-        }
-
-        // Force immediate sync
-        await advancedSaveQueue.forceSync();
-        setLastSaved(new Date());
-        toast.success('Mapa salvo com sucesso!', { duration: 2000 });
-      } else {
-        // Local map: save to localStorage
-        localStorage.setItem(
-          `neuralmap_${mapId}`,
-          JSON.stringify({
-            mapInfo,
-            nodes,
-            edges,
-            savedAt: new Date().toISOString(),
-          })
-        );
-        setLastSaved(new Date());
-        toast.success('Mapa salvo localmente!', { duration: 2000 });
-      }
-    } catch (err) {
-      console.error('[Save] Error:', err);
-      toast.error('Erro ao salvar mapa', { duration: 3000 });
-    } finally {
-      setIsSaving(false);
-      isSavingRef.current = false;
-    }
-  }, [isRemoteMap, mapId, mapInfo, nodes, edges, setIsSaving, setLastSaved, isUuid]);
 
   const enqueueDeltaChanges = useCallback(() => {
     if (!mapId || !isRemoteMap) return;
 
-    // First pass seeds snapshot to avoid re-saving a freshly loaded map
+    resolveServerIdMappings();
+
+    const nextNodeSnapshot = new Map<string, string>();
+    const nextEdgeSnapshot = new Map<string, EdgeSnapshot>();
+
+    for (const node of nodes) {
+      nextNodeSnapshot.set(node.id, nodeFingerprint(node));
+    }
+
+    for (const edge of edges) {
+      nextEdgeSnapshot.set(edge.id, buildEdgeSnapshot(edge));
+    }
+
     if (!snapshotInitializedRef.current) {
-      const seededNodes = new Map<string, string>();
-      for (const node of nodes) {
-        seededNodes.set(
-          node.id,
-          `${node.position.x}|${node.position.y}|${node.data.label}|${node.data.description || ''}|${node.data.type}`
-        );
-      }
-      const seededEdges = new Set<string>();
-      for (const edge of edges) {
-        if (isUuid(edge.source) && isUuid(edge.target)) {
-          seededEdges.add(`${edge.source}__${edge.target}`);
-        }
-      }
       lastSnapshotRef.current = {
         mapTitle: mapInfo?.title || '',
         mapDescription: mapInfo?.description || '',
-        nodes: seededNodes,
-        edges: seededEdges,
+        nodes: nextNodeSnapshot,
+        edges: nextEdgeSnapshot,
       };
       snapshotInitializedRef.current = true;
       return;
@@ -786,73 +931,130 @@ export function useMapPersistence(
             description: nextDescription,
           },
         });
+
         lastSnapshotRef.current.mapTitle = nextTitle;
         lastSnapshotRef.current.mapDescription = nextDescription;
       }
     }
 
-    const nextNodeSnapshot = new Map<string, string>();
+    const previousNodes = lastSnapshotRef.current.nodes;
     for (const node of nodes) {
-      const fingerprint = `${node.position.x}|${node.position.y}|${node.data.label}|${node.data.description || ''}|${node.data.type}`;
-      nextNodeSnapshot.set(node.id, fingerprint);
+      const currentFingerprint = nextNodeSnapshot.get(node.id)!;
+      const previousFingerprint = previousNodes.get(node.id);
 
-      if (!isUuid(node.id)) {
-        if (!queuedLocalCreatesRef.current.has(node.id)) {
-          advancedSaveQueue.enqueueOperation({
-            mapId,
-            type: 'node-create',
-            localId: node.id,
-            payload: {
-              id: node.id,
-              map_id: mapId,
-              type: node.data.type || 'idea',
-              label: node.data.label || 'Untitled',
-              content: node.data.description || '',
-              position_x: node.position.x || 0,
-              position_y: node.position.y || 0,
-            },
-          });
-          queuedLocalCreatesRef.current.add(node.id);
-        }
+      const parentEdge = edges.find((edge) => edge.target === node.id);
+      const parentId = parentEdge?.source || null;
+
+      const basePayload: Record<string, unknown> = {
+        map_id: mapId,
+        parent_id: parentId,
+        type: node.data.type || 'idea',
+        label: node.data.label || 'Untitled',
+        content: node.data.description || '',
+        position_x: node.position?.x || 0,
+        position_y: node.position?.y || 0,
+        data: sanitizeNodeData(node.data),
+        collapsed: Boolean(node.data.collapsed),
+      };
+      if (isUuid(node.id)) {
+        basePayload.id = node.id;
+      }
+
+      if (!previousFingerprint) {
+        advancedSaveQueue.enqueueOperation({
+          mapId,
+          type: 'node-create',
+          localId: node.id,
+          payload: basePayload,
+        });
         continue;
       }
 
-      const previous = lastSnapshotRef.current.nodes.get(node.id);
-      if (previous !== fingerprint) {
+      if (previousFingerprint !== currentFingerprint) {
         advancedSaveQueue.enqueueOperation({
           mapId,
           type: 'node-update',
           payload: {
             id: node.id,
-            position_x: node.position.x,
-            position_y: node.position.y,
-            label: node.data.label,
+            parent_id: parentId,
+            type: node.data.type || 'idea',
+            label: node.data.label || 'Untitled',
             content: node.data.description || '',
-            type: node.data.type as any,
+            position_x: node.position?.x || 0,
+            position_y: node.position?.y || 0,
+            data: sanitizeNodeData(node.data),
+            collapsed: Boolean(node.data.collapsed),
           },
         });
       }
     }
 
-    for (const localId of Array.from(queuedLocalCreatesRef.current)) {
-      if (!nextNodeSnapshot.has(localId)) {
-        queuedLocalCreatesRef.current.delete(localId);
+    for (const previousNodeId of previousNodes.keys()) {
+      if (!nextNodeSnapshot.has(previousNodeId)) {
+        advancedSaveQueue.enqueueOperation({
+          mapId,
+          type: 'node-delete',
+          payload: {
+            id: previousNodeId,
+            cascade: true,
+          },
+        });
       }
     }
 
-    const nextEdgeSnapshot = new Set<string>();
+    const previousEdges = lastSnapshotRef.current.edges;
     for (const edge of edges) {
-      if (!isUuid(edge.source) || !isUuid(edge.target)) continue;
-      const edgeKey = `${edge.source}__${edge.target}`;
-      nextEdgeSnapshot.add(edgeKey);
-      if (!lastSnapshotRef.current.edges.has(edgeKey)) {
+      const nextEdge = nextEdgeSnapshot.get(edge.id)!;
+      const previousEdge = previousEdges.get(edge.id);
+
+      const createPayload: Record<string, unknown> = {
+        map_id: mapId,
+        source_id: edge.source,
+        target_id: edge.target,
+      };
+      if (isUuid(edge.id)) {
+        createPayload.id = edge.id;
+      }
+
+      if (!previousEdge) {
         advancedSaveQueue.enqueueOperation({
           mapId,
           type: 'edge-create',
+          payload: createPayload,
+        });
+        continue;
+      }
+
+      if (previousEdge.fingerprint !== nextEdge.fingerprint) {
+        advancedSaveQueue.enqueueOperation({
+          mapId,
+          type: 'edge-delete',
           payload: {
             map_id: mapId,
-            source_id: edge.source,
-            target_id: edge.target,
+            id: edge.id,
+            source_id: previousEdge.source,
+            target_id: previousEdge.target,
+          },
+        });
+
+        advancedSaveQueue.enqueueOperation({
+          mapId,
+          type: 'edge-create',
+          payload: createPayload,
+        });
+      }
+    }
+
+    for (const [previousEdgeId, previousEdge] of previousEdges) {
+      if (!nextEdgeSnapshot.has(previousEdgeId)) {
+        advancedSaveQueue.enqueueOperation({
+          mapId,
+          type: 'edge-delete',
+          payload: {
+            map_id: mapId,
+            id: previousEdgeId,
+            source_id: previousEdge.source,
+            target_id: previousEdge.target,
           },
         });
       }
@@ -860,9 +1062,90 @@ export function useMapPersistence(
 
     lastSnapshotRef.current.nodes = nextNodeSnapshot;
     lastSnapshotRef.current.edges = nextEdgeSnapshot;
-  }, [mapId, isRemoteMap, mapInfo, nodes, edges, isUuid]);
+  }, [
+    buildEdgeSnapshot,
+    edges,
+    isRemoteMap,
+    isUuid,
+    mapId,
+    mapInfo,
+    nodeFingerprint,
+    nodes,
+    resolveServerIdMappings,
+    sanitizeNodeData,
+  ]);
 
-  // Delta autosave (debounced): queue only changed entities, never the full map
+  const saveMap = useCallback(async () => {
+    if (!mapId || isSavingRef.current) return;
+
+    isSavingRef.current = true;
+    setIsSaving(true);
+
+    try {
+      if (isRemoteMap) {
+        enqueueDeltaChanges();
+        persistEmergencyBackup();
+        resolveServerIdMappings();
+
+        const syncResult = await advancedSaveQueue.forceSync({
+          timeoutMs: 12000,
+          mapId,
+          includeDeadLetter: true,
+        });
+        resolveServerIdMappings();
+
+        const status = advancedSaveQueue.getStatus(mapId);
+        if (status.failedOperations.length > 0) {
+          toast.error('Salvamento com falhas. Algumas operacoes precisam de retry.', {
+            duration: 4000,
+          });
+          return;
+        }
+
+        if (syncResult.drained) {
+          advancedSaveQueue.clearFailedOperations(mapId);
+          setLastSaved(new Date());
+          toast.success('Mapa salvo com sucesso!', { duration: 2000 });
+        } else {
+          toast.error(`Sincronizacao parcial: ${syncResult.remaining} operacao(oes) pendentes.`, {
+            duration: 3500,
+          });
+        }
+
+        return;
+      }
+
+      localStorage.setItem(
+        `neuralmap_${mapId}`,
+        JSON.stringify({
+          mapInfo,
+          nodes,
+          edges,
+          savedAt: new Date().toISOString(),
+        })
+      );
+      setLastSaved(new Date());
+      toast.success('Mapa salvo localmente!', { duration: 2000 });
+    } catch (err) {
+      console.error('[Save] Error:', err);
+      toast.error('Erro ao salvar mapa', { duration: 3000 });
+    } finally {
+      setIsSaving(false);
+      isSavingRef.current = false;
+    }
+  }, [
+    edges,
+    enqueueDeltaChanges,
+    isRemoteMap,
+    mapId,
+    mapInfo,
+    nodes,
+    persistEmergencyBackup,
+    resolveServerIdMappings,
+    setIsSaving,
+    setLastSaved,
+  ]);
+
   useEffect(() => {
     if (!mapId || !isRemoteMap) return;
     if (deltaSaveTimerRef.current) clearTimeout(deltaSaveTimerRef.current);
@@ -870,7 +1153,7 @@ export function useMapPersistence(
     deltaSaveTimerRef.current = setTimeout(() => {
       try {
         enqueueDeltaChanges();
-        setLastSaved(new Date());
+        persistEmergencyBackup();
       } catch (err) {
         console.error('[AutoSaveDelta] Error:', err);
       }
@@ -879,86 +1162,127 @@ export function useMapPersistence(
     return () => {
       if (deltaSaveTimerRef.current) clearTimeout(deltaSaveTimerRef.current);
     };
-  }, [nodes, edges, mapInfo, mapId, isRemoteMap, enqueueDeltaChanges, setLastSaved]);
+  }, [edges, enqueueDeltaChanges, isRemoteMap, mapId, mapInfo, nodes, persistEmergencyBackup]);
 
-  // Before unload: force save to prevent data loss when user leaves page
   useEffect(() => {
     if (!isRemoteMap || !mapId) return;
 
-    const handleBeforeUnload = async (e: BeforeUnloadEvent) => {
-      // Check if there are unsaved changes
-      const hasUnsavedNodes = nodes.some((n) => !isUuid(n.id));
-      if (nodes.length > 0 || hasUnsavedNodes) {
-        try {
+    const interval = setInterval(() => {
+      resolveServerIdMappings();
+      const status = advancedSaveQueue.getStatus(mapId);
+      setIsSaving(status.isSaving || status.queueLength > 0);
+
+      if (
+        status.lastSuccessfulSave &&
+        status.lastSuccessfulSave !== lastSuccessfulSaveRef.current
+      ) {
+        lastSuccessfulSaveRef.current = status.lastSuccessfulSave;
+        setLastSaved(new Date(status.lastSuccessfulSave));
+      }
+
+      if (
+        status.failedOperations.length > 0 &&
+        Date.now() - lastFailureRecoveryRef.current > 10000
+      ) {
+        lastFailureRecoveryRef.current = Date.now();
+        const restored = advancedSaveQueue.requeueFailedOperations(mapId);
+        if (restored > 0) {
           enqueueDeltaChanges();
-          console.log('[BeforeUnload] Forcing queue sync before leaving page...');
-          // Force all pending operations to sync immediately
-          await advancedSaveQueue.forceSync();
-        } catch (err) {
-          console.error('[BeforeUnload] Sync failed, but continuing unload:', err);
+          persistEmergencyBackup();
+          void advancedSaveQueue.forceSync({ timeoutMs: 5000, mapId });
         }
-        // Show browser warning
-        e.preventDefault();
-        e.returnValue = 'Salvando suas alterações...';
+      }
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [
+    enqueueDeltaChanges,
+    isRemoteMap,
+    mapId,
+    persistEmergencyBackup,
+    resolveServerIdMappings,
+    setIsSaving,
+    setLastSaved,
+  ]);
+
+  useEffect(() => {
+    if (!isRemoteMap || !mapId) return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      try {
+        enqueueDeltaChanges();
+        persistEmergencyBackup();
+        void advancedSaveQueue.forceSync({ timeoutMs: 1200, mapId });
+
+        const status = advancedSaveQueue.getStatus(mapId);
+        if (status.queueLength > 0) {
+          event.preventDefault();
+          event.returnValue = '';
+        }
+      } catch {
+        event.preventDefault();
+        event.returnValue = '';
       }
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isRemoteMap, mapId, nodes, isUuid, enqueueDeltaChanges]);
+    const handlePageHide = () => {
+      enqueueDeltaChanges();
+      persistEmergencyBackup();
+      void advancedSaveQueue.forceSync({ timeoutMs: 1200, mapId });
+    };
 
-  // On visibility change: sync queue when user returns to tab (background tab sync)
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handlePageHide);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handlePageHide);
+    };
+  }, [enqueueDeltaChanges, isRemoteMap, mapId, persistEmergencyBackup]);
+
   useEffect(() => {
     if (!isRemoteMap || !mapId) return;
 
-    const handleVisibilityChange = async () => {
-      // When page becomes visible (user switches back to tab)
-      if (!document.hidden) {
-        try {
-          enqueueDeltaChanges();
-          console.log('[VisibilityChange] Tab regained focus, syncing queue...');
-          // Sync any pending operations while tab was in background
-          await advancedSaveQueue.forceSync();
-        } catch (err) {
-          console.error('[VisibilityChange] Sync failed:', err);
-        }
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        persistEmergencyBackup();
+        return;
       }
+
+      enqueueDeltaChanges();
+      resolveServerIdMappings();
+      void advancedSaveQueue.forceSync({ timeoutMs: 4000, mapId });
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [isRemoteMap, mapId, enqueueDeltaChanges]);
+  }, [enqueueDeltaChanges, isRemoteMap, mapId, persistEmergencyBackup, resolveServerIdMappings]);
 
-  // Reset internal state when mapId changes (before load)
   useEffect(() => {
-    loadedRef.current = false; // Reset flag when mapId changes
-    isSavingRef.current = false; // CRITICAL: Reset save flag to prevent hang
+    loadedRef.current = false;
+    isSavingRef.current = false;
     snapshotInitializedRef.current = false;
-    queuedLocalCreatesRef.current.clear();
+    lastSuccessfulSaveRef.current = null;
+    lastFailureRecoveryRef.current = 0;
     lastSnapshotRef.current = {
       mapTitle: '',
       mapDescription: '',
       nodes: new Map(),
-      edges: new Set(),
+      edges: new Map(),
     };
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
+
     if (deltaSaveTimerRef.current) {
       clearTimeout(deltaSaveTimerRef.current);
     }
   }, [mapId]);
 
-  // Initial load
   useEffect(() => {
     loadedRef.current = false;
     loadMap();
-  }, [mapId, loadMap]); // Add mapId to dependencies!
+  }, [mapId, loadMap]);
 
   return { saveMap, loadMap, isRemoteMap };
 }
-
-// ─── useKeyboardShortcuts ───────────────────────────────────────────────────
 
 export function useEditorKeyboard(
   createNode: (
@@ -1079,7 +1403,7 @@ export function useEditorKeyboard(
   ]);
 }
 
-// ─── useMapAnalytics ────────────────────────────────────────────────────────
+// useMapAnalytics
 
 export function useMapAnalytics(nodes: PowerNode[], edges: PowerEdge[]): MapAnalytics {
   return useMemo(() => {

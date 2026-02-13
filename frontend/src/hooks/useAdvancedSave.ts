@@ -13,7 +13,6 @@ import {
   type SaveStatus,
   type QueuedOperation,
 } from '@/lib/advanced-save-queue';
-import { mapsApi, nodesApi } from '@/lib/api';
 import type { PowerNode, PowerEdge, MapInfo } from '@/components/mindmap/editor/types';
 
 interface UseAdvancedSaveOptions {
@@ -23,7 +22,7 @@ interface UseAdvancedSaveOptions {
 
 export function useAdvancedSave(options: UseAdvancedSaveOptions) {
   const { mapId, onSaveStatusChange } = options;
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>(advancedSaveQueue.getStatus());
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>(advancedSaveQueue.getStatus(mapId));
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const statusCheckIntervalRef = useRef<NodeJS.Timeout>();
   const isRemoteMap = mapId && mapId !== 'new' && mapId !== 'local' && !mapId.startsWith('local_');
@@ -187,8 +186,8 @@ export function useAdvancedSave(options: UseAdvancedSaveOptions) {
    * Force immediate sync (for Ctrl+S, page unload, etc)
    */
   const forceSyncNow = useCallback(async () => {
-    await advancedSaveQueue.forceSync();
-    const status = advancedSaveQueue.getStatus();
+    await advancedSaveQueue.forceSync({ mapId, includeDeadLetter: true });
+    const status = advancedSaveQueue.getStatus(mapId);
     setSaveStatus(status);
     onSaveStatusChange?.(status);
 
@@ -196,7 +195,7 @@ export function useAdvancedSave(options: UseAdvancedSaveOptions) {
       setLastSaved(new Date());
       toast.success('Todos os dados sincronizados!', { duration: 2000 });
     }
-  }, [onSaveStatusChange]);
+  }, [mapId, onSaveStatusChange]);
 
   /**
    * Get ID mapping (for resolving local IDs to server IDs)
@@ -217,13 +216,13 @@ export function useAdvancedSave(options: UseAdvancedSaveOptions) {
 
     // Poll status every 500ms
     statusCheckIntervalRef.current = setInterval(() => {
-      const status = advancedSaveQueue.getStatus();
-      setSaveStatus(status);
-      onSaveStatusChange?.(status);
+      const scopedStatus = advancedSaveQueue.getStatus(mapId);
+      setSaveStatus(scopedStatus);
+      onSaveStatusChange?.(scopedStatus);
 
       // Update lastSaved timestamp
-      if (status.lastSuccessfulSave) {
-        setLastSaved(new Date(status.lastSuccessfulSave));
+      if (scopedStatus.lastSuccessfulSave) {
+        setLastSaved(new Date(scopedStatus.lastSuccessfulSave));
       }
     }, 500);
 
@@ -232,7 +231,7 @@ export function useAdvancedSave(options: UseAdvancedSaveOptions) {
         clearInterval(statusCheckIntervalRef.current);
       }
     };
-  }, [onSaveStatusChange]);
+  }, [mapId, onSaveStatusChange]);
 
   return {
     // Queue operations

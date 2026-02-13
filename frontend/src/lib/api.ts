@@ -336,7 +336,12 @@ export const mapsApi = {
     return api.get(`/api/maps?${searchParams}`, { useCache: false });
   },
 
-  get: (mapId: string) => api.get(`/api/maps/${mapId}`, { useCache: false }),
+  get: (mapId: string, options?: { includeGraph?: boolean }) => {
+    const params = new URLSearchParams();
+    if (options?.includeGraph) params.set('include_graph', 'true');
+    const query = params.toString();
+    return api.get(`/api/maps/${mapId}${query ? `?${query}` : ''}`, { useCache: false });
+  },
 
   create: (data: { workspace_id: string; title: string; description?: string }) =>
     api.post('/api/maps', data),
@@ -357,6 +362,7 @@ export const nodesApi = {
   get: (nodeId: string) => api.get(`/api/nodes/${nodeId}`),
 
   create: (data: {
+    id?: string;
     map_id: string;
     parent_id?: string | null;
     type?: string;
@@ -364,6 +370,11 @@ export const nodesApi = {
     content?: string;
     position_x?: number;
     position_y?: number;
+    width?: number | null;
+    height?: number | null;
+    style?: Record<string, unknown>;
+    data?: Record<string, unknown>;
+    collapsed?: boolean;
   }) => api.post('/api/nodes', data),
 
   update: (
@@ -383,9 +394,17 @@ export const nodesApi = {
   batchUpdate: (
     nodes: Array<{
       id: string;
+      parent_id?: string | null;
+      type?: string;
+      label?: string;
+      content?: string | null;
       position_x?: number;
       position_y?: number;
+      width?: number | null;
+      height?: number | null;
       collapsed?: boolean;
+      style?: Record<string, unknown>;
+      data?: Record<string, unknown>;
     }>
   ) => api.patch('/api/nodes/batch', { nodes }),
 
@@ -394,10 +413,27 @@ export const nodesApi = {
   // Edges
   getEdges: (mapId: string) => api.get(`/api/nodes/edges/map/${mapId}`, { useCache: false }),
 
-  createEdge: (data: { map_id: string; source_id: string; target_id: string; type?: string }) =>
-    api.post('/api/nodes/edges', data),
+  createEdge: (data: {
+    id?: string;
+    map_id: string;
+    source_id: string;
+    target_id: string;
+    type?: string;
+    label?: string | null;
+    style?: Record<string, unknown>;
+    animated?: boolean;
+  }) => api.post('/api/nodes/edges', data),
 
   deleteEdge: (edgeId: string) => api.delete(`/api/nodes/edges/${edgeId}`),
+
+  deleteEdgeByConnection: (data: { map_id: string; source_id: string; target_id: string }) => {
+    const params = new URLSearchParams({
+      map_id: data.map_id,
+      source_id: data.source_id,
+      target_id: data.target_id,
+    });
+    return api.delete(`/api/nodes/edges?${params.toString()}`);
+  },
 
   // Comments
   getComments: (nodeId: string) => api.get(`/api/nodes/${nodeId}/comments`),

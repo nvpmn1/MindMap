@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '@/stores/authStore';
-import { mapsApi } from '@/lib/api';
 import { robustMapsApi } from '@/lib/robustMapsApi';
+import { mapPersistence } from '@/lib/mapPersistence';
 import { formatRelativeTime } from '@/lib/utils';
 import { MapCardCompact } from '@/components/MapCardCompact';
 import {
@@ -53,7 +53,6 @@ export function DashboardPage() {
       try {
         setIsLoading(true);
         const workspaceId = workspaces[0]?.id;
-        console.log('📍 Loading maps for workspace:', workspaceId);
 
         if (workspaceId) {
           try {
@@ -63,9 +62,7 @@ export function DashboardPage() {
               limit: 50,
               offset: 0,
             });
-            console.log('📡 API Response:', response);
             const data = (response.data as any[]) || [];
-            console.log('📊 Parsed maps data:', data);
             const normalized = data.map((map) => ({
               id: map.id,
               title: map.title,
@@ -74,20 +71,26 @@ export function DashboardPage() {
               updated_at: map.updated_at || map.created_at || new Date().toISOString(),
               nodes_count: map._count?.count || map.nodes_count || 0,
             })) as MapItem[];
-            console.log('✅ Normalized maps:', normalized);
             setMaps(normalized);
             setIsLoading(false);
             return;
           } catch (error) {
-            console.error('❌ Error loading maps from API:', error);
+            console.error('Error loading maps from API:', error);
             // fallback below
           }
         }
 
-        // Fallback: load from localStorage
-        const stored = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
-        console.log('💾 Fallback maps from localStorage:', stored);
-        setMaps(stored);
+        // Fallback: load from local cache
+        const cached = mapPersistence.getCachedMaps();
+        const normalized = cached.map((map) => ({
+          id: map.id,
+          title: map.title,
+          description: map.description || null,
+          created_at: map.created_at || map.updated_at || new Date().toISOString(),
+          updated_at: map.updated_at || map.created_at || new Date().toISOString(),
+          nodes_count: (map as any)._count?.count || (map as any).nodes_count || 0,
+        })) as MapItem[];
+        setMaps(normalized);
         setIsLoading(false);
       } catch (error) {
         console.error('Critical error loading maps:', error);
@@ -140,7 +143,7 @@ export function DashboardPage() {
 
     try {
       // Use backend API to create map - ensures proper database persistence
-      const response = await mapsApi.create({
+      const response = await robustMapsApi.create({
         workspace_id: workspaceId,
         title: 'Novo Mapa Mental',
         description: '',
@@ -152,7 +155,6 @@ export function DashboardPage() {
         return;
       }
 
-      console.log('✅ Map created:', newMap);
       toast.success('Mapa criado com sucesso!', { duration: 3500 });
 
       // Reload maps list so new map appears
@@ -174,8 +176,16 @@ export function DashboardPage() {
         setMaps(normalized);
       } catch (error) {
         console.warn('Failed to reload maps list:', error);
-        const stored = JSON.parse(localStorage.getItem('mindmap_maps') || '[]');
-        setMaps(stored);
+        const cached = mapPersistence.getCachedMaps();
+        const normalized = cached.map((map) => ({
+          id: map.id,
+          title: map.title,
+          description: map.description || null,
+          created_at: map.created_at || map.updated_at || new Date().toISOString(),
+          updated_at: map.updated_at || map.created_at || new Date().toISOString(),
+          nodes_count: (map as any)._count?.count || (map as any).nodes_count || 0,
+        })) as MapItem[];
+        setMaps(normalized);
       }
 
       // Navigate to new map

@@ -1,16 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import {
-  authenticate,
-  requireWorkspaceMember,
-  requireWorkspaceEditor,
-  asyncHandler,
-} from '../middleware';
+import { authenticate, asyncHandler } from '../middleware';
 import { ValidationError, NotFoundError } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { env } from '../utils/env';
 import { supabaseAdmin } from '../services/supabase';
-import { Tables, Insertable, Updatable } from '../types/database';
+import { Updatable } from '../types/database';
 
 const router = Router();
 
@@ -38,8 +33,8 @@ const listMapsQuerySchema = z.object({
     .transform((v) => v === 'true')
     .optional(),
   search: z.string().optional(),
-  limit: z.string().transform(Number).pipe(z.number().min(1).max(100)).optional().default('20'),
-  offset: z.string().transform(Number).pipe(z.number().min(0)).optional().default('0'),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+  offset: z.coerce.number().int().min(0).optional().default(0),
 });
 
 /**
@@ -58,8 +53,8 @@ router.get(
     const { workspace_id, is_template, search, limit, offset } = parsed.data;
 
     const buildBaseQuery = () =>
-      req
-        .supabase.from('maps')
+      req.supabase
+        .from('maps')
         .select(
           `
           *
@@ -85,19 +80,7 @@ router.get(
       query = query.eq('workspace_id', workspace_id);
     }
 
-    let { data: maps, error, count } = await query;
-
-    if (error && error.message?.includes('maps.workspace_id')) {
-      logger.warn(
-        { error: error.message },
-        'Workspace column missing; retrying without workspace filter'
-      );
-      const retryQuery = applyCommonFilters(buildBaseQuery());
-      const retry = await retryQuery;
-      maps = retry.data;
-      error = retry.error;
-      count = retry.count;
-    }
+    const { data: maps, error, count } = await query;
 
     if (error) {
       logger.error({ error: error.message }, 'Failed to fetch maps');
@@ -126,26 +109,41 @@ router.get(
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
     const { mapId } = req.params;
+    const includeGraphParam = req.query.include_graph;
+    const includeGraph =
+      includeGraphParam === 'true' ||
+      includeGraphParam === '1' ||
+      (Array.isArray(includeGraphParam) &&
+        includeGraphParam.some((v) => v === 'true' || v === '1'));
 
     // Fetch map with related data
-    const { data: map, error } = await req
-      .supabase.from('maps')
-      .select(
-        `
-        *
-      `
-      )
-      .eq('id', mapId)
-      .single();
+    const mapQuery = req.supabase
+      .from('maps')
+      .select(includeGraph ? '*,nodes(*),edges(*)' : '*') as any;
+
+    const { data: map, error } = await mapQuery.eq('id', mapId).single();
 
     if (error || !map) {
       logger.warn({ mapId, error: error?.message }, 'Map not found');
       throw new NotFoundError(`Map not found: ${mapId}`);
     }
 
+    if (includeGraph && map) {
+      if (Array.isArray((map as any).nodes)) {
+        (map as any).nodes.sort((a: any, b: any) => {
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        });
+      }
+      if (Array.isArray((map as any).edges)) {
+        (map as any).edges.sort((a: any, b: any) => {
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        });
+      }
+    }
+
     // Log activity
     const mapIdStr = Array.isArray(mapId) ? mapId[0] : mapId;
-    const activityWorkspaceId = (map)?.workspace_id || env.DEFAULT_WORKSPACE_ID;
+    const activityWorkspaceId = map?.workspace_id || env.DEFAULT_WORKSPACE_ID;
     await logActivity(req.user.id, activityWorkspaceId, mapIdStr, 'map_viewed', 'Viewed map');
 
     res.json({
@@ -178,8 +176,8 @@ router.post(
     };
 
     // Create map using RLS-enabled client
-    let { data: map, error } = await req
-      .supabase.from('maps')
+    const { data: map, error } = await req.supabase
+      .from('maps')
       .insert(mapData)
       .select(
         `
@@ -188,28 +186,13 @@ router.post(
       )
       .single();
 
-    if (error && error.message?.includes('maps.workspace_id')) {
-      const { workspace_id: _workspaceId, ...fallbackData } = mapData as any;
-      const retry = await req
-        .supabase.from('maps')
-        .insert(fallbackData)
-        .select(
-          `
-          *
-        `
-        )
-        .single();
-      map = retry.data;
-      error = retry.error;
-    }
-
     if (error) {
       logger.error({ error: error.message }, 'Failed to create map');
       throw new Error('Failed to create map');
     }
 
     // Create root node automatically
-    await req.supabase.from('nodes').insert({
+    const { error: rootNodeError } = await req.supabase.from('nodes').insert({
       map_id: map.id,
       type: 'idea',
       label: map.title,
@@ -218,8 +201,17 @@ router.post(
       created_by: req.user.id,
     });
 
+    if (rootNodeError) {
+      logger.error(
+        { mapId: map.id, error: rootNodeError.message },
+        'Map created but failed to create root node'
+      );
+      await req.supabase.from('maps').delete().eq('id', map.id);
+      throw new Error('Failed to initialize map root node');
+    }
+
     // Log activity
-    const activityWorkspaceId = (map)?.workspace_id || env.DEFAULT_WORKSPACE_ID;
+    const activityWorkspaceId = map?.workspace_id || env.DEFAULT_WORKSPACE_ID;
     await logActivity(
       req.user.id,
       activityWorkspaceId,
@@ -257,8 +249,8 @@ router.patch(
       updated_at: new Date().toISOString(),
     };
 
-    const { data: map, error } = await req
-      .supabase.from('maps')
+    const { data: map, error } = await req.supabase
+      .from('maps')
       .update(updateData)
       .eq('id', mapId)
       .select(
@@ -273,7 +265,7 @@ router.patch(
     }
 
     // Log activity
-    const activityWorkspaceId = (map)?.workspace_id || env.DEFAULT_WORKSPACE_ID;
+    const activityWorkspaceId = map?.workspace_id || env.DEFAULT_WORKSPACE_ID;
     await logActivity(
       req.user.id,
       activityWorkspaceId,
@@ -302,8 +294,8 @@ router.delete(
     const { mapId } = req.params;
 
     // Get map for activity log
-    const { data: map } = await req
-      .supabase.from('maps')
+    const { data: map } = await req.supabase
+      .from('maps')
       .select('title, workspace_id')
       .eq('id', mapId)
       .single();
@@ -351,8 +343,8 @@ router.post(
     const { title } = req.body;
 
     // Get original map with nodes and edges
-    const { data: original, error: fetchError } = await req
-      .supabase.from('maps')
+    const { data: original, error: fetchError } = await req.supabase
+      .from('maps')
       .select(
         `
         *,
@@ -368,8 +360,8 @@ router.post(
     }
 
     // Create new map
-    const { data: newMap, error: createError } = await req
-      .supabase.from('maps')
+    const { data: newMap, error: createError } = await req.supabase
+      .from('maps')
       .insert({
         workspace_id: original.workspace_id,
         title: title || `${original.title} (Copy)`,
@@ -385,17 +377,20 @@ router.post(
       throw new Error('Failed to create map copy');
     }
 
-    // Create node ID mapping for edges
-    const nodeIdMap = new Map<string, string>();
+    try {
+      // Create node ID mapping for edges
+      const nodeIdMap = new Map<string, string>();
+      const originalNodes = Array.isArray((original as any).nodes) ? (original as any).nodes : [];
+      const originalEdges = Array.isArray((original as any).edges) ? (original as any).edges : [];
 
-    // Copy nodes
-    if (original.nodes && original.nodes.length > 0) {
-      const newNodes = original.nodes.map((node: any) => {
-        const newNodeId = crypto.randomUUID();
-        nodeIdMap.set(node.id, newNodeId);
+      for (const node of originalNodes) {
+        nodeIdMap.set(node.id, crypto.randomUUID());
+      }
 
-        return {
-          id: newNodeId,
+      // Copy nodes
+      if (originalNodes.length > 0) {
+        const newNodes = originalNodes.map((node: any) => ({
+          id: nodeIdMap.get(node.id)!,
           map_id: newMap.id,
           parent_id: node.parent_id ? nodeIdMap.get(node.parent_id) || null : null,
           type: node.type,
@@ -409,41 +404,47 @@ router.post(
           data: node.data,
           collapsed: node.collapsed,
           created_by: req.user.id,
-        };
-      });
+        }));
 
-      // Update parent_ids with new IDs
-      for (const node of newNodes) {
-        const originalNode = original.nodes.find((n: any) => nodeIdMap.get(n.id) === node.id);
-        if (originalNode?.parent_id) {
-          node.parent_id = nodeIdMap.get(originalNode.parent_id) || null;
+        const { error: nodeInsertError } = await req.supabase.from('nodes').insert(newNodes);
+        if (nodeInsertError) {
+          throw new Error(`Failed to duplicate nodes: ${nodeInsertError.message}`);
         }
       }
 
-      await req.supabase.from('nodes').insert(newNodes);
-    }
+      // Copy edges
+      if (originalEdges.length > 0) {
+        const newEdges = originalEdges
+          .map((edge: any) => ({
+            id: crypto.randomUUID(),
+            map_id: newMap.id,
+            source_id: nodeIdMap.get(edge.source_id),
+            target_id: nodeIdMap.get(edge.target_id),
+            type: edge.type,
+            label: edge.label,
+            style: edge.style,
+            animated: edge.animated,
+          }))
+          .filter((e: any) => e.source_id && e.target_id);
 
-    // Copy edges
-    if (original.edges && original.edges.length > 0) {
-      const newEdges = original.edges
-        .map((edge: any) => ({
-          map_id: newMap.id,
-          source_id: nodeIdMap.get(edge.source_id),
-          target_id: nodeIdMap.get(edge.target_id),
-          type: edge.type,
-          label: edge.label,
-          style: edge.style,
-          animated: edge.animated,
-        }))
-        .filter((e: any) => e.source_id && e.target_id);
-
-      if (newEdges.length > 0) {
-        await req.supabase.from('edges').insert(newEdges);
+        if (newEdges.length > 0) {
+          const { error: edgeInsertError } = await req.supabase.from('edges').insert(newEdges);
+          if (edgeInsertError) {
+            throw new Error(`Failed to duplicate edges: ${edgeInsertError.message}`);
+          }
+        }
       }
+    } catch (copyError: any) {
+      logger.error(
+        { mapId, newMapId: newMap.id, error: copyError?.message || copyError },
+        'Map duplication failed, rolling back duplicated map'
+      );
+      await req.supabase.from('maps').delete().eq('id', newMap.id);
+      throw copyError;
     }
 
     // Log activity
-    const activityWorkspaceId = (newMap)?.workspace_id || env.DEFAULT_WORKSPACE_ID;
+    const activityWorkspaceId = newMap?.workspace_id || env.DEFAULT_WORKSPACE_ID;
     await logActivity(
       req.user.id,
       activityWorkspaceId,

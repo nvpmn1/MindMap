@@ -2,6 +2,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/stores/authStore';
 import { mapsApi, nodesApi } from '@/lib/api';
+import { mapPersistence } from '@/lib/mapPersistence';
 import { overlayManager } from '@/lib/overlay-manager';
 import {
   Home,
@@ -99,12 +100,12 @@ export function Header() {
             });
             maps = Array.isArray(response.data) ? response.data : [];
           } else {
-            maps = JSON.parse(localStorage.getItem('mindmap_maps') || '[]') as any[];
+            maps = mapPersistence.getCachedMaps() as any[];
           }
         } catch (error) {
           console.warn('Error fetching maps, trying localStorage fallback:', error);
           try {
-            maps = JSON.parse(localStorage.getItem('mindmap_maps') || '[]') as any[];
+            maps = mapPersistence.getCachedMaps() as any[];
           } catch {
             maps = [];
           }
