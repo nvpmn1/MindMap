@@ -324,9 +324,95 @@ export class NeuralAIAgent {
     return content.some((block) => block?.type === 'tool_use');
   }
 
+  private extractToolCallsFromAssistantContent(content: ContentBlock[] | undefined): ToolUseBlock[] {
+    if (!Array.isArray(content) || content.length === 0) {
+      return [];
+    }
+
+    const seenToolIds = new Set<string>();
+    const toolCalls: ToolUseBlock[] = [];
+
+    for (const block of content) {
+      if (
+        block?.type !== 'tool_use' ||
+        typeof block.id !== 'string' ||
+        block.id.trim().length === 0 ||
+        typeof block.name !== 'string'
+      ) {
+        continue;
+      }
+
+      if (seenToolIds.has(block.id)) {
+        continue;
+      }
+      seenToolIds.add(block.id);
+
+      toolCalls.push({
+        type: 'tool_use',
+        id: block.id,
+        name: block.name,
+        input:
+          block.input && typeof block.input === 'object' && !Array.isArray(block.input)
+            ? block.input
+            : {},
+      });
+    }
+
+    return toolCalls;
+  }
+
+  private getCanonicalToolCalls(
+    toolCalls: ToolUseBlock[],
+    assistantContent: ContentBlock[] | undefined
+  ): ToolUseBlock[] {
+    const assistantToolCalls = this.extractToolCallsFromAssistantContent(assistantContent);
+    if (assistantToolCalls.length > 0) {
+      return assistantToolCalls;
+    }
+
+    const deduped: ToolUseBlock[] = [];
+    const seenToolIds = new Set<string>();
+    for (const toolCall of toolCalls) {
+      if (!toolCall?.id || seenToolIds.has(toolCall.id)) {
+        continue;
+      }
+      seenToolIds.add(toolCall.id);
+      deduped.push(toolCall);
+    }
+
+    return deduped;
+  }
+
+  private alignResultsToToolCalls(
+    canonicalToolCalls: ToolUseBlock[],
+    originalToolCalls: ToolUseBlock[],
+    originalResults: ExecutionResult[] | undefined
+  ): Array<ExecutionResult | undefined> {
+    if (!Array.isArray(originalResults) || originalResults.length === 0) {
+      return canonicalToolCalls.map(() => undefined);
+    }
+
+    const resultByToolId = new Map<string, ExecutionResult>();
+    originalToolCalls.forEach((toolCall, index) => {
+      const result = originalResults[index];
+      if (!toolCall?.id || !result || resultByToolId.has(toolCall.id)) {
+        return;
+      }
+      resultByToolId.set(toolCall.id, result);
+    });
+
+    return canonicalToolCalls.map((toolCall, index) => {
+      const byId = resultByToolId.get(toolCall.id);
+      if (byId) {
+        return byId;
+      }
+      return originalResults[index];
+    });
+  }
+
   private buildToolResultMessageContent(
     toolCalls: ToolUseBlock[],
-    results: ExecutionResult[],
+    results: Array<ExecutionResult | undefined>,
     nextInstruction?: string
   ): Array<Record<string, unknown>> {
     const blocks: Array<Record<string, unknown>> = toolCalls.map((toolCall, index) => {
@@ -367,6 +453,238 @@ export class NeuralAIAgent {
     }
 
     return blocks;
+  }
+
+  private sanitizeRequestMessages(
+    messages: AgentMessage[],
+    flattenContentToText: boolean = false
+  ): AgentMessage[] {
+    const normalizedMessages = messages.map((message) => {
+      if (typeof message.content === 'string') {
+        return {
+          role: message.role,
+          content: message.content.trim(),
+        };
+      }
+
+      if (!Array.isArray(message.content)) {
+        return {
+          role: message.role,
+          content: '',
+        };
+      }
+
+      if (flattenContentToText) {
+        const flattened = message.content
+          .map((block) => {
+            if (!block || typeof block !== 'object') {
+              return '';
+            }
+
+            if (typeof block.text === 'string') {
+              return block.text;
+            }
+
+            if (typeof block.content === 'string') {
+              return block.content;
+            }
+
+            try {
+              return JSON.stringify(block);
+            } catch {
+              return '';
+            }
+          })
+          .filter(Boolean)
+          .join('\n')
+          .trim();
+
+        return {
+          role: message.role,
+          content: flattened,
+        };
+      }
+
+      const normalizedBlocks = message.content
+        .map((block) => {
+          if (!block || typeof block !== 'object' || Array.isArray(block)) {
+            return null;
+          }
+
+          const normalized: Record<string, unknown> = { ...block };
+          if (typeof normalized.type !== 'string') {
+            normalized.type = 'text';
+          }
+
+          if (normalized.type === 'text') {
+            const text =
+              typeof normalized.text === 'string'
+                ? normalized.text
+                : typeof normalized.content === 'string'
+                  ? normalized.content
+                  : '';
+            if (!text) {
+              return null;
+            }
+            normalized.text = text;
+            delete normalized.content;
+          }
+
+          if (normalized.type === 'tool_result') {
+            if (typeof normalized.tool_use_id !== 'string' || normalized.tool_use_id.length === 0) {
+              return null;
+            }
+
+            const resultContent =
+              typeof normalized.content === 'string'
+                ? normalized.content
+                : typeof normalized.text === 'string'
+                  ? normalized.text
+                  : '';
+            normalized.content =
+              resultContent || '{"success":false,"error":"empty_tool_result_payload"}';
+            delete normalized.text;
+          }
+
+          if (normalized.type === 'tool_use') {
+            if (typeof normalized.id !== 'string') {
+              return null;
+            }
+            if (typeof normalized.name !== 'string') {
+              return null;
+            }
+            if (!normalized.input || typeof normalized.input !== 'object') {
+              normalized.input = {};
+            }
+          }
+
+          return normalized;
+        })
+        .filter((block): block is Record<string, unknown> => block !== null);
+
+      if (normalizedBlocks.length === 0) {
+        return {
+          role: message.role,
+          content: '',
+        };
+      }
+
+      return {
+        role: message.role,
+        content: normalizedBlocks,
+      };
+    });
+
+    if (flattenContentToText) {
+      return normalizedMessages;
+    }
+
+    const protocolSafeMessages: AgentMessage[] = [];
+    let droppedOrphanToolResults = 0;
+
+    for (const message of normalizedMessages) {
+      if (!Array.isArray(message.content)) {
+        protocolSafeMessages.push(message);
+        continue;
+      }
+
+      const previousMessage = protocolSafeMessages[protocolSafeMessages.length - 1];
+      const allowedToolUseIds = new Set<string>();
+
+      if (
+        message.role === 'user' &&
+        previousMessage?.role === 'assistant' &&
+        Array.isArray(previousMessage.content)
+      ) {
+        for (const block of previousMessage.content) {
+          if (
+            block &&
+            typeof block === 'object' &&
+            block.type === 'tool_use' &&
+            typeof block.id === 'string'
+          ) {
+            allowedToolUseIds.add(block.id);
+          }
+        }
+      }
+
+      const filteredBlocks = message.content.filter((block) => {
+        if (!block || typeof block !== 'object') {
+          return false;
+        }
+
+        if (block.type !== 'tool_result') {
+          return true;
+        }
+
+        const toolUseId = typeof block.tool_use_id === 'string' ? block.tool_use_id : '';
+        const isValid = toolUseId.length > 0 && allowedToolUseIds.has(toolUseId);
+        if (!isValid) {
+          droppedOrphanToolResults += 1;
+        }
+        return isValid;
+      });
+
+      if (filteredBlocks.length > 0) {
+        protocolSafeMessages.push({
+          role: message.role,
+          content: filteredBlocks,
+        });
+        continue;
+      }
+
+      const fallbackText = message.content
+        .map((block) => {
+          if (!block || typeof block !== 'object') {
+            return '';
+          }
+          if (typeof block.text === 'string') {
+            return block.text;
+          }
+          if (typeof block.content === 'string') {
+            return block.content;
+          }
+          return '';
+        })
+        .filter(Boolean)
+        .join('\n')
+        .trim();
+
+      if (fallbackText.length > 0) {
+        protocolSafeMessages.push({
+          role: message.role,
+          content: fallbackText,
+        });
+      }
+    }
+
+    if (droppedOrphanToolResults > 0) {
+      console.warn(
+        `[NeuralAgent] Dropped ${droppedOrphanToolResults} orphan tool_result block(s) before API call`
+      );
+    }
+
+    return protocolSafeMessages;
+  }
+
+  private sanitizeRequestTools() {
+    return AGENT_TOOLS.map((tool) => ({
+      name: `${tool.name}`.trim(),
+      description: `${tool.description}`.trim(),
+      input_schema:
+        tool.input_schema && typeof tool.input_schema === 'object' && !Array.isArray(tool.input_schema)
+          ? tool.input_schema
+          : { type: 'object', properties: {}, required: [] },
+    }));
+  }
+
+  private shouldRetryWithFlattenedPayload(errorText: string): boolean {
+    const normalized = errorText.toLowerCase();
+    return (
+      normalized.includes('validation_error') ||
+      normalized.includes('expected string, received array') ||
+      normalized.includes('invalid request data')
+    );
   }
 
   //  Main Entry Point 
@@ -630,6 +948,20 @@ export class NeuralAIAgent {
     }
 
     const requestMessages: AgentMessage[] = this.buildAgentMessages(userMessage, mapContext);
+    const initialCanonicalToolCalls = this.getCanonicalToolCalls(
+      initialResult.toolCalls,
+      initialResult.assistantContent
+    );
+    if (initialCanonicalToolCalls.length === 0) {
+      return null;
+    }
+
+    const initialResultPayload = this.alignResultsToToolCalls(
+      initialCanonicalToolCalls,
+      initialResult.toolCalls,
+      initialResult.toolResults
+    );
+
     requestMessages.push({
       role: 'assistant',
       content: initialResult.assistantContent as unknown as Array<Record<string, unknown>>,
@@ -637,15 +969,29 @@ export class NeuralAIAgent {
     requestMessages.push({
       role: 'user',
       content: this.buildToolResultMessageContent(
-        initialResult.toolCalls,
-        initialResult.toolResults,
+        initialCanonicalToolCalls,
+        initialResultPayload,
         'Continue com acoes praticas. Execute pelo menos uma ferramenta mutavel antes de concluir.'
       ),
     });
 
-    const allToolCalls: ToolUseBlock[] = [...initialResult.toolCalls];
-    const allToolResults: ExecutionResult[] = [...initialResult.toolResults];
-    const allActions: AIAgentAction[] = [...initialResult.actions];
+    const initialExecutableToolCalls: ToolUseBlock[] = [];
+    const initialExecutableResults: ExecutionResult[] = [];
+    initialCanonicalToolCalls.forEach((toolCall, index) => {
+      const result = initialResultPayload[index];
+      if (!result) {
+        return;
+      }
+      initialExecutableToolCalls.push(toolCall);
+      initialExecutableResults.push(result);
+    });
+
+    const allToolCalls: ToolUseBlock[] = [...initialCanonicalToolCalls];
+    const allToolResults: ExecutionResult[] = [...initialExecutableResults];
+    const allActions: AIAgentAction[] =
+      initialExecutableResults.length > 0
+        ? this.toolResultsToActions(initialExecutableToolCalls, initialExecutableResults)
+        : [...initialResult.actions];
 
     let latestText = initialResult.response;
     let latestUsage = initialResult.usage;
@@ -675,30 +1021,34 @@ export class NeuralAIAgent {
         content: apiTurn.assistantContent as unknown as Array<Record<string, unknown>>,
       });
 
-      if (!apiTurn.toolCalls.length) {
+      const canonicalTurnToolCalls = this.getCanonicalToolCalls(
+        apiTurn.toolCalls,
+        apiTurn.assistantContent
+      );
+      if (!canonicalTurnToolCalls.length) {
         break;
       }
 
       this.updateTodo('todo_3', 'in-progress', callbacks);
 
       const executionResults = actionExecutor.executeAll(
-        apiTurn.toolCalls.map((tc) => ({
+        canonicalTurnToolCalls.map((tc) => ({
           name: tc.name as AgentToolName,
           input: tc.input,
         })),
         this.executionContext
       );
 
-      allToolCalls.push(...apiTurn.toolCalls);
+      allToolCalls.push(...canonicalTurnToolCalls);
       allToolResults.push(...executionResults);
-      allActions.push(...this.toolResultsToActions(apiTurn.toolCalls, executionResults));
+      allActions.push(...this.toolResultsToActions(canonicalTurnToolCalls, executionResults));
 
       mutatingSuccessCount = this.countMutatingSuccess(allToolResults);
 
       requestMessages.push({
         role: 'user',
         content: this.buildToolResultMessageContent(
-          apiTurn.toolCalls,
+          canonicalTurnToolCalls,
           executionResults,
           mutatingSuccessCount > 0
             ? 'Acoes mutaveis aplicadas. Finalize com resumo objetivo ou execute mais melhorias relevantes.'
@@ -738,6 +1088,8 @@ export class NeuralAIAgent {
     callbacks?: StreamCallbacks
   ): Promise<AgentResponse> {
     const messages = this.buildAgentMessages(userMessage, mapContext);
+    const requestMessages = this.sanitizeRequestMessages(messages);
+    const requestTools = this.sanitizeRequestTools();
 
     const enforceToolUse = this.isActionDrivenRequest();
     const body = {
@@ -746,8 +1098,8 @@ export class NeuralAIAgent {
       model: 'claude-haiku-4-5',
       mode: this.config.mode,
       systemPrompt: this.buildEffectiveSystemPrompt(),
-      messages,
-      tools: AGENT_TOOLS,
+      messages: requestMessages,
+      tools: requestTools,
       maxTokens: this.config.maxTokens,
       temperature: this.config.temperature,
       force_tool_use: enforceToolUse,
@@ -767,6 +1119,28 @@ export class NeuralAIAgent {
 
     if (!response.ok) {
       const errText = await response.text().catch(() => 'Unknown error');
+      if (response.status === 400 && this.shouldRetryWithFlattenedPayload(errText)) {
+        const retryBody = {
+          ...body,
+          messages: this.sanitizeRequestMessages(messages, true),
+        };
+        const retryResponse = await fetch(`${apiBaseUrl}/api/ai/agent/stream`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(retryBody),
+        });
+
+        if (retryResponse.ok) {
+          this.updateTodo('todo_1', 'completed', callbacks);
+          this.updateTodo('todo_2', 'in-progress', callbacks);
+          callbacks?.onThinkingUpdate?.('Claude Haiku 4.5 - processando...');
+          return this.handleSSEStream(retryResponse, callbacks);
+        }
+
+        const retryErrorText = await retryResponse.text().catch(() => 'Unknown error');
+        throw new Error(`Stream API ${retryResponse.status}: ${retryErrorText}`);
+      }
+
       if (response.status === 405) {
         throw new Error(
           `Stream API 405: Method Not Allowed. URL chamada: ${apiBaseUrl}/api/ai/agent/stream`
@@ -806,8 +1180,10 @@ export class NeuralAIAgent {
     const seenToolIds = new Set<string>();
 
     const pushToolCall = (tool: { id?: string; name?: string; input?: any }) => {
-      if (!tool?.name) return;
-      const toolId = tool.id || `tool_${Date.now()}_${toolCalls.length}`;
+      if (!tool?.name || typeof tool.id !== 'string' || tool.id.trim().length === 0) {
+        return;
+      }
+      const toolId = tool.id.trim();
       if (seenToolIds.has(toolId)) return;
       seenToolIds.add(toolId);
       toolCalls.push({
@@ -931,7 +1307,7 @@ export class NeuralAIAgent {
                       this.updateTodo('todo_2', 'completed', callbacks);
                       this.updateTodo('todo_3', 'in-progress', callbacks);
                     }
-                    pushToolCall({ name: data.name, input: data.input });
+                    pushToolCall({ id: data.id, name: data.name, input: data.input });
                     callbacks?.onToolComplete?.(data.name, data.input);
                   } else if (data.message) {
                     callbacks?.onThinkingUpdate?.(data.message);
@@ -958,21 +1334,26 @@ export class NeuralAIAgent {
       reader.releaseLock();
     }
 
+    const canonicalToolCalls = this.getCanonicalToolCalls(toolCalls, assistantContent);
+    if (toolCalls.length > 0 && canonicalToolCalls.length === 0) {
+      console.warn('[NeuralAgent] Ignoring streamed tool calls without canonical tool_use ids');
+    }
+
     let actions: AIAgentAction[] = [];
     let toolResults: ExecutionResult[] | undefined;
     const requiresExecution = this.isActionDrivenRequest();
 
-    if (toolCalls.length > 0 && this.executionContext) {
+    if (canonicalToolCalls.length > 0 && this.executionContext) {
       this.updateTodo('todo_3', 'in-progress', callbacks);
 
       toolResults = actionExecutor.executeAll(
-        toolCalls.map((tc) => ({ name: tc.name as AgentToolName, input: tc.input })),
+        canonicalToolCalls.map((tc) => ({ name: tc.name as AgentToolName, input: tc.input })),
         this.executionContext
       );
-      actions = this.toolResultsToActions(toolCalls, toolResults);
+      actions = this.toolResultsToActions(canonicalToolCalls, toolResults);
 
       this.updateTodo('todo_3', 'completed', callbacks);
-    } else if (toolCalls.length === 0) {
+    } else if (canonicalToolCalls.length === 0) {
       if (requiresExecution) {
         this.updateTodo('todo_3', 'failed', callbacks);
       } else {
@@ -993,8 +1374,8 @@ export class NeuralAIAgent {
       mainResponse = textAccumulator.replace(/<thinking>[\s\S]*?<\/thinking>/, '').trim();
     }
 
-    if (!mainResponse && toolCalls.length > 0) {
-      const toolSummary = toolCalls.map((tc) => {
+    if (!mainResponse && canonicalToolCalls.length > 0) {
+      const toolSummary = canonicalToolCalls.map((tc) => {
         if (tc.name === 'batch_create_nodes' || tc.name === 'create_nodes')
           return `Criados ${tc.input.nodes?.length || 0} nos`;
         if (tc.name === 'create_node') return `Criado no "${tc.input.label}"`;
@@ -1021,18 +1402,18 @@ export class NeuralAIAgent {
       actions,
       thinking,
       todoList: this.currentTodos,
-      confidence: toolCalls.length > 0 ? 0.95 : 0.85,
+      confidence: canonicalToolCalls.length > 0 ? 0.95 : 0.85,
       toolResults,
       usage,
       model,
       streaming: true,
       executionValidated,
-      executedOnMap: toolCalls.length > 0 && !!this.executionContext,
+      executedOnMap: canonicalToolCalls.length > 0 && !!this.executionContext,
       mutationsApplied: mutatingSuccessCount,
-      toolCallsCount: toolCalls.length,
+      toolCallsCount: canonicalToolCalls.length,
       assistantContent,
       stopReason,
-      toolCalls,
+      toolCalls: canonicalToolCalls,
     };
   }
 
@@ -1062,14 +1443,16 @@ export class NeuralAIAgent {
     stopReason?: string;
   }> {
     const enforceToolUse = requireMutatingAction;
+    const requestMessages = this.sanitizeRequestMessages(messages);
+    const requestTools = this.sanitizeRequestTools();
     const body = {
       map_id: this.getRequiredMapId(),
       agent_type: this.agentType,
       model: 'claude-haiku-4-5',
       mode: this.config.mode,
       systemPrompt: this.buildEffectiveSystemPrompt(),
-      messages,
-      tools: AGENT_TOOLS,
+      messages: requestMessages,
+      tools: requestTools,
       maxTokens: this.config.maxTokens,
       temperature: this.config.temperature,
       force_tool_use: enforceToolUse,
@@ -1089,6 +1472,27 @@ export class NeuralAIAgent {
 
     if (!response.ok) {
       const errText = await response.text().catch(() => 'Unknown error');
+      if (response.status === 400 && this.shouldRetryWithFlattenedPayload(errText)) {
+        const retryBody = {
+          ...body,
+          messages: this.sanitizeRequestMessages(messages, true),
+        };
+
+        const retryResponse = await fetch(`${apiBaseUrl}/api/ai/agent`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(retryBody),
+        });
+
+        if (retryResponse.ok) {
+          const retryData = await retryResponse.json();
+          return this.parseAPIResponse(retryData);
+        }
+
+        const retryErrText = await retryResponse.text().catch(() => 'Unknown error');
+        throw new Error(`API ${retryResponse.status}: ${retryErrText}`);
+      }
+
       if (response.status === 405) {
         throw new Error(`API 405: Method Not Allowed. URL chamada: ${apiBaseUrl}/api/ai/agent`);
       }
@@ -1106,15 +1510,13 @@ export class NeuralAIAgent {
     stopReason?: string;
   } {
     const content: ContentBlock[] = data.data?.content || data.content || [];
-    const toolCalls: ToolUseBlock[] = [];
+    const toolCalls: ToolUseBlock[] = this.extractToolCallsFromAssistantContent(content);
     let textResponse = '';
     let thinking = '';
 
     for (const block of content) {
       if (block.type === 'text') {
         textResponse += (block as TextBlock).text;
-      } else if (block.type === 'tool_use') {
-        toolCalls.push(block as ToolUseBlock);
       }
     }
 
@@ -1186,6 +1588,11 @@ export class NeuralAIAgent {
       chart: n.data.chart,
       table: n.data.table,
       dueDate: n.data.dueDate,
+      blueprintId: n.data.blueprintId,
+      archetype: n.data.archetype,
+      todoSeed: n.data.todoSeed,
+      documentVaultCount: n.data.documentVault?.length || 0,
+      aiPromptHint: n.data.aiPromptHint,
       parentIds: edges.filter((e) => e.target === n.id).map((e) => e.source),
       childIds: edges.filter((e) => e.source === n.id).map((e) => e.target),
     }));

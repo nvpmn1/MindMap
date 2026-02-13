@@ -940,7 +940,13 @@ function NeuralMapEditorInner() {
 
   // Toolbar
   const handleAddNode = useCallback(
-    (type: NeuralNodeType) => createNode(type, undefined, selectedNodeId),
+    (type: NeuralNodeType, blueprintId?: string) =>
+      createNode(
+        type,
+        undefined,
+        selectedNodeId,
+        blueprintId ? { blueprintId } : undefined
+      ),
     [createNode, selectedNodeId]
   );
 
@@ -1418,8 +1424,12 @@ function NeuralMapEditorInner() {
         .neural-canvas .react-flow__node { transition: none; }
         .neural-canvas .react-flow__edge path { stroke-width: 2; }
         .neural-canvas .react-flow__selection { background: rgba(6,182,212,0.05); border: 1px solid rgba(6,182,212,0.2); border-radius: 8px; }
-        .neural-canvas .react-flow__controls { bottom: 80px !important; }
-        .neural-canvas .react-flow__minimap { bottom: 80px !important; }
+        .neural-canvas .react-flow__controls { bottom: 20px !important; }
+        .neural-canvas .react-flow__minimap { bottom: 20px !important; }
+        @media (max-width: 768px) {
+          .neural-canvas .react-flow__controls { bottom: 86px !important; }
+          .neural-canvas .react-flow__minimap { bottom: 86px !important; }
+        }
         
         /* Enhanced Grid Visualization */
         .neural-canvas [role="presentation"] svg circle { 

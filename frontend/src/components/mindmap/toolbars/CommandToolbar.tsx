@@ -1,293 +1,294 @@
-// ============================================================================
-// NeuralMap - Command Toolbar (Bottom floating toolbar)
-// ============================================================================
-
-import React, { useState, memo } from 'react';
+import React, { memo, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Lightbulb,
-  CheckSquare,
-  FileText,
-  Link2,
-  Search,
-  BarChart3,
-  HelpCircle,
-  GitBranch,
-  Users,
-  Grid3X3,
-  Milestone,
   Brain,
-  Sparkles,
-  Lock,
-  Unlock,
+  ChevronLeft,
+  ChevronRight,
+  Command,
   Keyboard,
+  Lock,
+  PlusCircle,
+  Search,
+  Sparkles,
 } from 'lucide-react';
 import { NODE_TYPE_CONFIG } from '../editor/constants';
 import type { NeuralNodeType } from '../editor/types';
+import {
+  NODE_BLUEPRINT_CATEGORY_LABELS,
+  NODE_BLUEPRINTS,
+  NODE_BLUEPRINTS_BY_CATEGORY,
+  type NodeBlueprint,
+  type NodeBlueprintCategory,
+} from '../editor/nodeBlueprints';
 
 interface CommandToolbarProps {
-  onCreateNode: (type: NeuralNodeType) => void;
+  onCreateNode: (type: NeuralNodeType, blueprintId?: string) => void;
   onToggleAI: () => void;
   isLocked: boolean;
   className?: string;
 }
 
-const nodeActions: Array<{ type: NeuralNodeType; shortcut: string }> = [
-  { type: 'idea', shortcut: 'I' },
-  { type: 'task', shortcut: 'T' },
-  { type: 'note', shortcut: 'N' },
-  { type: 'reference', shortcut: 'R' },
-  { type: 'research', shortcut: 'P' },
-  { type: 'data', shortcut: 'D' },
-  { type: 'question', shortcut: 'Q' },
-  { type: 'group', shortcut: 'G' },
+const PRIMARY_TYPES: NeuralNodeType[] = ['idea', 'task', 'note', 'research', 'data', 'reference'];
+const CATEGORY_ORDER: NodeBlueprintCategory[] = [
+  'ideation',
+  'execution',
+  'research',
+  'data',
+  'documents',
+  'ai',
 ];
+
+const BlueprintCard: React.FC<{
+  blueprint: NodeBlueprint;
+  onCreate: (blueprint: NodeBlueprint) => void;
+}> = ({ blueprint, onCreate }) => {
+  const Icon = blueprint.icon;
+  return (
+    <motion.button
+      whileHover={{ y: -2, scale: 1.01 }}
+      whileTap={{ scale: 0.98 }}
+      onClick={() => onCreate(blueprint)}
+      className="w-full rounded-2xl border border-white/10 bg-[#0b1325]/90 p-3 text-left transition-all hover:border-white/20 hover:bg-[#111d34]"
+    >
+      <div className="flex items-start gap-2.5">
+        <div
+          className="h-10 w-10 flex-shrink-0 rounded-xl border border-white/10 bg-white/[0.03] flex items-center justify-center"
+          style={{
+            boxShadow: `0 0 0 1px ${blueprint.accentColor}30`,
+          }}
+        >
+          <Icon className="h-4 w-4" style={{ color: blueprint.accentColor }} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-xs font-semibold text-white">{blueprint.title}</div>
+          <div className="mt-0.5 text-[11px] text-slate-400">{blueprint.subtitle}</div>
+        </div>
+      </div>
+      <div className="mt-2 flex items-center justify-between">
+        <span className="rounded-full border border-white/10 px-2 py-0.5 text-[9px] uppercase tracking-wide text-slate-500">
+          {NODE_TYPE_CONFIG[blueprint.type]?.label || blueprint.type}
+        </span>
+        <span className="text-[10px] text-cyan-300">template ready</span>
+      </div>
+    </motion.button>
+  );
+};
 
 const CommandToolbarComponent: React.FC<CommandToolbarProps> = ({
   onCreateNode,
   onToggleAI,
   isLocked,
 }) => {
-  const [showAll, setShowAll] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<NodeBlueprintCategory>('ideation');
+  const [collapsed, setCollapsed] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const mainActions = nodeActions.slice(0, 6);
-  const extraActions = nodeActions.slice(6);
+  const filteredBlueprints = useMemo(() => {
+    const base = NODE_BLUEPRINTS_BY_CATEGORY[activeCategory] || [];
+    if (!searchTerm.trim()) return base;
+    const query = searchTerm.trim().toLowerCase();
+    return base.filter(
+      (blueprint) =>
+        blueprint.title.toLowerCase().includes(query) ||
+        blueprint.subtitle.toLowerCase().includes(query) ||
+        blueprint.tags.some((tag) => tag.toLowerCase().includes(query))
+    );
+  }, [activeCategory, searchTerm]);
+
+  const handleCreateBlueprint = (blueprint: NodeBlueprint) => {
+    onCreateNode(blueprint.type, blueprint.id);
+    setMobileOpen(false);
+  };
 
   if (isLocked) {
     return (
-      <motion.div
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className="fixed inset-x-0 bottom-2 mx-auto w-fit z-40"
-      >
-        <div
-          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl
-          bg-[#111827]/90 backdrop-blur-xl border border-amber-500/20 
-          shadow-[0_8px_32px_rgba(0,0,0,0.4)]"
-        >
-          <Lock className="w-4 h-4 text-amber-400" />
-          <span className="text-xs text-amber-300">
-            Mapa bloqueado • Pressione L para desbloquear
-          </span>
+      <div className="fixed left-4 top-[6.5rem] z-50 rounded-2xl border border-amber-400/25 bg-[#171a2a]/92 px-3 py-2 backdrop-blur-xl">
+        <div className="flex items-center gap-2 text-xs text-amber-300">
+          <Lock className="h-4 w-4" />
+          <span>Mapa bloqueado. Pressione L para editar.</span>
         </div>
-      </motion.div>
+      </div>
     );
   }
 
   return (
-    <motion.div
-      initial={{ y: 20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      className="fixed inset-x-0 bottom-2 mx-auto w-fit z-40"
-    >
-      {/* Dropdown menu for "Mais" */}
-      <AnimatePresence>
-        {showAll && (
-          <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            className="absolute bottom-[calc(100%+12px)] left-1/2 -translate-x-1/2 z-50"
-          >
-            <div
-              className="flex flex-wrap justify-center gap-2 px-4 py-3 rounded-2xl
-              bg-gradient-to-br from-[#1a202c]/95 via-[#111827]/95 to-[#0f1419]/95
-              backdrop-blur-xl border border-white/[0.1] 
-              shadow-[0_20px_48px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.05)]
-              w-fit min-w-[280px]"
+    <>
+      <div className="fixed left-4 top-[6.5rem] z-50 hidden md:block">
+        <motion.aside
+          animate={{ width: collapsed ? 86 : 368 }}
+          transition={{ type: 'spring', damping: 24, stiffness: 240 }}
+          className="overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-b from-[#0b1324]/96 via-[#091122]/96 to-[#08101d]/96 shadow-[0_24px_60px_rgba(2,6,23,0.55)] backdrop-blur-2xl"
+        >
+          <div className="flex items-center gap-2 border-b border-white/8 px-3 py-3">
+            <button
+              onClick={() => setCollapsed((previous) => !previous)}
+              className="rounded-xl border border-white/10 bg-white/[0.03] p-1.5 text-slate-300 transition-colors hover:bg-white/[0.08] hover:text-white"
+              title={collapsed ? 'Expand panel' : 'Collapse panel'}
             >
-              {/* Extra actions in grid */}
-              {extraActions.map(({ type, shortcut }) => {
+              {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            </button>
+            {!collapsed && (
+              <>
+                <div className="flex items-center gap-1.5">
+                  <div className="h-7 w-7 rounded-xl border border-cyan-400/25 bg-cyan-400/10 flex items-center justify-center">
+                    <Command className="h-4 w-4 text-cyan-300" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-white">Node Studio</div>
+                    <div className="text-[10px] uppercase tracking-wide text-slate-500">
+                      Refined templates
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={onToggleAI}
+                  className="ml-auto rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1 text-[11px] font-medium text-cyan-200 hover:bg-cyan-400/20"
+                >
+                  AI Agent
+                </button>
+              </>
+            )}
+          </div>
+
+          <div className={`${collapsed ? 'px-2 py-2' : 'px-3 py-3'} space-y-3`}>
+            <div className="grid grid-cols-2 gap-1.5">
+              {(collapsed ? PRIMARY_TYPES.slice(0, 2) : PRIMARY_TYPES).map((type) => {
                 const config = NODE_TYPE_CONFIG[type];
                 const Icon = config.icon;
                 return (
-                  <motion.button
+                  <button
                     key={type}
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    whileHover={{ scale: 1.12, y: -3 }}
-                    whileTap={{ scale: 0.92 }}
-                    onClick={() => {
-                      onCreateNode(type);
-                      setShowAll(false);
-                    }}
-                    className="relative group flex flex-col items-center gap-1 px-3 py-2.5 rounded-xl
-                      hover:bg-white/[0.08] transition-all"
-                    title={`${config.label} (${shortcut})`}
+                    onClick={() => onCreateNode(type)}
+                    className="group flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-2.5 py-2 text-left hover:border-white/20 hover:bg-white/[0.07]"
+                    title={config.description}
                   >
-                    <div
-                      className={`w-9 h-9 rounded-lg flex items-center justify-center
-                      bg-gradient-to-br ${config.gradient} border ${config.borderColor}
-                      group-hover:shadow-lg group-hover:scale-110 transition-all`}
-                    >
-                      <Icon className="w-4.5 h-4.5" style={{ color: config.color }} />
-                    </div>
-                    <span
-                      className="text-[8px] text-slate-400 group-hover:text-slate-200 
-                      transition-colors font-medium"
-                    >
-                      {config.label}
-                    </span>
-                    {showShortcuts && (
-                      <span className="text-[7px] text-slate-600 group-hover:text-slate-400">
-                        {shortcut}
-                      </span>
+                    <Icon className="h-4 w-4 flex-shrink-0" style={{ color: config.color }} />
+                    {!collapsed && (
+                      <div className="min-w-0">
+                        <div className="truncate text-[11px] font-medium text-slate-200">{config.label}</div>
+                        {showShortcuts && (
+                          <div className="text-[9px] text-slate-500">{config.shortcut}</div>
+                        )}
+                      </div>
                     )}
-                  </motion.button>
+                  </button>
                 );
               })}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
-      {/* Main toolbar */}
-      <div
-        className="flex items-center justify-center gap-2 px-3 sm:px-4 py-3 rounded-2xl
-        bg-gradient-to-br from-[#1a202c]/95 via-[#111827]/95 to-[#0f1419]/95
-        backdrop-blur-xl border border-white/[0.1] 
-        shadow-[0_12px_40px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.05)]
-        hover:shadow-[0_16px_48px_rgba(0,0,0,0.6)]
-        transition-shadow w-fit"
-      >
-        {/* Left section: Primary node types */}
-        <div className="flex items-center gap-1.5">
-          {mainActions.map(({ type, shortcut }) => {
-            const config = NODE_TYPE_CONFIG[type];
-            const Icon = config.icon;
-            return (
-              <motion.button
-                key={type}
-                whileHover={{ scale: 1.12, y: -3 }}
-                whileTap={{ scale: 0.92 }}
-                onClick={() => onCreateNode(type)}
-                className="relative group flex flex-col items-center gap-1 px-3 py-2 rounded-xl
-                  hover:bg-white/[0.08] transition-all"
-                title={`${config.label} (${shortcut})`}
-              >
-                <div
-                  className={`w-9 h-9 rounded-lg flex items-center justify-center
-                  bg-gradient-to-br ${config.gradient} border ${config.borderColor}
-                  group-hover:shadow-lg group-hover:scale-110 
-                  transition-all`}
-                >
-                  <Icon className="w-4.5 h-4.5" style={{ color: config.color }} />
+            {!collapsed && (
+              <>
+                <div className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-2.5 py-2">
+                  <Search className="h-3.5 w-3.5 text-slate-500" />
+                  <input
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder="Search templates..."
+                    className="w-full bg-transparent text-[11px] text-slate-200 placeholder-slate-600 outline-none"
+                  />
                 </div>
-                <span
-                  className="text-[8px] text-slate-400 group-hover:text-slate-200 
-                  transition-colors font-medium whitespace-nowrap"
-                >
-                  {config.label}
-                </span>
 
-                {/* Shortcut badge */}
-                {showShortcuts && (
-                  <motion.span
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="text-[7px] text-slate-600 group-hover:text-slate-400
-                      font-bold"
+                <div className="grid grid-cols-3 gap-1">
+                  {CATEGORY_ORDER.map((category) => (
+                    <button
+                      key={category}
+                      onClick={() => setActiveCategory(category)}
+                      className={`rounded-lg px-2 py-1.5 text-[10px] font-medium transition-colors ${
+                        activeCategory === category
+                          ? 'bg-cyan-400/20 text-cyan-200 border border-cyan-400/30'
+                          : 'bg-white/[0.02] text-slate-400 border border-white/8 hover:text-slate-200 hover:bg-white/[0.06]'
+                      }`}
+                    >
+                      {NODE_BLUEPRINT_CATEGORY_LABELS[category]}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="max-h-[370px] space-y-2 overflow-y-auto pr-1 custom-scrollbar">
+                  {filteredBlueprints.map((blueprint) => (
+                    <BlueprintCard
+                      key={blueprint.id}
+                      blueprint={blueprint}
+                      onCreate={handleCreateBlueprint}
+                    />
+                  ))}
+                  {filteredBlueprints.length === 0 && (
+                    <div className="rounded-xl border border-white/8 bg-white/[0.02] px-3 py-4 text-center text-[11px] text-slate-500">
+                      No templates found for this filter.
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between border-t border-white/8 pt-2">
+                  <button
+                    onClick={() => setShowShortcuts((previous) => !previous)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1 text-[10px] text-slate-400 hover:text-slate-200"
                   >
-                    {shortcut}
-                  </motion.span>
-                )}
-              </motion.button>
-            );
-          })}
-        </div>
-
-        {/* Divider */}
-        <div className="w-px h-12 bg-white/[0.08] mx-1" />
-
-        {/* Right section: Action buttons */}
-        <div className="flex items-center gap-1.5">
-          {/* More button */}
-          {extraActions.length > 0 && (
-            <motion.button
-              whileHover={{ scale: 1.12, y: -3 }}
-              whileTap={{ scale: 0.92 }}
-              onClick={() => setShowAll(!showAll)}
-              className="relative group flex flex-col items-center gap-1 px-3 py-2 rounded-xl
-                hover:bg-white/[0.08] transition-all"
-              title="Mais opções"
-            >
-              <div
-                className={`w-9 h-9 rounded-lg flex items-center justify-center
-                bg-gradient-to-br from-slate-600/20 to-slate-700/20 
-                border border-slate-600/30
-                group-hover:shadow-lg group-hover:scale-110 
-                transition-all`}
-              >
-                <span className="text-sm text-slate-300 font-bold">{showAll ? '−' : '+'}</span>
-              </div>
-              <span
-                className="text-[8px] text-slate-400 group-hover:text-slate-200 
-                transition-colors font-medium"
-              >
-                {showAll ? 'Menos' : 'Mais'}
-              </span>
-            </motion.button>
-          )}
-
-          {/* AI Agent */}
-          <motion.button
-            whileHover={{ scale: 1.12, y: -3 }}
-            whileTap={{ scale: 0.92 }}
-            onClick={onToggleAI}
-            className="relative group flex flex-col items-center gap-1 px-3 py-2 rounded-xl
-              hover:bg-purple-500/10 transition-all"
-            title="Abrir AI Agent"
-          >
-            <div
-              className="relative w-9 h-9 rounded-lg flex items-center justify-center
-              bg-gradient-to-br from-purple-500/30 to-cyan-500/20 
-              border border-purple-500/40 group-hover:border-purple-400/60
-              group-hover:shadow-[0_0_20px_rgba(139,92,246,0.4)] transition-all"
-            >
-              <Sparkles className="w-4.5 h-4.5 text-purple-300" />
-              <div
-                className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full 
-                border border-[#111827] animate-pulse shadow-lg shadow-emerald-400/50"
-              />
-            </div>
-            <span
-              className="text-[8px] text-purple-300 group-hover:text-purple-200 
-              transition-colors font-medium"
-            >
-              AI Agent
-            </span>
-          </motion.button>
-
-          {/* Shortcuts toggle */}
-          <button
-            onClick={() => setShowShortcuts(!showShortcuts)}
-            className="flex flex-col items-center gap-1 px-2.5 py-2 rounded-xl
-              hover:bg-white/[0.06] transition-all"
-            title="Mostrar atalhos"
-          >
-            <Keyboard
-              className={`w-4 h-4 transition-colors ${
-                showShortcuts ? 'text-cyan-400' : 'text-slate-600'
-              }`}
-            />
-          </button>
-        </div>
+                    <Keyboard className="h-3.5 w-3.5" />
+                    {showShortcuts ? 'Hide shortcuts' : 'Show shortcuts'}
+                  </button>
+                  <div className="text-[10px] text-slate-500">{NODE_BLUEPRINTS.length} templates</div>
+                </div>
+              </>
+            )}
+          </div>
+        </motion.aside>
       </div>
 
-      {/* Hint text */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.3 }}
-        className="text-center mt-2 px-4"
-      >
-        <span className="text-[10px] sm:text-[11px] text-slate-500 font-medium">
-          Clique para adicionar • <span className="text-slate-600">Atalhos: I, T, N, R, P, D</span>
-        </span>
-      </motion.div>
-    </motion.div>
+      <div className="fixed inset-x-0 bottom-3 z-50 px-3 md:hidden">
+        <div className="mx-auto max-w-[720px] rounded-2xl border border-white/10 bg-[#0a1222]/95 p-2 backdrop-blur-xl">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setMobileOpen((previous) => !previous)}
+              className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs text-slate-200"
+            >
+              <PlusCircle className="h-4 w-4 text-cyan-300" />
+              {mobileOpen ? 'Hide templates' : 'Show templates'}
+            </button>
+            <button
+              onClick={onToggleAI}
+              className="inline-flex items-center gap-1 rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1.5 text-xs text-cyan-100"
+            >
+              <Brain className="h-4 w-4" />
+              AI
+            </button>
+            <button
+              onClick={() => onCreateNode('idea')}
+              className="ml-auto inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs text-slate-200"
+            >
+              <Sparkles className="h-4 w-4 text-amber-300" />
+              Quick node
+            </button>
+          </div>
+
+          <AnimatePresence>
+            {mobileOpen && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mt-2 overflow-hidden"
+              >
+                <div className="grid grid-cols-2 gap-1.5">
+                  {NODE_BLUEPRINTS.slice(0, 8).map((blueprint) => (
+                    <button
+                      key={blueprint.id}
+                      onClick={() => handleCreateBlueprint(blueprint)}
+                      className="rounded-xl border border-white/10 bg-white/[0.03] px-2 py-2 text-left"
+                    >
+                      <div className="text-[11px] font-medium text-slate-200">{blueprint.title}</div>
+                      <div className="text-[10px] text-slate-500">{blueprint.subtitle}</div>
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+    </>
   );
 };
 

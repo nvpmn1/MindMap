@@ -17,6 +17,22 @@ export type NeuralNodeType =
   | 'question' // Open questions/hypotheses
   | 'image'; // Image nodes
 
+export type NodeArchetype =
+  | 'spark'
+  | 'task_flow'
+  | 'knowledge'
+  | 'evidence'
+  | 'questioning'
+  | 'decision'
+  | 'milestone'
+  | 'risk'
+  | 'document'
+  | 'archive'
+  | 'ai_brief';
+
+export type NodeSurface = 'soft-card' | 'capsule' | 'notebook' | 'signal' | 'module';
+export type NodeReadingMode = 'compact' | 'comfortable' | 'deep';
+
 export type NodeStatus = 'draft' | 'active' | 'in_progress' | 'review' | 'completed' | 'archived';
 export type NodePriority = 'low' | 'medium' | 'high' | 'urgent' | 'critical';
 export type ViewMode = 'map' | 'list' | 'kanban' | 'timeline' | 'analytics';
@@ -65,6 +81,26 @@ export interface Attachment {
   thumbnail?: string;
   uploadedBy?: string;
   uploadedAt?: string;
+}
+
+export interface DocumentVaultItem {
+  id: string;
+  title: string;
+  type: 'file' | 'link' | 'image' | 'video' | 'note';
+  url?: string;
+  summary?: string;
+  tags?: string[];
+  sizeKb?: number;
+  archived?: boolean;
+  archivedAt?: string;
+}
+
+export interface AINodeBlueprintContext {
+  blueprintId?: string;
+  intent?: string;
+  preferredOutput?: 'map' | 'tasks' | 'analysis' | 'research';
+  todoSeed?: string[];
+  promptHints?: string[];
 }
 
 // ─── Comment ────────────────────────────────────────────────────────────────
@@ -118,12 +154,20 @@ export interface NeuralNodeData {
   tags: string[];
   collapsed?: boolean;
   pinned?: boolean;
+  archetype?: NodeArchetype;
+  surface?: NodeSurface;
+  readingMode?: NodeReadingMode;
+  blueprintId?: string;
+  todoSeed?: string[];
+  aiPromptHint?: string;
+  aiContextPack?: AINodeBlueprintContext;
 
   // Rich Content
   chart?: ChartData;
   table?: TableData;
   checklist?: ChecklistItem[];
   attachments?: Attachment[];
+  documentVault?: DocumentVaultItem[];
 
   // Collaboration
   creator?: CollaboratorInfo;

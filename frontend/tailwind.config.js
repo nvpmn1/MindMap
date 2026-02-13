@@ -91,8 +91,8 @@ export default {
         sm: 'calc(var(--radius) - 4px)',
       },
       fontFamily: {
-        sans: ['Inter var', 'Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'monospace'],
+        sans: ['Space Grotesk', 'ui-sans-serif', 'sans-serif'],
+        mono: ['IBM Plex Mono', 'monospace'],
       },
       keyframes: {
         'accordion-down': {

@@ -3,6 +3,12 @@ import { env } from '../utils/env';
 import { logger } from '../utils/logger';
 import { supabaseAdmin } from '../services/supabase';
 import { generatePrompt, expandPrompt, summarizePrompt, toTasksPrompt, chatPrompt } from './prompts';
+import {
+  normalizeMessageContentForAnthropic,
+  sanitizeMessageSequenceForAnthropic,
+  serializeMessageContent,
+  type NormalizedAnthropicMessage,
+} from './contracts/toolProtocol';
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({
@@ -177,37 +183,18 @@ interface AgentRawParams {
   disableParallelToolUse?: boolean;
 }
 
-function serializeMessageContent(content: string | Array<Record<string, unknown>>): string {
-  if (typeof content === 'string') {
-    return content;
+export { sanitizeMessageSequenceForAnthropic, type NormalizedAnthropicMessage };
+
+function normalizeToolSchema(inputSchema: unknown): Record<string, unknown> {
+  if (inputSchema && typeof inputSchema === 'object' && !Array.isArray(inputSchema)) {
+    return inputSchema as Record<string, unknown>;
   }
 
-  if (!Array.isArray(content)) {
-    return '';
-  }
-
-  return content
-    .map((block) => {
-      if (!block || typeof block !== 'object') {
-        return '';
-      }
-
-      if (typeof block.text === 'string') {
-        return block.text;
-      }
-
-      if (typeof block.content === 'string') {
-        return block.content;
-      }
-
-      try {
-        return JSON.stringify(block);
-      } catch {
-        return '';
-      }
-    })
-    .filter(Boolean)
-    .join(' ');
+  return {
+    type: 'object',
+    properties: {},
+    required: [],
+  };
 }
 
 // Orchestrator input
@@ -611,15 +598,30 @@ Seja conciso mas completo em suas respostas.`,
     // Auto-select model based on complexity
     let selectedModel = model;
     let modelSelection: any = null;
+    const normalizedMessages = messages.map((message) => ({
+      role: message.role,
+      content: normalizeMessageContentForAnthropic(message.content),
+    }));
+    const sanitizedConversation = sanitizeMessageSequenceForAnthropic(normalizedMessages);
+    const anthropicMessages =
+      sanitizedConversation.messages.length > 0
+        ? sanitizedConversation.messages
+        : normalizedMessages;
+    const normalizedTools = tools.map((tool) => ({
+      name: typeof tool.name === 'string' ? tool.name : String(tool.name ?? ''),
+      description:
+        typeof tool.description === 'string' ? tool.description : String(tool.description ?? ''),
+      input_schema: normalizeToolSchema(tool.input_schema),
+    }));
 
     if (model === 'auto' || !model) {
-      const inputContent = `${systemPrompt}\n${messages.map((m) => serializeMessageContent(m.content)).join('\n')}`;
+      const inputContent = `${systemPrompt}\n${anthropicMessages.map((m) => serializeMessageContent(m.content)).join('\n')}`;
       const contextLength = inputContent.length;
       
       modelSelection = autoSelectModel('chat', { 
         systemPrompt, 
-        messageCount: messages.length,
-        toolCount: tools.length,
+        messageCount: anthropicMessages.length,
+        toolCount: normalizedTools.length,
         inputLength: contextLength
       }, contextLength);
       
@@ -632,25 +634,24 @@ Seja conciso mas completo em suas respostas.`,
       autoSelected: !!modelSelection,
       modelName: modelSelection?.modelName,
       reason: modelSelection?.reason,
-      messageCount: messages.length,
-      toolCount: tools.length,
+      messageCount: anthropicMessages.length,
+      toolCount: normalizedTools.length,
       maxTokens,
       toolChoice: toolChoice || { type: 'auto' },
       disableParallelToolUse: disableParallelToolUse === true,
+      droppedInvalidToolResults: sanitizedConversation.droppedToolResults,
     }, 'callAgentRaw: Calling Claude API with tool-use');
-
-    // Build Anthropic API request
-    const anthropicMessages = messages.map(m => ({
-      role: m.role,
-      content: m.content,
-    }));
+    if (sanitizedConversation.droppedToolResults > 0) {
+      logger.warn(
+        {
+          droppedInvalidToolResults: sanitizedConversation.droppedToolResults,
+        },
+        'callAgentRaw: Dropped orphan tool_result blocks before provider call'
+      );
+    }
 
     // Convert tool definitions to Anthropic format
-    const anthropicTools = tools.map(t => ({
-      name: t.name,
-      description: t.description,
-      input_schema: t.input_schema,
-    }));
+    const anthropicTools = normalizedTools;
     const primaryToolChoice = this.buildAnthropicToolChoice(toolChoice, disableParallelToolUse);
     const isPrimaryUsingDisableParallel = primaryToolChoice?.disable_parallel_tool_use === true;
 
@@ -750,15 +751,30 @@ Seja conciso mas completo em suas respostas.`,
     // Auto-select model based on complexity
     let selectedModel = model;
     let modelSelection: any = null;
+    const normalizedMessages = messages.map((message) => ({
+      role: message.role,
+      content: normalizeMessageContentForAnthropic(message.content),
+    }));
+    const sanitizedConversation = sanitizeMessageSequenceForAnthropic(normalizedMessages);
+    const anthropicMessages =
+      sanitizedConversation.messages.length > 0
+        ? sanitizedConversation.messages
+        : normalizedMessages;
+    const normalizedTools = tools.map((tool) => ({
+      name: typeof tool.name === 'string' ? tool.name : String(tool.name ?? ''),
+      description:
+        typeof tool.description === 'string' ? tool.description : String(tool.description ?? ''),
+      input_schema: normalizeToolSchema(tool.input_schema),
+    }));
 
     if (model === 'auto' || !model) {
-      const inputContent = `${systemPrompt}\n${messages.map((m) => serializeMessageContent(m.content)).join('\n')}`;
+      const inputContent = `${systemPrompt}\n${anthropicMessages.map((m) => serializeMessageContent(m.content)).join('\n')}`;
       const contextLength = inputContent.length;
       
       modelSelection = autoSelectModel('chat', { 
         systemPrompt, 
-        messageCount: messages.length,
-        toolCount: tools.length,
+        messageCount: anthropicMessages.length,
+        toolCount: normalizedTools.length,
         inputLength: contextLength
       }, contextLength);
       
@@ -778,22 +794,22 @@ Seja conciso mas completo em suas respostas.`,
       autoSelected: !!modelSelection,
       modelName: modelSelection?.modelName,
       reason: modelSelection?.reason,
-      messageCount: messages.length,
-      toolCount: tools.length,
+      messageCount: anthropicMessages.length,
+      toolCount: normalizedTools.length,
       toolChoice: toolChoice || { type: 'auto' },
       disableParallelToolUse: disableParallelToolUse === true,
+      droppedInvalidToolResults: sanitizedConversation.droppedToolResults,
     }, 'streamAgentRaw: Starting Claude streaming');
+    if (sanitizedConversation.droppedToolResults > 0) {
+      logger.warn(
+        {
+          droppedInvalidToolResults: sanitizedConversation.droppedToolResults,
+        },
+        'streamAgentRaw: Dropped orphan tool_result blocks before provider stream'
+      );
+    }
 
-    const anthropicMessages = messages.map(m => ({
-      role: m.role,
-      content: m.content,
-    }));
-
-    const anthropicTools = tools.map(t => ({
-      name: t.name,
-      description: t.description,
-      input_schema: t.input_schema,
-    }));
+    const anthropicTools = normalizedTools;
     const primaryToolChoice = this.buildAnthropicToolChoice(toolChoice, disableParallelToolUse);
     const isPrimaryUsingDisableParallel = primaryToolChoice?.disable_parallel_tool_use === true;
 
@@ -835,6 +851,7 @@ Seja conciso mas completo em suas respostas.`,
         stream.on('contentBlock', (block: any) => {
           if (block.type === 'tool_use') {
             onEvent('tool_complete', {
+              id: block.id,
               name: block.name,
               input: block.input,
             });

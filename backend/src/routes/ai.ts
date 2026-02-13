@@ -9,6 +9,11 @@ import { getOrchestrator } from '../ai/orchestrator/index';
 import { aiMiddleware } from '../ai/middleware';
 import { getAvailableAgents, getAgentInfo } from '../ai/agents';
 import type { AgentType, ConversationMessage } from '../ai/core/types';
+import {
+  legacyAgentSchema,
+  extractTextFromLegacyMessageContent,
+  type LegacyAgentMessagePayload,
+} from '../ai/contracts/legacyAgentContract';
 
 // Legacy import for backward compatibility with /agent endpoint
 import { aiOrchestrator } from '../ai/orchestrator';
@@ -44,11 +49,6 @@ const actionTypeDetection: Array<{ type: string; pattern: RegExp }> = [
   { type: 'hypothesize', pattern: /(hip[oó]tes|cen[aá]rio|what if)/i },
 ];
 
-type LegacyAgentMessage = {
-  role?: 'user' | 'assistant';
-  content?: string | Array<Record<string, unknown>>;
-};
-
 const MUTATING_TOOL_NAMES = new Set<string>([
   'create_node',
   'create_nodes',
@@ -62,42 +62,10 @@ const MUTATING_TOOL_NAMES = new Set<string>([
   'create_tasks',
 ]);
 
-function extractTextFromMessageContent(
-  content: string | Array<Record<string, unknown>> | undefined
-): string {
-  if (typeof content === 'string') {
-    return content;
-  }
-
-  if (!Array.isArray(content)) {
-    return '';
-  }
-
-  const textParts: string[] = [];
-  for (const block of content) {
-    if (!block || typeof block !== 'object') {
-      continue;
-    }
-
-    const textValue = block.text;
-    if (typeof textValue === 'string') {
-      textParts.push(textValue);
-      continue;
-    }
-
-    const contentValue = block.content;
-    if (typeof contentValue === 'string') {
-      textParts.push(contentValue);
-    }
-  }
-
-  return textParts.join(' ').trim();
-}
-
-function getLastUserMessage(messages: LegacyAgentMessage[]): string {
+function getLastUserMessage(messages: LegacyAgentMessagePayload[]): string {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     if (messages[i]?.role === 'user') {
-      const text = extractTextFromMessageContent(messages[i]?.content);
+      const text = extractTextFromLegacyMessageContent(messages[i]?.content);
       if (text.length > 0) {
         return text;
       }
@@ -129,7 +97,7 @@ function countMutatingToolUses(contentBlocks: unknown[]): number {
 function detectLegacyAgentType(
   explicitAgentType: string | undefined,
   mode: string,
-  messages: LegacyAgentMessage[]
+  messages: LegacyAgentMessagePayload[]
 ): string {
   if (explicitAgentType && explicitAgentType.trim().length > 0) {
     return explicitAgentType.trim().toLowerCase();
@@ -158,6 +126,15 @@ function getLegacyToolChoice(
   }
 
   return forceToolUse ? { type: 'any' } : { type: 'auto' };
+}
+
+function formatValidationIssues(issues: z.ZodIssue[]): string {
+  return issues
+    .map((issue) => {
+      const path = issue.path.length > 0 ? issue.path.join('.') : 'body';
+      return `${path}: ${issue.message}`;
+    })
+    .join(', ');
 }
 
 async function ensureMapAccess(req: Request, mapId: string): Promise<void> {
@@ -772,32 +749,7 @@ router.get(
 // POST /agent — Claude Tool-Use Agent Mode (Real Claude API)
 // ─────────────────────────────────────────────────────────────────────────
 
-const agentSchema = z.object({
-  map_id: z.string().uuid('Invalid map ID'),
-  agent_type: z.string().optional(),
-  model: z.string().optional(),
-  mode: z.string().optional().default('agent'),
-  systemPrompt: z.string().min(1),
-  messages: z.array(
-    z.object({
-      role: z.enum(['user', 'assistant']),
-      content: z.union([z.string(), z.array(z.record(z.unknown()))]),
-    })
-  ),
-  tools: z.array(
-    z.object({
-      name: z.string(),
-      description: z.string(),
-      input_schema: z.any(),
-    })
-  ),
-  maxTokens: z.number().int().min(256).max(8192).optional().default(4096),
-  temperature: z.number().min(0).max(1).optional().default(0.7),
-  force_tool_use: z.boolean().optional().default(false),
-  require_action: z.boolean().optional().default(false),
-  require_mutating_action: z.boolean().optional().default(false),
-  disable_parallel_tool_use: z.boolean().optional().default(true),
-});
+const agentSchema = legacyAgentSchema;
 
 router.post(
   '/agent',
@@ -807,7 +759,7 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const parsed = agentSchema.safeParse(req.body);
     if (!parsed.success) {
-      throw new ValidationError(parsed.error.errors.map((e) => e.message).join(', '));
+      throw new ValidationError(formatValidationIssues(parsed.error.errors));
     }
 
     const {
@@ -1011,7 +963,7 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const parsed = agentSchema.safeParse(req.body);
     if (!parsed.success) {
-      throw new ValidationError(parsed.error.errors.map((e) => e.message).join(', '));
+      throw new ValidationError(formatValidationIssues(parsed.error.errors));
     }
 
     const {

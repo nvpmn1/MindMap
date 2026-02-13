@@ -15,6 +15,44 @@ import { mapsApi, nodesApi } from '@/lib/api';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (id: string) => UUID_RE.test(id);
 
+const BACKEND_NODE_TYPES = new Set([
+  'idea',
+  'task',
+  'note',
+  'reference',
+  'image',
+  'group',
+  'research',
+  'data',
+  'question',
+]);
+
+const NODE_TYPE_ALIASES: Record<string, string> = {
+  decision: 'question',
+  milestone: 'task',
+  resource: 'reference',
+  process: 'note',
+  risk: 'question',
+  opportunity: 'idea',
+};
+
+function normalizeNodeType(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+
+  if (BACKEND_NODE_TYPES.has(normalized)) {
+    return normalized;
+  }
+
+  return NODE_TYPE_ALIASES[normalized];
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────
 
 export interface QueuedOperation {
@@ -664,6 +702,22 @@ class AdvancedSaveQueue {
           console.log('[SaveQueue] Creating node:', op.payload.id);
           {
             const payload = { ...op.payload } as Record<string, any>;
+            const normalizedPayloadType = normalizeNodeType(payload.type);
+            const normalizedDataType = normalizeNodeType(payload?.data?.type);
+
+            if (normalizedPayloadType) {
+              payload.type = normalizedPayloadType;
+            } else if (payload.type !== undefined) {
+              payload.type = 'idea';
+            }
+
+            if (payload.data && typeof payload.data === 'object') {
+              if (normalizedDataType) {
+                payload.data.type = normalizedDataType;
+              } else if (payload.data.type !== undefined) {
+                payload.data.type = payload.type || 'idea';
+              }
+            }
 
             if (payload.parent_id) {
               const resolvedParentId = this.resolveNodeId(op.mapId, String(payload.parent_id));
@@ -704,6 +758,22 @@ class AdvancedSaveQueue {
             }
 
             const payload = { ...op.payload, id: resolvedNodeId } as Record<string, any>;
+            const normalizedPayloadType = normalizeNodeType(payload.type);
+            const normalizedDataType = normalizeNodeType(payload?.data?.type);
+
+            if (normalizedPayloadType) {
+              payload.type = normalizedPayloadType;
+            } else if (payload.type !== undefined) {
+              delete payload.type;
+            }
+
+            if (payload.data && typeof payload.data === 'object') {
+              if (normalizedDataType) {
+                payload.data.type = normalizedDataType;
+              } else if (payload.data.type !== undefined && payload.type) {
+                payload.data.type = payload.type;
+              }
+            }
 
             if (payload.parent_id !== undefined && payload.parent_id !== null) {
               const resolvedParentId = this.resolveNodeId(op.mapId, String(payload.parent_id));
@@ -830,11 +900,40 @@ class AdvancedSaveQueue {
       // Handle specific errors
       const statusCode = err?.statusCode || err?.status;
       const errorMessage = err?.message || 'Unknown error';
+      const normalizedErrorMessage = String(errorMessage).toLowerCase();
 
       console.error(`[SaveQueue] Operation error (${op.type}):`, {
         statusCode,
         message: errorMessage,
       });
+
+      if (
+        statusCode === 400 &&
+        op.type === 'node-create' &&
+        normalizedErrorMessage.includes('invalid enum value')
+      ) {
+        op.lastError = `Non-retryable node type error: ${errorMessage}`;
+        this.moveToDeadLetter(op);
+        return { success: false };
+      }
+
+      if (
+        statusCode === 400 &&
+        op.type === 'node-create' &&
+        normalizedErrorMessage.includes('parent node does not belong to the same map')
+      ) {
+        this.deferOperation(op, 400);
+        return { success: false };
+      }
+
+      if (
+        statusCode === 400 &&
+        op.type === 'edge-create' &&
+        normalizedErrorMessage.includes('one or both nodes do not exist in this map')
+      ) {
+        this.deferOperation(op, 400);
+        return { success: false };
+      }
 
       // 409 = conflict - could be duplicate (especially for edges)
       if (statusCode === 409 && op.type === 'edge-create') {
@@ -919,13 +1018,13 @@ class AdvancedSaveQueue {
       }
 
       const payload = readyOps.map((op) => ({
+        ...(normalizeNodeType(op.payload.type) && { type: normalizeNodeType(op.payload.type) }),
         id: op.payload.id,
         ...(op.payload.parent_id !== undefined && { parent_id: op.payload.parent_id }),
         position_x: op.payload.position_x,
         position_y: op.payload.position_y,
         ...(op.payload.label && { label: op.payload.label }),
         ...(op.payload.content !== undefined && { content: op.payload.content }),
-        ...(op.payload.type && { type: op.payload.type }),
         ...(op.payload.width !== undefined && { width: op.payload.width }),
         ...(op.payload.height !== undefined && { height: op.payload.height }),
         ...(op.payload.collapsed !== undefined && { collapsed: op.payload.collapsed }),

@@ -6,6 +6,7 @@
 export * from './editor/types';
 export * from './editor/constants';
 export * from './editor/hooks';
+export * from './editor/nodeBlueprints';
 
 // Nodes
 export { PowerNode } from './nodes/PowerNode';

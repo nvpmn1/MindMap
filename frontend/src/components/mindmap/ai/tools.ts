@@ -29,17 +29,17 @@ export const AGENT_TOOLS: ToolDefinition[] = [
 
   {
     name: 'create_node',
-    description: `Cria um novo nó no mapa mental. Use para adicionar ideias, tarefas, notas, pesquisas, dados, questões, decisões, marcos, referências ou recursos. 
+    description: `Cria um novo nó no mapa mental. Use para adicionar ideias, tarefas, notas, pesquisas, dados, questões, referências, grupos ou imagens. 
 Sempre forneça parentId para conectar ao mapa existente (use o id de um nó existente). 
 Se o usuário pedir para criar múltiplos nós, chame esta ferramenta múltiplas vezes.
-Tipos disponíveis: idea, task, note, research, data, question, decision, milestone, reference, resource.`,
+Tipos disponíveis: idea, task, note, research, data, question, reference, group, image.`,
     input_schema: {
       type: 'object',
       properties: {
         type: {
           type: 'string',
-          enum: ['idea', 'task', 'note', 'research', 'data', 'question', 'decision', 'milestone', 'reference', 'resource'],
-          description: 'Tipo do nó. Escolha o mais adequado: idea=conceito, task=ação executável, note=anotação, research=pesquisa, data=dados/gráficos, question=pergunta/votação, decision=decisão, milestone=marco, reference=fonte, resource=recurso/ferramenta.',
+          enum: ['idea', 'task', 'note', 'research', 'data', 'question', 'reference', 'group', 'image'],
+          description: 'Tipo do no. Use apenas tipos suportados: idea, task, note, research, data, question, reference, group, image.',
         },
         label: {
           type: 'string',
@@ -70,11 +70,33 @@ Tipos disponíveis: idea, task, note, research, data, question, decision, milest
         },
         progress: {
           type: 'number',
-          description: 'Progresso de 0 a 100. Use para tarefas e marcos.',
+          description: 'Progresso de 0 a 100. Use para tarefas.',
         },
         dueDate: {
           type: 'string',
-          description: 'Data limite no formato YYYY-MM-DD. Use para tarefas e marcos.',
+          description: 'Data limite no formato YYYY-MM-DD. Use para tarefas.',
+        },
+        blueprintId: {
+          type: 'string',
+          description: 'ID do template inteligente de nÃ³ (ex: concept-spark, delivery-flow).',
+        },
+        archetype: {
+          type: 'string',
+          description: 'ArquÃ©tipo visual/cognitivo do nÃ³ (spark, task_flow, knowledge, etc).',
+        },
+        todoSeed: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Lista inicial de TODOs para guiar execuÃ§Ã£o da ideia.',
+        },
+        aiPromptHint: {
+          type: 'string',
+          description: 'Dica curta para IA elaborar melhor esse nÃ³.',
+        },
+        documentVault: {
+          type: 'array',
+          items: { type: 'object' },
+          description: 'ColeÃ§Ã£o de documentos anexados/arquivados no nÃ³.',
         },
         checklist: {
           type: 'array',
@@ -151,7 +173,7 @@ Para editar um nó, você PRECISA saber seu ID. Consulte o contexto do mapa para
         description: { type: 'string', description: 'Nova descrição.' },
         type: {
           type: 'string',
-          enum: ['idea', 'task', 'note', 'research', 'data', 'question', 'decision', 'milestone', 'reference', 'resource'],
+          enum: ['idea', 'task', 'note', 'research', 'data', 'question', 'reference', 'group', 'image'],
           description: 'Mudar o tipo do nó.',
         },
         status: {
@@ -180,6 +202,11 @@ Para editar um nó, você PRECISA saber seu ID. Consulte o contexto do mapa para
         },
         chart: { type: 'object', description: 'Novos dados de gráfico.' },
         table: { type: 'object', description: 'Novos dados de tabela.' },
+        blueprintId: { type: 'string', description: 'Atualiza o template-base do nÃ³.' },
+        archetype: { type: 'string', description: 'Atualiza arquÃ©tipo visual/cognitivo.' },
+        todoSeed: { type: 'array', items: { type: 'string' } },
+        aiPromptHint: { type: 'string' },
+        documentVault: { type: 'array', items: { type: 'object' } },
       },
       required: ['nodeId'],
     },
@@ -269,7 +296,7 @@ IMPORTANTE - POSICIONAMENTO INTELIGENTE:
             type: 'object',
             properties: {
               tempId: { type: 'string', description: 'ID temporário para referência interna (ex: "temp_1")' },
-              type: { type: 'string', enum: ['idea', 'task', 'note', 'research', 'data', 'question', 'decision', 'milestone', 'reference', 'resource'] },
+              type: { type: 'string', enum: ['idea', 'task', 'note', 'research', 'data', 'question', 'reference', 'group', 'image'] },
               label: { type: 'string', description: 'Título do nó (max 80 chars)' },
               description: { type: 'string', description: 'Descrição RICA (2-5 frases com insights)' },
               parentId: { type: 'string', description: 'ID real de um nó existente OU tempId de um nó neste batch.' },
@@ -284,8 +311,8 @@ IMPORTANTE - POSICIONAMENTO INTELIGENTE:
               status: { type: 'string', enum: ['active', 'completed', 'archived', 'blocked', 'review'] },
               priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] },
               tags: { type: 'array', items: { type: 'string' }, description: '3-6 tags estratégicas' },
-              progress: { type: 'number', description: '0-100 para tasks/milestones' },
-              dueDate: { type: 'string', description: 'YYYY-MM-DD para tasks/milestones' },
+              progress: { type: 'number', description: '0-100 para tasks' },
+              dueDate: { type: 'string', description: 'YYYY-MM-DD para tasks' },
               checklist: {
                 type: 'array',
                 items: { type: 'object', properties: { text: { type: 'string' }, completed: { type: 'boolean' } } },
@@ -395,7 +422,7 @@ IMPORTANTE - POSICIONAMENTO INTELIGENTE:
       type: 'object',
       properties: {
         query: { type: 'string', description: 'Texto para buscar no label ou description.' },
-        type: { type: 'string', enum: ['idea', 'task', 'note', 'research', 'data', 'question', 'decision', 'milestone', 'reference', 'resource'] },
+        type: { type: 'string', enum: ['idea', 'task', 'note', 'research', 'data', 'question', 'reference', 'group', 'image'] },
         status: { type: 'string', enum: ['active', 'completed', 'archived', 'blocked', 'review'] },
         priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'] },
         tags: { type: 'array', items: { type: 'string' } },
@@ -428,3 +455,6 @@ export type AgentToolName =
   | 'find_patterns';
 
 export default AGENT_TOOLS;
+
+
+

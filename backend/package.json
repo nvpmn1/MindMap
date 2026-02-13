@@ -4,10 +4,11 @@
   "description": "Backend API for MindMap Hub",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "nodemon src/index.ts",
+    "dev": "nodemon",
     "build": "tsc --skipLibCheck",
     "start": "npm run build && node dist/index.js",
-    "test": "jest",
+    "test": "npm run test:contracts",
+    "test:contracts": "npm run build && node --test dist/ai/contracts/*.test.js",
     "lint": "eslint src/**/*.ts",
     "typecheck": "tsc --noEmit",
     "cleanup": "ts-node scripts/cleanup-database.ts"

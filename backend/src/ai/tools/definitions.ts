@@ -35,10 +35,10 @@ export const createNodesToolDef: ToolDefinition = {
           properties: {
             label: { type: 'string', description: 'Título curto do nó (max 80 chars)' },
             content: { type: 'string', description: 'Descrição detalhada ou conteúdo do nó (opcional)' },
-            type: { 
-              type: 'string', 
+            type: {
+              type: 'string',
               description: 'Tipo do nó',
-              enum: ['idea', 'task', 'note', 'reference', 'process', 'data', 'question', 'decision', 'risk', 'opportunity'],
+              enum: ['idea', 'task', 'note', 'research', 'data', 'question', 'reference', 'group', 'image'],
             },
             parent_id: { type: 'string', description: 'ID do nó pai (null para raiz)' },
             color: { type: 'string', description: 'Cor hex do nó (ex: #FF6B6B)' },
@@ -107,7 +107,10 @@ export const updateNodeToolDef: ToolDefinition = {
         properties: {
           label: { type: 'string', description: 'Novo rótulo' },
           content: { type: 'string', description: 'Novo conteúdo' },
-          type: { type: 'string', enum: ['idea', 'task', 'note', 'reference', 'process', 'data', 'question', 'decision', 'risk', 'opportunity'] },
+          type: {
+            type: 'string',
+            enum: ['idea', 'task', 'note', 'research', 'data', 'question', 'reference', 'group', 'image'],
+          },
           color: { type: 'string', description: 'Nova cor hex' },
           icon: { type: 'string', description: 'Novo ícone' },
         },

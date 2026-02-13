@@ -593,16 +593,26 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         // ── Set up ExecutionContext so tool calls execute DIRECTLY on the map ──
         if (createNodeFn && updateNodeDataFn && deleteNodeFn && setEdgesFn) {
           const executionContext: ExecutionContext = {
-            nodes,
-            edges,
+            nodes: [...nodes],
+            edges: [...edges],
             createNode: (type: NeuralNodeType, label: string, parentId?: string) => {
-              return createNodeFn(type, undefined, parentId || selectedNodeId, { label });
+              const createdNode = createNodeFn(type, undefined, parentId || selectedNodeId, { label });
+              executionContext.nodes.push(createdNode);
+              return createdNode;
             },
             updateNode: (nodeId: string, data: Partial<NeuralNodeData>) => {
               updateNodeDataFn(nodeId, data);
+              const target = executionContext.nodes.find((node) => node.id === nodeId);
+              if (target) {
+                target.data = { ...target.data, ...data };
+              }
             },
             deleteNode: (nodeId: string) => {
               deleteNodeFn(nodeId);
+              executionContext.nodes = executionContext.nodes.filter((node) => node.id !== nodeId);
+              executionContext.edges = executionContext.edges.filter(
+                (edge) => edge.source !== nodeId && edge.target !== nodeId
+              );
             },
             createEdge: (sourceId: string, targetId: string, label?: string) => {
               const edgeId = `edge_${sourceId}_${targetId}_${Date.now()}`;
@@ -614,10 +624,14 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
                 animated: true,
                 data: { style: 'neural' as const, label },
               };
+              executionContext.edges.push(newEdge);
               setEdgesFn((prev) => [...prev, newEdge]);
               return newEdge;
             },
             deleteEdge: (sourceId: string, targetId: string) => {
+              executionContext.edges = executionContext.edges.filter(
+                (edge) => !(edge.source === sourceId && edge.target === targetId)
+              );
               setEdgesFn((prev) =>
                 prev.filter((e) => !(e.source === sourceId && e.target === targetId))
               );

@@ -6,6 +6,40 @@
 import type { PowerNode, PowerEdge, NeuralNodeData, NeuralNodeType, AIAgentAction, ChartData, TableData } from '../editor/types';
 import type { AgentToolName } from './tools';
 
+const SUPPORTED_NODE_TYPES = new Set<NeuralNodeType>([
+  'idea',
+  'task',
+  'note',
+  'reference',
+  'image',
+  'group',
+  'research',
+  'data',
+  'question',
+]);
+
+const NODE_TYPE_ALIASES: Record<string, NeuralNodeType> = {
+  decision: 'question',
+  milestone: 'task',
+  resource: 'reference',
+  process: 'note',
+  risk: 'question',
+  opportunity: 'idea',
+};
+
+function normalizeNodeType(value: unknown): NeuralNodeType {
+  if (typeof value !== 'string') {
+    return 'idea';
+  }
+
+  const normalized = value.trim().toLowerCase() as NeuralNodeType;
+  if (SUPPORTED_NODE_TYPES.has(normalized)) {
+    return normalized;
+  }
+
+  return NODE_TYPE_ALIASES[normalized] || 'idea';
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface ExecutionResult {
@@ -122,9 +156,30 @@ export class ActionExecutor {
   // ─── Individual Executors ──────────────────────────────────────────────
 
   private execCreateNode(input: any, ctx: ExecutionContext): ExecutionResult {
-    const { type = 'idea', label, description, parentId, status, priority, tags, progress, dueDate, checklist, chart, table } = input;
+    const {
+      type = 'idea',
+      label,
+      description,
+      parentId,
+      status,
+      priority,
+      tags,
+      progress,
+      dueDate,
+      checklist,
+      chart,
+      table,
+      blueprintId,
+      archetype,
+      surface,
+      todoSeed,
+      aiPromptHint,
+      aiContextPack,
+      documentVault,
+    } = input;
     
-    const node = ctx.createNode(type as NeuralNodeType, label, parentId);
+    const nodeType = normalizeNodeType(type);
+    const node = ctx.createNode(nodeType, label, parentId);
     
     // Apply additional data
     const updates: Partial<NeuralNodeData> = {};
@@ -136,6 +191,13 @@ export class ActionExecutor {
     if (dueDate) updates.dueDate = dueDate;
     if (chart) updates.chart = chart as ChartData;
     if (table) updates.table = table as TableData;
+    if (blueprintId) updates.blueprintId = blueprintId;
+    if (archetype) updates.archetype = archetype;
+    if (surface) updates.surface = surface;
+    if (todoSeed) updates.todoSeed = todoSeed;
+    if (aiPromptHint) updates.aiPromptHint = aiPromptHint;
+    if (aiContextPack) updates.aiContextPack = aiContextPack;
+    if (documentVault) updates.documentVault = documentVault;
     if (checklist) {
       updates.checklist = checklist.map((item: any, i: number) => ({
         id: `check_${Date.now()}_${i}`,
@@ -152,7 +214,7 @@ export class ActionExecutor {
     return {
       success: true,
       toolName: 'create_node',
-      description: `Criado nó "${label}" (${type})`,
+      description: `Criado nó "${label}" (${nodeType})`,
       nodesCreated: [node.id],
     };
   }
@@ -167,7 +229,7 @@ export class ActionExecutor {
 
     for (const spec of nodes) {
       const normalized = {
-        type: spec.type || 'idea',
+        type: normalizeNodeType(spec.type || 'idea'),
         label: spec.label,
         description: spec.content ?? spec.description,
         parentId: spec.parent_id ?? spec.parentId,
@@ -196,8 +258,17 @@ export class ActionExecutor {
   }
 
   private execUpdateNode(input: any, ctx: ExecutionContext): ExecutionResult {
-    const { nodeId, ...updates } = input;
-    
+    const nodeId = input?.nodeId ?? input?.node_id;
+    const { nodeId: _nodeId, node_id: _legacyNodeId, ...updates } = input ?? {};
+    if (!nodeId || typeof nodeId !== 'string') {
+      return {
+        success: false,
+        toolName: 'update_node',
+        description: 'nodeId ausente no update_node',
+        error: 'Missing nodeId',
+      };
+    }
+
     const node = ctx.nodes.find(n => n.id === nodeId);
     if (!node) {
       return { success: false, toolName: 'update_node', description: `Nó ${nodeId} não encontrado`, error: 'Node not found' };
@@ -207,7 +278,7 @@ export class ActionExecutor {
     const dataUpdates: Partial<NeuralNodeData> = {};
     if (updates.label !== undefined) dataUpdates.label = updates.label;
     if (updates.description !== undefined) dataUpdates.description = updates.description;
-    if (updates.type !== undefined) dataUpdates.type = updates.type;
+    if (updates.type !== undefined) dataUpdates.type = normalizeNodeType(updates.type);
     if (updates.status !== undefined) dataUpdates.status = updates.status;
     if (updates.priority !== undefined) dataUpdates.priority = updates.priority;
     if (updates.progress !== undefined) dataUpdates.progress = updates.progress;
@@ -218,6 +289,13 @@ export class ActionExecutor {
     if (updates.confidence !== undefined) dataUpdates.confidence = updates.confidence;
     if (updates.chart !== undefined) dataUpdates.chart = updates.chart;
     if (updates.table !== undefined) dataUpdates.table = updates.table;
+    if (updates.blueprintId !== undefined) dataUpdates.blueprintId = updates.blueprintId;
+    if (updates.archetype !== undefined) dataUpdates.archetype = updates.archetype;
+    if (updates.surface !== undefined) dataUpdates.surface = updates.surface;
+    if (updates.todoSeed !== undefined) dataUpdates.todoSeed = updates.todoSeed;
+    if (updates.aiPromptHint !== undefined) dataUpdates.aiPromptHint = updates.aiPromptHint;
+    if (updates.aiContextPack !== undefined) dataUpdates.aiContextPack = updates.aiContextPack;
+    if (updates.documentVault !== undefined) dataUpdates.documentVault = updates.documentVault;
     if (updates.checklist) {
       dataUpdates.checklist = updates.checklist.map((item: any, i: number) => ({
         id: item.id || `check_${Date.now()}_${i}`,
@@ -238,8 +316,17 @@ export class ActionExecutor {
   }
 
   private execDeleteNode(input: any, ctx: ExecutionContext): ExecutionResult {
-    const { nodeId, reason } = input;
-    
+    const nodeId = input?.nodeId ?? input?.node_id;
+    const reason = input?.reason;
+    if (!nodeId || typeof nodeId !== 'string') {
+      return {
+        success: false,
+        toolName: 'delete_node',
+        description: 'nodeId ausente no delete_node',
+        error: 'Missing nodeId',
+      };
+    }
+
     const node = ctx.nodes.find(n => n.id === nodeId);
     if (!node) {
       return { success: false, toolName: 'delete_node', description: `Nó ${nodeId} não encontrado`, error: 'Node not found' };
@@ -257,8 +344,18 @@ export class ActionExecutor {
   }
 
   private execCreateEdge(input: any, ctx: ExecutionContext): ExecutionResult {
-    const { sourceId, targetId, label } = input;
-    
+    const sourceId = input?.sourceId ?? input?.source_id;
+    const targetId = input?.targetId ?? input?.target_id;
+    const label = input?.label;
+    if (!sourceId || !targetId) {
+      return {
+        success: false,
+        toolName: 'create_edge',
+        description: 'sourceId/targetId ausentes em create_edge',
+        error: 'Missing sourceId or targetId',
+      };
+    }
+
     const edge = ctx.createEdge(sourceId, targetId, label);
     if (!edge) {
       return { success: false, toolName: 'create_edge', description: 'Falha ao criar conexão', error: 'Edge creation failed' };
@@ -301,7 +398,17 @@ export class ActionExecutor {
   }
 
   private execDeleteEdge(input: any, ctx: ExecutionContext): ExecutionResult {
-    const { sourceId, targetId } = input;
+    const sourceId = input?.sourceId ?? input?.source_id;
+    const targetId = input?.targetId ?? input?.target_id;
+    if (!sourceId || !targetId) {
+      return {
+        success: false,
+        toolName: 'delete_edge',
+        description: 'sourceId/targetId ausentes em delete_edge',
+        error: 'Missing sourceId or targetId',
+      };
+    }
+
     ctx.deleteEdge(sourceId, targetId);
 
     return {
@@ -324,20 +431,20 @@ export class ActionExecutor {
     // Group nodes by parent for intelligent positioning
     const nodesByParent = new Map<string, typeof nodeSpecs>();
     for (const spec of nodeSpecs) {
-      const parentKey = spec.parentId || '__root__';
+      const parentKey = spec.parentId || spec.parent_id || '__root__';
       if (!nodesByParent.has(parentKey)) nodesByParent.set(parentKey, []);
       nodesByParent.get(parentKey)!.push(spec);
     }
 
     for (const spec of nodeSpecs) {
       // Resolve parentId: could be a tempId or real ID
-      let resolvedParentId = spec.parentId;
+      let resolvedParentId = spec.parentId || spec.parent_id;
       if (resolvedParentId && idMap[resolvedParentId]) {
         resolvedParentId = idMap[resolvedParentId];
       }
 
       const node = ctx.createNode(
-        (spec.type || 'idea') as NeuralNodeType,
+        normalizeNodeType(spec.type || 'idea'),
         spec.label,
         resolvedParentId,
       );
@@ -390,10 +497,18 @@ export class ActionExecutor {
 
     const updatedIds: string[] = [];
     for (const upd of updates) {
-      const { nodeId, ...fields } = upd;
+      const nodeId = upd?.nodeId ?? upd?.node_id;
+      const { nodeId: _nodeId, node_id: _legacyNodeId, ...fields } = upd ?? {};
+      if (!nodeId || typeof nodeId !== 'string') {
+        continue;
+      }
       const node = ctx.nodes.find(n => n.id === nodeId);
       if (!node) continue;
-      
+
+      if (fields.type !== undefined) {
+        fields.type = normalizeNodeType(fields.type);
+      }
+
       ctx.updateNode(nodeId, fields);
       updatedIds.push(nodeId);
     }
@@ -628,3 +743,7 @@ export class ActionExecutor {
 
 // Singleton
 export const actionExecutor = new ActionExecutor();
+
+
+
+

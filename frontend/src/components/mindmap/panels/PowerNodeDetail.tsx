@@ -29,12 +29,22 @@ import {
   Eye,
   Maximize2,
   Minimize2,
+  FileArchive,
+  Archive,
+  ArchiveRestore,
+  Link2,
 } from 'lucide-react';
 import { NODE_TYPE_CONFIG, STATUS_CONFIG, PRIORITY_CONFIG } from '../editor/constants';
+import {
+  NODE_BLUEPRINTS,
+  createBlueprintNodeData,
+  getNodeBlueprintById,
+} from '../editor/nodeBlueprints';
 import type {
   PowerNode,
   NeuralNodeData,
   ChecklistItem,
+  DocumentVaultItem,
   NodeStatus,
   NodePriority,
 } from '../editor/types';
@@ -48,7 +58,7 @@ interface NodeDetailPanelProps {
   onDelete: (nodeId: string) => void;
 }
 
-type DetailTab = 'overview' | 'metrics' | 'checklist' | 'attachments' | 'comments' | 'ai';
+type DetailTab = 'overview' | 'metrics' | 'checklist' | 'attachments' | 'vault' | 'comments' | 'ai';
 
 export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
   node,
@@ -71,6 +81,7 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
     { id: 'metrics', label: 'Métricas', icon: BarChart3 },
     { id: 'checklist', label: 'Checklist', icon: CheckCircle2, count: data.checklist?.length },
     { id: 'attachments', label: 'Anexos', icon: Paperclip, count: data.attachments?.length },
+    { id: 'vault', label: 'Vault', icon: FileArchive, count: data.documentVault?.length },
     { id: 'comments', label: 'Comentários', icon: MessageSquare, count: data.commentCount },
     { id: 'ai', label: 'IA', icon: Sparkles },
   ];
@@ -172,6 +183,7 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
           {activeTab === 'metrics' && <MetricsTab node={node} onUpdate={onUpdate} />}
           {activeTab === 'checklist' && <ChecklistTab node={node} onUpdate={onUpdate} />}
           {activeTab === 'attachments' && <AttachmentsTab node={node} onUpdate={onUpdate} />}
+          {activeTab === 'vault' && <DocumentVaultTab node={node} onUpdate={onUpdate} />}
           {activeTab === 'comments' && <CommentsTab node={node} onUpdate={onUpdate} />}
           {activeTab === 'ai' && <AITab node={node} />}
         </div>
@@ -268,6 +280,61 @@ const OverviewTab: React.FC<{
       <FieldGroup label="Tags">
         <TagsEditor tags={data.tags || []} onChange={(tags) => onUpdate(node.id, { tags })} />
       </FieldGroup>
+
+      <div className="grid grid-cols-2 gap-3">
+        <FieldGroup label="Template">
+          <select
+            value={data.blueprintId || ''}
+            onChange={(event) => {
+              const blueprintId = event.target.value;
+              if (!blueprintId) {
+                onUpdate(node.id, { blueprintId: undefined });
+                return;
+              }
+              const blueprint = getNodeBlueprintById(blueprintId);
+              if (!blueprint) return;
+              const blueprintData = createBlueprintNodeData(blueprint);
+              onUpdate(node.id, {
+                ...blueprintData,
+                label: data.label || blueprint.title,
+                description: data.description || blueprint.description,
+              });
+            }}
+            className="w-full bg-white/[0.03] border border-white/[0.06] rounded-xl px-3 py-2 text-sm text-slate-300 outline-none focus:border-cyan-500/30 transition-colors appearance-none cursor-pointer"
+          >
+            <option value="" className="bg-[#111827]">
+              Sem template
+            </option>
+            {NODE_BLUEPRINTS.map((blueprint) => (
+              <option key={blueprint.id} value={blueprint.id} className="bg-[#111827]">
+                {blueprint.title}
+              </option>
+            ))}
+          </select>
+        </FieldGroup>
+
+        <FieldGroup label="Modo de leitura">
+          <select
+            value={data.readingMode || 'comfortable'}
+            onChange={(event) =>
+              onUpdate(node.id, {
+                readingMode: event.target.value as NeuralNodeData['readingMode'],
+              })
+            }
+            className="w-full bg-white/[0.03] border border-white/[0.06] rounded-xl px-3 py-2 text-sm text-slate-300 outline-none focus:border-cyan-500/30 transition-colors appearance-none cursor-pointer"
+          >
+            <option value="compact" className="bg-[#111827]">
+              Compacto
+            </option>
+            <option value="comfortable" className="bg-[#111827]">
+              Confortavel
+            </option>
+            <option value="deep" className="bg-[#111827]">
+              Profundo
+            </option>
+          </select>
+        </FieldGroup>
+      </div>
 
       {/* Due Date */}
       {data.type === 'task' && (
@@ -493,11 +560,13 @@ const AttachmentsTab: React.FC<{
   onUpdate: (id: string, data: Partial<NeuralNodeData>) => void;
 }> = ({ node, onUpdate }) => {
   const attachments = node.data.attachments || [];
+  const documentVault = node.data.documentVault || [];
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (files: FileList | null) => {
     if (!files) return;
     const newAttachments = [...attachments];
+    const newDocumentVault = [...documentVault];
     Array.from(files).forEach((file) => {
       if (file.size > 10 * 1024 * 1024) return; // 10MB limit
       const reader = new FileReader();
@@ -510,7 +579,21 @@ const AttachmentsTab: React.FC<{
           url: reader.result as string,
           size: file.size,
         });
-        onUpdate(node.id, { attachments: [...newAttachments] });
+        const newVaultEntry: DocumentVaultItem = {
+          id: `doc_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+          title: file.name,
+          type: attachmentType === 'file' ? 'file' : attachmentType,
+          url: reader.result as string,
+          sizeKb: Math.round(file.size / 1024),
+          summary: 'Arquivo importado na aba de anexos',
+          tags: ['attachment'],
+          archived: false,
+        };
+        newDocumentVault.push(newVaultEntry);
+        onUpdate(node.id, {
+          attachments: [...newAttachments],
+          documentVault: [...newDocumentVault],
+        });
       };
       reader.readAsDataURL(file);
     });
@@ -586,11 +669,169 @@ const AttachmentsTab: React.FC<{
       {attachments.length === 0 && (
         <div className="text-center py-4 text-slate-500 text-sm">Nenhum anexo</div>
       )}
+
+      <div className="text-[10px] text-slate-600">
+        Upload tambem adiciona o arquivo no Document Vault.
+      </div>
     </div>
   );
 };
 
 // ─── Comments Tab ───────────────────────────────────────────────────────────
+
+const DocumentVaultTab: React.FC<{
+  node: PowerNode;
+  onUpdate: (id: string, data: Partial<NeuralNodeData>) => void;
+}> = ({ node, onUpdate }) => {
+  const documents = node.data.documentVault || [];
+  const [title, setTitle] = useState('');
+  const [url, setUrl] = useState('');
+
+  const addDocument = () => {
+    const normalizedTitle = title.trim();
+    if (!normalizedTitle) return;
+
+    const newEntry: DocumentVaultItem = {
+      id: `doc_${Date.now()}`,
+      title: normalizedTitle,
+      type: url.trim() ? 'link' : 'note',
+      url: url.trim() || undefined,
+      summary: 'Item adicionado manualmente',
+      tags: ['manual-entry'],
+      archived: false,
+    };
+
+    onUpdate(node.id, { documentVault: [...documents, newEntry] });
+    setTitle('');
+    setUrl('');
+  };
+
+  const toggleArchive = (docId: string) => {
+    onUpdate(node.id, {
+      documentVault: documents.map((doc) =>
+        doc.id === docId
+          ? {
+              ...doc,
+              archived: !doc.archived,
+              archivedAt: !doc.archived ? new Date().toISOString() : undefined,
+            }
+          : doc
+      ),
+    });
+  };
+
+  const removeDocument = (docId: string) => {
+    onUpdate(node.id, { documentVault: documents.filter((doc) => doc.id !== docId) });
+  };
+
+  const updateSummary = (docId: string, summary: string) => {
+    onUpdate(node.id, {
+      documentVault: documents.map((doc) => (doc.id === docId ? { ...doc, summary } : doc)),
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 space-y-2">
+        <div className="text-[11px] uppercase tracking-wider text-slate-500 font-medium">
+          Adicionar ao Vault
+        </div>
+        <input
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          placeholder="Titulo do documento"
+          className="w-full bg-white/[0.03] border border-white/[0.06] rounded-lg px-2.5 py-2 text-sm text-slate-200 outline-none focus:border-cyan-500/30"
+        />
+        <div className="flex items-center gap-2">
+          <input
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+            placeholder="URL (opcional)"
+            className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-2.5 py-2 text-xs text-slate-300 outline-none focus:border-cyan-500/30"
+          />
+          <button
+            onClick={addDocument}
+            className="px-3 py-2 rounded-lg text-xs font-medium bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/25 transition-colors"
+          >
+            Adicionar
+          </button>
+        </div>
+      </div>
+
+      {documents.map((doc) => (
+        <div
+          key={doc.id}
+          className={`rounded-xl border p-3 space-y-2 transition-colors ${
+            doc.archived
+              ? 'border-slate-500/30 bg-slate-500/10'
+              : 'border-white/[0.08] bg-white/[0.02]'
+          }`}
+        >
+          <div className="flex items-start gap-2">
+            <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center flex-shrink-0">
+              {doc.type === 'link' ? (
+                <Link2 className="w-4 h-4 text-cyan-300" />
+              ) : (
+                <FileArchive className="w-4 h-4 text-violet-300" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-slate-100 break-words">{doc.title}</div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-wide">{doc.type}</div>
+            </div>
+            <button
+              onClick={() => toggleArchive(doc.id)}
+              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-200 hover:bg-white/5"
+              title={doc.archived ? 'Desarquivar' : 'Arquivar'}
+            >
+              {doc.archived ? (
+                <ArchiveRestore className="w-3.5 h-3.5" />
+              ) : (
+                <Archive className="w-3.5 h-3.5" />
+              )}
+            </button>
+            <button
+              onClick={() => removeDocument(doc.id)}
+              className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-white/5"
+              title="Remover"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {doc.url && (
+            <a
+              href={doc.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] text-cyan-300 hover:text-cyan-200 break-all inline-flex items-center gap-1"
+            >
+              <ExternalLink className="w-3 h-3" />
+              {doc.url}
+            </a>
+          )}
+
+          <textarea
+            value={doc.summary || ''}
+            onChange={(event) => updateSummary(doc.id, event.target.value)}
+            rows={2}
+            placeholder="Resumo rapido para IA e contexto..."
+            className="w-full bg-white/[0.03] border border-white/[0.06] rounded-lg px-2.5 py-2 text-xs text-slate-300 placeholder-slate-600 outline-none resize-none focus:border-cyan-500/30"
+          />
+
+          <div className="text-[10px] text-slate-500">
+            {doc.archived ? 'Arquivado' : 'Ativo'}
+            {doc.archivedAt ? ` em ${new Date(doc.archivedAt).toLocaleDateString('pt-BR')}` : ''}
+          </div>
+        </div>
+      ))}
+
+      {documents.length === 0 && (
+        <div className="text-center py-4 text-slate-500 text-sm">Nenhum documento no vault</div>
+      )}
+    </div>
+  );
+};
 
 const CommentsTab: React.FC<{
   node: PowerNode;

@@ -68,6 +68,12 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+    font-family: 'Space Grotesk', ui-sans-serif, sans-serif;
+    background-image:
+      radial-gradient(circle at 12% 18%, rgba(20, 184, 166, 0.2), transparent 28%),
+      radial-gradient(circle at 85% 72%, rgba(245, 158, 11, 0.15), transparent 32%),
+      linear-gradient(160deg, #040a14 0%, #060d18 42%, #050b14 100%);
+    background-attachment: fixed;
   }
 }
 

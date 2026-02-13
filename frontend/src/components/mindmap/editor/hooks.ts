@@ -18,6 +18,11 @@ import type {
   MapAnalytics,
 } from './types';
 import { DEFAULT_NODE_DATA, DEFAULT_EDITOR_SETTINGS, NODE_TYPE_CONFIG } from './constants';
+import {
+  createBlueprintNodeData,
+  getDefaultBlueprintForType,
+  getNodeBlueprintById,
+} from './nodeBlueprints';
 import { useAuthStore } from '@/stores/authStore';
 import { mapsApi, nodesApi } from '@/lib/api';
 import { advancedSaveQueue } from '@/lib/advanced-save-queue';
@@ -165,6 +170,11 @@ export function useNodeOperations(
       saveToHistory();
       const config = NODE_TYPE_CONFIG[type];
       const id = generateId();
+      const requestedBlueprintId =
+        typeof data?.blueprintId === 'string' ? data.blueprintId : undefined;
+      const blueprint =
+        getNodeBlueprintById(requestedBlueprintId) ?? getDefaultBlueprintForType(type);
+      const blueprintData = blueprint ? createBlueprintNodeData(blueprint) : {};
 
       // Calculate position
       let nodePosition = position;
@@ -195,11 +205,19 @@ export function useNodeOperations(
         type: 'power',
         position: nodePosition,
         data: {
-          label: data?.label || config.label,
-          type,
-          description: data?.description || '',
           ...DEFAULT_NODE_DATA,
+          ...blueprintData,
           ...data,
+          label: data?.label || blueprint?.title || config.label,
+          type,
+          description: data?.description ?? blueprint?.description ?? '',
+          tags: data?.tags ?? blueprintData.tags ?? [],
+          blueprintId: data?.blueprintId || blueprintData.blueprintId || blueprint?.id,
+          archetype: data?.archetype || blueprintData.archetype,
+          surface: data?.surface || blueprintData.surface,
+          aiPromptHint: data?.aiPromptHint || blueprintData.aiPromptHint,
+          aiContextPack: data?.aiContextPack || blueprintData.aiContextPack,
+          todoSeed: data?.todoSeed || blueprintData.todoSeed,
         },
       };
 
@@ -629,15 +647,18 @@ export function useMapPersistence(
   }, [mapId, getBackupKey, normalizeGraphIds, seedSnapshot, setEdges, setMapInfo, setNodes]);
 
   const createDefaultMap = useCallback(() => {
+    const rootBlueprint = getDefaultBlueprintForType('idea');
+    const rootBlueprintData = rootBlueprint ? createBlueprintNodeData(rootBlueprint) : {};
     const centralNode: PowerNode = {
       id: generateUuid(),
       type: 'power',
       position: { x: 0, y: 0 },
       data: {
+        ...DEFAULT_NODE_DATA,
+        ...rootBlueprintData,
         label: 'Tema Central',
         type: 'idea',
         description: 'Clique em + para adicionar ideias conectadas',
-        ...DEFAULT_NODE_DATA,
         status: 'active',
         priority: 'high',
       },
@@ -811,6 +832,10 @@ export function useMapPersistence(
 
           const createdRoot = await withRetry(() => nodesApi.create(rootPayload as any), 2, 400);
           const rootNode = createdRoot?.data as any;
+          const fallbackBlueprint = getDefaultBlueprintForType('idea');
+          const fallbackBlueprintData = fallbackBlueprint
+            ? createBlueprintNodeData(fallbackBlueprint)
+            : {};
 
           normalizedNodes = [
             {
@@ -818,10 +843,11 @@ export function useMapPersistence(
               type: 'power',
               position: { x: 0, y: 0 },
               data: {
+                ...DEFAULT_NODE_DATA,
+                ...fallbackBlueprintData,
                 label: mapData.title || 'Tema Central',
                 type: 'idea',
                 description: '',
-                ...DEFAULT_NODE_DATA,
                 status: 'active',
                 priority: 'high',
               },

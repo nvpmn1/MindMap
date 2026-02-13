@@ -1,982 +1,492 @@
-// ============================================================================
-// NeuralMap - PowerNode Component (Revolutionary Node)
-// ============================================================================
-
-import React, { memo, useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { memo, useCallback, useMemo, useState } from 'react';
 import { Position, type NodeProps } from '@xyflow/react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ConnectionHandlesSet } from './ConnectionHandles';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Plus,
-  MoreHorizontal,
-  MessageSquare,
-  Paperclip,
-  ChevronDown,
-  ChevronRight,
-  GripVertical,
-  Trash2,
-  Copy,
-  Sparkles,
-  Edit3,
-  Link,
-  ExternalLink,
+  BarChart3,
   CheckCircle2,
   Circle,
-  Clock,
-  ArrowUpRight,
-  Users,
-  Eye,
+  Copy,
+  FileArchive,
   GitBranch,
-  Zap,
-  Brain,
-  ListTodo,
-  Search,
-  BarChart3,
   Lock,
   LockOpen,
+  MessageSquare,
+  Paperclip,
   Pin,
   PinOff,
-  TrendingUp,
-  Share2,
+  Plus,
+  Sparkles,
+  Trash2,
 } from 'lucide-react';
-import { NODE_TYPE_CONFIG, STATUS_CONFIG, PRIORITY_CONFIG } from '../editor/constants';
-import type { NeuralNodeData, ChartData, ChecklistItem } from '../editor/types';
+import { ConnectionHandlesSet } from './ConnectionHandles';
+import { NODE_TYPE_CONFIG, PRIORITY_CONFIG, STATUS_CONFIG } from '../editor/constants';
+import type { DocumentVaultItem, NeuralNodeData } from '../editor/types';
+import { estimateNodeWidth, resolvePowerNodeAppearance } from './power/powerNodeAppearance';
 
-// ─── Mini Chart Components ──────────────────────────────────────────────────
+type NodeAction =
+  | 'addChild'
+  | 'aiExpand'
+  | 'duplicate'
+  | 'delete'
+  | 'togglePin'
+  | 'toggleLock'
+  | 'confirmLink';
 
-const MiniBarChart: React.FC<{ data: number[]; color?: string; height?: number }> = ({
-  data,
-  color = '#06b6d4',
-  height = 32,
-}) => {
-  const max = Math.max(...data, 1);
-  return (
-    <div className="flex items-end gap-0.5" style={{ height }}>
-      {data.map((val, i) => (
-        <motion.div
-          key={i}
-          initial={{ height: 0 }}
-          animate={{ height: `${(val / max) * 100}%` }}
-          transition={{ delay: i * 0.05, duration: 0.4 }}
-          className="flex-1 rounded-t-sm min-w-[3px]"
-          style={{ backgroundColor: color, opacity: 0.4 + (val / max) * 0.6 }}
-        />
-      ))}
-    </div>
-  );
+type NodeRuntimeCallbacks = {
+  onAddChild?: (nodeId: string) => void;
+  onAIExpand?: (nodeId: string) => void;
+  onDuplicate?: (nodeId: string) => void;
+  onDeleteNode?: (nodeId: string) => void;
+  onUpdateData?: (nodeId: string, data: Partial<NeuralNodeData>) => void;
+  onStartConnection?: (nodeId: string, position: string) => void;
+  onConfirmConnection?: () => void;
+  onCancelConnection?: () => void;
+  isInLinkingMode?: boolean;
+  isLinkingSource?: boolean;
 };
 
-const MiniPieChart: React.FC<{ data: number[]; colors?: string[]; size?: number }> = ({
-  data,
-  colors = ['#06b6d4', '#a855f7', '#f59e0b', '#10b981', '#ef4444'],
-  size = 40,
-}) => {
-  const total = data.reduce((a, b) => a + b, 0);
-  let cumulative = 0;
-  const radius = size / 2 - 2;
-  const center = size / 2;
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      {data.map((val, i) => {
-        const startAngle = (cumulative / total) * 360;
-        cumulative += val;
-        const endAngle = (cumulative / total) * 360;
-        const startRad = ((startAngle - 90) * Math.PI) / 180;
-        const endRad = ((endAngle - 90) * Math.PI) / 180;
-        const largeArc = endAngle - startAngle > 180 ? 1 : 0;
-        const x1 = center + radius * Math.cos(startRad);
-        const y1 = center + radius * Math.sin(startRad);
-        const x2 = center + radius * Math.cos(endRad);
-        const y2 = center + radius * Math.sin(endRad);
-        const d = `M ${center} ${center} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z`;
-        return <path key={i} d={d} fill={colors[i % colors.length]} opacity={0.8} />;
-      })}
-    </svg>
-  );
-};
+const resolveProgress = (value?: number) => clamp(Number(value || 0), 0, 100);
 
-const MiniLineChart: React.FC<{
-  data: number[];
-  color?: string;
-  height?: number;
-  width?: number;
-}> = ({ data, color = '#06b6d4', height = 32, width = 80 }) => {
-  if (data.length < 2) return null;
-  const max = Math.max(...data, 1);
-  const min = Math.min(...data, 0);
-  const range = max - min || 1;
-  const step = width / (data.length - 1);
-  const points = data
-    .map((v, i) => `${i * step},${height - ((v - min) / range) * height}`)
-    .join(' ');
-
-  return (
-    <svg width={width} height={height} className="overflow-visible">
-      <polyline
-        points={points}
-        fill="none"
-        stroke={color}
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        opacity={0.8}
-      />
-      {/* Last point dot */}
-      <circle
-        cx={step * (data.length - 1)}
-        cy={height - ((data[data.length - 1] - min) / range) * height}
-        r="2.5"
-        fill={color}
-      />
-    </svg>
-  );
-};
-
-// ─── Progress Ring ──────────────────────────────────────────────────────────
-
-const ProgressRing: React.FC<{ progress: number; size?: number; color?: string }> = ({
-  progress,
-  size = 28,
-  color = '#06b6d4',
-}) => {
-  const radius = (size - 4) / 2;
+const ProgressRing: React.FC<{ value: number; color: string }> = ({ value, color }) => {
+  const radius = 16;
   const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (progress / 100) * circumference;
+  const offset = circumference - (resolveProgress(value) / 100) * circumference;
 
   return (
-    <div className="relative" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
+    <div className="relative w-10 h-10">
+      <svg viewBox="0 0 40 40" className="w-10 h-10 -rotate-90">
+        <circle cx="20" cy="20" r={radius} strokeWidth="3" className="fill-none stroke-white/10" />
         <circle
-          cx={size / 2}
-          cy={size / 2}
+          cx="20"
+          cy="20"
           r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className="text-white/5"
-        />
-        <motion.circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth="2"
-          strokeLinecap="round"
-          initial={{ strokeDashoffset: circumference }}
-          animate={{ strokeDashoffset: offset }}
-          style={{ strokeDasharray: circumference }}
-          transition={{ duration: 0.8, ease: 'easeOut' }}
+          strokeWidth="3"
+          className="fill-none transition-all duration-500"
+          style={{
+            stroke: color,
+            strokeLinecap: 'round',
+            strokeDasharray: circumference,
+            strokeDashoffset: offset,
+          }}
         />
       </svg>
-      <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold text-white/60">
-        {progress}
+      <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-slate-200">
+        {resolveProgress(value)}
       </span>
     </div>
   );
 };
 
-// ─── Toolbar Components ─────────────────────────────────────────────────────
+const MiniLineChart: React.FC<{ values: number[]; color: string }> = ({ values, color }) => {
+  if (!values.length) return null;
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = max - min || 1;
+  const width = 180;
+  const height = 42;
+  const step = values.length > 1 ? width / (values.length - 1) : width;
 
-const ToolbarButton: React.FC<{
-  icon: React.FC<any>;
-  label: string;
-  color: 'cyan' | 'blue' | 'purple' | 'amber' | 'red' | 'green';
-  onClick: () => void;
-  shortcut?: string;
-  danger?: boolean;
-}> = ({ icon: Icon, label, color, onClick, shortcut, danger }) => {
-  const colorMap = {
-    cyan: 'hover:bg-cyan-500/20 hover:text-cyan-300 text-cyan-400',
-    blue: 'hover:bg-blue-500/20 hover:text-blue-300 text-blue-400',
-    purple: 'hover:bg-purple-500/20 hover:text-purple-300 text-purple-400',
-    amber: 'hover:bg-amber-500/20 hover:text-amber-300 text-amber-400',
-    green: 'hover:bg-emerald-500/20 hover:text-emerald-300 text-emerald-400',
-    red: 'hover:bg-red-500/20 hover:text-red-300 text-red-400',
-  };
+  const points = values
+    .map((value, index) => {
+      const x = index * step;
+      const y = height - ((value - min) / range) * height;
+      return `${x},${y}`;
+    })
+    .join(' ');
 
   return (
-    <motion.button
-      whileHover={{ scale: 1.15 }}
-      whileTap={{ scale: 0.95 }}
-      onClick={onClick}
-      className={`group relative p-2 rounded-lg transition-all ${colorMap[color]} ${danger ? 'text-red-400' : ''}`}
-      title={label}
-    >
-      <Icon className="w-4 h-4" />
-
-      {/* Tooltip */}
-      <motion.div
-        initial={{ opacity: 0, y: 4 }}
-        whileHover={{ opacity: 1, y: 0 }}
-        className="absolute left-1/2 -translate-x-1/2 -bottom-10 px-2.5 py-1 
-          bg-black/80 text-white text-[11px] font-medium rounded-lg whitespace-nowrap
-          pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity"
-      >
-        <div>{label}</div>
-        {shortcut && <div className="text-[9px] text-slate-400 mt-0.5">{shortcut}</div>}
-      </motion.div>
-    </motion.button>
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="w-full h-[42px]">
+      <polyline
+        points={points}
+        fill="none"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 };
 
-const AISubmenuTrigger: React.FC<{
-  isActive: boolean;
-  onHover: () => void;
-  onClick: () => void;
-  onAction: (action: string) => void;
-}> = ({ isActive, onHover, onClick, onAction }) => (
-  <div className="relative group">
-    <motion.button
-      whileHover={{ scale: 1.15 }}
-      whileTap={{ scale: 0.95 }}
-      onClick={onClick}
-      onMouseEnter={onHover}
-      className={`relative p-2 rounded-lg transition-all
-        ${
-          isActive
-            ? 'bg-purple-500/30 text-purple-300'
-            : 'hover:bg-purple-500/20 hover:text-purple-300 text-purple-400'
-        }`}
-      title="IA - Expandir com IA"
-    >
-      <Sparkles className="w-4 h-4" />
-      <ChevronDown
-        className={`absolute -right-1 -bottom-1 w-3 h-3 transition-transform ${isActive ? 'rotate-180' : ''}`}
-      />
-
-      {/* Tooltip */}
-      <motion.div
-        initial={{ opacity: 0, y: 4 }}
-        whileHover={{ opacity: 1, y: 0 }}
-        className="absolute left-1/2 -translate-x-1/2 -bottom-10 px-2.5 py-1 
-          bg-black/80 text-white text-[11px] font-medium rounded-lg whitespace-nowrap
-          pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity"
-      >
-        IA
-      </motion.div>
-    </motion.button>
+const StatsPill: React.FC<{ label: string; value: string | number; tone?: string }> = ({
+  label,
+  value,
+  tone,
+}) => (
+  <div
+    className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-medium border border-white/10 bg-white/[0.03] ${tone || 'text-slate-300'}`}
+  >
+    <span className="text-slate-500 uppercase tracking-wide">{label}</span>
+    <span>{value}</span>
   </div>
 );
 
-const MoreSubmenuTrigger: React.FC<{
-  isActive: boolean;
-  onHover: () => void;
-  onClick: () => void;
-  isPinned?: boolean;
-  isLocked?: boolean;
-  nodeId: string;
-  onUpdateData?: (nodeId: string, data: Partial<any>) => void;
-}> = ({ isActive, onHover, onClick, isPinned, isLocked }) => (
-  <div className="relative group">
-    <motion.button
-      whileHover={{ scale: 1.15 }}
-      whileTap={{ scale: 0.95 }}
-      onClick={onClick}
-      onMouseEnter={onHover}
-      className={`relative p-2 rounded-lg transition-all
-        ${
-          isActive
-            ? 'bg-slate-500/30 text-slate-300'
-            : 'hover:bg-slate-500/20 hover:text-slate-300 text-slate-400'
-        }`}
-      title="Mais ações"
-    >
-      <MoreHorizontal className="w-4 h-4" />
-      <ChevronDown
-        className={`absolute -right-1 -bottom-1 w-3 h-3 transition-transform ${isActive ? 'rotate-180' : ''}`}
-      />
-
-      {/* Tooltip */}
-      <motion.div
-        initial={{ opacity: 0, y: 4 }}
-        whileHover={{ opacity: 1, y: 0 }}
-        className="absolute left-1/2 -translate-x-1/2 -bottom-10 px-2.5 py-1 
-          bg-black/80 text-white text-[11px] font-medium rounded-lg whitespace-nowrap
-          pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity"
-      >
-        Mais
-      </motion.div>
-    </motion.button>
+const DocumentBadge: React.FC<{ document: DocumentVaultItem }> = ({ document }) => (
+  <div
+    className={`rounded-lg px-2.5 py-2 border text-[10px] transition-colors ${
+      document.archived
+        ? 'bg-slate-500/10 border-slate-500/30 text-slate-400'
+        : 'bg-cyan-500/8 border-cyan-500/30 text-cyan-100'
+    }`}
+  >
+    <div className="font-medium break-words">{document.title}</div>
+    <div className="mt-1 flex items-center justify-between text-[9px] uppercase tracking-wide">
+      <span>{document.type}</span>
+      <span>{document.archived ? 'Archived' : 'Active'}</span>
+    </div>
   </div>
 );
 
-// ─── Submenu Components ──────────────────────────────────────────────────────
-
-const AISubmenu: React.FC<{
-  onAction: (action: string) => void;
-  nodeId: string;
-  toolbarPosition: 'top' | 'bottom';
-}> = ({ onAction, toolbarPosition }) => (
-  <motion.div
-    initial={{ opacity: 0, y: toolbarPosition === 'top' ? -8 : 8, scale: 0.95 }}
-    animate={{ opacity: 1, y: 0, scale: 1 }}
-    exit={{ opacity: 0, y: toolbarPosition === 'top' ? -8 : 8, scale: 0.95 }}
-    transition={{ duration: 0.15 }}
-    className={`absolute left-1/2 -translate-x-1/2 w-56 z-30
-      bg-gradient-to-b from-[#1a2332]/98 to-[#0f1419]/98 backdrop-blur-xl 
-      border border-purple-500/20 rounded-xl shadow-2xl overflow-hidden py-1
-      ${toolbarPosition === 'top' ? 'top-full mt-2' : 'bottom-full mb-2'}`}
-  >
-    <div className="px-3 py-1.5 text-[10px] font-bold text-purple-400 uppercase tracking-wider">
-      🚀 Inteligência
-    </div>
-
-    <AISubMenuButton
-      icon={Sparkles}
-      label="Expandir com IA"
-      onClick={() => onAction('aiExpand')}
-      description="Gera ideias relacionadas"
-    />
-    <AISubMenuButton
-      icon={Brain}
-      label="Analisar Profundo"
-      onClick={() => onAction('aiAnalyze')}
-      description="Análise detalhada"
-    />
-    <AISubMenuButton
-      icon={ListTodo}
-      label="Gerar Tarefas"
-      onClick={() => onAction('aiTasks')}
-      description="Cria ações"
-    />
-    <AISubMenuButton
-      icon={Search}
-      label="Pesquisar Tema"
-      onClick={() => onAction('aiResearch')}
-      description="Busca informações"
-    />
-    <AISubMenuButton
-      icon={BarChart3}
-      label="Gerar Gráfico"
-      onClick={() => onAction('aiChart')}
-      description="Cria visualizações"
-    />
-  </motion.div>
-);
-
-const MoreSubmenu: React.FC<{
-  isPinned?: boolean;
-  isLocked?: boolean;
-  nodeId: string;
-  onUpdateData?: (nodeId: string, data: Partial<any>) => void;
-  onAction: (action: string) => void;
-  toolbarPosition: 'top' | 'bottom';
-}> = ({ isPinned, isLocked, nodeId, onUpdateData, toolbarPosition }) => (
-  <motion.div
-    initial={{ opacity: 0, y: toolbarPosition === 'top' ? -8 : 8, scale: 0.95 }}
-    animate={{ opacity: 1, y: 0, scale: 1 }}
-    exit={{ opacity: 0, y: toolbarPosition === 'top' ? -8 : 8, scale: 0.95 }}
-    transition={{ duration: 0.15 }}
-    className={`absolute left-1/2 -translate-x-1/2 w-48 z-30
-      bg-gradient-to-b from-[#1a2332]/98 to-[#0f1419]/98 backdrop-blur-xl 
-      border border-slate-500/20 rounded-xl shadow-2xl overflow-hidden py-1
-      ${toolbarPosition === 'top' ? 'top-full mt-2' : 'bottom-full mb-2'}`}
-  >
-    <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-      Configurar
-    </div>
-
-    <button
-      onClick={() => onUpdateData?.(nodeId, { pinned: !isPinned })}
-      className="w-full px-3 py-2 text-left text-xs text-slate-300 hover:bg-white/5 transition-all flex items-center gap-2 group"
-    >
-      {isPinned ? (
-        <PinOff className="w-3.5 h-3.5 text-amber-400" />
-      ) : (
-        <Pin className="w-3.5 h-3.5 text-amber-400" />
-      )}
-      <span className="flex-1">{isPinned ? 'Desafixar' : 'Fixar Posição'}</span>
-    </button>
-
-    <button
-      onClick={() => onUpdateData?.(nodeId, { locked: !isLocked })}
-      className="w-full px-3 py-2 text-left text-xs text-slate-300 hover:bg-white/5 transition-all flex items-center gap-2 group"
-    >
-      {isLocked ? (
-        <LockOpen className="w-3.5 h-3.5 text-orange-400" />
-      ) : (
-        <Lock className="w-3.5 h-3.5 text-orange-400" />
-      )}
-      <span className="flex-1">{isLocked ? 'Desbloquear' : 'Bloquear'}</span>
-    </button>
-
-    <div className="my-1 h-px bg-white/[0.06]" />
-
-    <button className="w-full px-3 py-2 text-left text-xs text-slate-300 hover:bg-white/5 transition-all flex items-center gap-2">
-      <Share2 className="w-3.5 h-3.5 text-cyan-400" />
-      <span>Compartilhar</span>
-    </button>
-
-    <button className="w-full px-3 py-2 text-left text-xs text-slate-300 hover:bg-white/5 transition-all flex items-center gap-2">
-      <Link className="w-3.5 h-3.5 text-blue-400" />
-      <span>Vincular</span>
-    </button>
-  </motion.div>
-);
-
-const AISubMenuButton: React.FC<{
-  icon: React.FC<any>;
+const ToolbarButton: React.FC<{
   label: string;
+  icon: React.FC<{ className?: string }>;
   onClick: () => void;
-  description: string;
-}> = ({ icon: Icon, label, onClick, description }) => (
+  danger?: boolean;
+}> = ({ label, icon: Icon, onClick, danger }) => (
   <motion.button
-    whileHover={{ x: 4 }}
-    onClick={onClick}
-    className="w-full px-3 py-2.5 text-left flex items-start gap-2.5 hover:bg-purple-500/10 transition-all group"
+    whileHover={{ scale: 1.08, y: -1 }}
+    whileTap={{ scale: 0.96 }}
+    onClick={(event) => {
+      event.stopPropagation();
+      onClick();
+    }}
+    className={`group relative h-8 w-8 rounded-xl border text-slate-200 transition-all ${
+      danger
+        ? 'bg-red-500/10 border-red-500/30 hover:bg-red-500/20'
+        : 'bg-[#0f1728]/90 border-white/10 hover:bg-[#172036] hover:border-white/20'
+    }`}
+    title={label}
   >
-    <Icon className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
-    <div className="flex-1">
-      <div className="text-xs font-medium text-purple-300 group-hover:text-purple-200">{label}</div>
-      <div className="text-[10px] text-slate-500 group-hover:text-slate-400">{description}</div>
-    </div>
+    <Icon className={`mx-auto h-4 w-4 ${danger ? 'text-red-300' : 'text-slate-100'}`} />
   </motion.button>
 );
 
-// ─── PowerNode Component ────────────────────────────────────────────────────
-
 const PowerNodeComponent: React.FC<NodeProps> = ({ id, data: rawData, selected }) => {
-  const data = rawData as unknown as NeuralNodeData;
+  const data = rawData as NeuralNodeData;
+  const runtime = rawData as unknown as NeuralNodeData & NodeRuntimeCallbacks;
+
   const [isHovered, setIsHovered] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
-  const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [showChecklist, setShowChecklist] = useState(false);
-  const [toolbarPosition, setToolbarPosition] = useState<'top' | 'bottom'>('top');
-  const toolbarRef = useRef<HTMLDivElement>(null);
-  const nodeRef = useRef<HTMLDivElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // Smart positioning: detect available space and position toolbar accordingly
-  useEffect(() => {
-    if (!isHovered || !toolbarRef.current || !containerRef.current) return;
-
-    const updatePosition = () => {
-      const toolbarRect = toolbarRef.current?.getBoundingClientRect();
-      const containerRect = containerRef.current?.getBoundingClientRect();
-
-      if (!toolbarRect || !containerRect) return;
-
-      // Check if toolbar goes below viewport (with 250px buffer for submenu)
-      const spaceBelow = window.innerHeight - containerRect.bottom;
-      const toolbarHeight = toolbarRect.height;
-      const submenuHeight = 250; // Approximate submenu height
-
-      if (
-        spaceBelow < toolbarHeight + submenuHeight &&
-        containerRect.top > toolbarHeight + submenuHeight
-      ) {
-        setToolbarPosition('bottom');
-      } else {
-        setToolbarPosition('top');
-      }
-    };
-
-    // Delayed update to ensure measurements are accurate
-    const timeoutId = setTimeout(updatePosition, 0);
-    return () => clearTimeout(timeoutId);
-  }, [isHovered]);
+  const [expandedChecklist, setExpandedChecklist] = useState(false);
 
   const config = NODE_TYPE_CONFIG[data.type] || NODE_TYPE_CONFIG.idea;
   const statusConfig = STATUS_CONFIG[data.status] || STATUS_CONFIG.active;
   const priorityConfig = PRIORITY_CONFIG[data.priority] || PRIORITY_CONFIG.medium;
   const Icon = config.icon;
+  const appearance = resolvePowerNodeAppearance(data);
 
-  const hasChart = data.chart && data.chart.datasets?.[0]?.data?.length > 0;
-  const hasTable = data.table && data.table.rows?.length > 0;
-  const hasChecklist = data.checklist && data.checklist.length > 0;
-  const checklistProgress = hasChecklist
-    ? Math.round((data.checklist!.filter((c) => c.completed).length / data.checklist!.length) * 100)
-    : 0;
+  const width = useMemo(() => estimateNodeWidth(data), [data]);
 
-  // Callbacks passed via node data from the parent page
-  const onAddChild = (data as any).onAddChild as ((nodeId: string) => void) | undefined;
-  const onAIExpand = (data as any).onAIExpand as ((nodeId: string) => void) | undefined;
-  const onDuplicate = (data as any).onDuplicate as ((nodeId: string) => void) | undefined;
-  const onDeleteNode = (data as any).onDeleteNode as ((nodeId: string) => void) | undefined;
-  const onUpdateData = (data as any).onUpdateData as
-    | ((nodeId: string, data: Partial<NeuralNodeData>) => void)
-    | undefined;
+  const checklistItems = data.checklist || [];
+  const checklistDone = checklistItems.filter((item) => item.completed).length;
+  const checklistProgress =
+    checklistItems.length > 0 ? Math.round((checklistDone / checklistItems.length) * 100) : 0;
+  const chartValues = data.chart?.datasets?.[0]?.data || [];
+  const vaultItems = data.documentVault || [];
+  const todoSeed = data.todoSeed || [];
 
-  // Connection Mode callbacks
-  const onStartConnection = (data as any).onStartConnection as
-    | ((nodeId: string, position: string) => void)
-    | undefined;
-  const onConfirmConnection = (data as any).onConfirmConnection as (() => void) | undefined;
-  const onCancelConnection = (data as any).onCancelConnection as (() => void) | undefined;
-  const isInLinkingMode = (data as any).isInLinkingMode as boolean | undefined;
-  const isLinkingSource = (data as any).isLinkingSource as boolean | undefined;
+  const isInLinkingMode = Boolean(runtime.isInLinkingMode);
+  const isLinkingSource = Boolean(runtime.isLinkingSource);
 
-  const handleAction = useCallback(
-    (action: string) => {
+  const runAction = useCallback(
+    (action: NodeAction) => {
       switch (action) {
         case 'addChild':
-          onAddChild?.(id);
-          break;
+          runtime.onAddChild?.(id);
+          return;
         case 'aiExpand':
-        case 'aiAnalyze':
-        case 'aiTasks':
-        case 'aiResearch':
-        case 'aiChart':
-          onAIExpand?.(id);
-          break;
+          runtime.onAIExpand?.(id);
+          return;
         case 'duplicate':
-          onDuplicate?.(id);
-          break;
+          runtime.onDuplicate?.(id);
+          return;
         case 'delete':
-          onDeleteNode?.(id);
-          break;
+          runtime.onDeleteNode?.(id);
+          return;
+        case 'togglePin':
+          runtime.onUpdateData?.(id, { pinned: !Boolean(data.pinned) });
+          return;
+        case 'toggleLock':
+          runtime.onUpdateData?.(id, { locked: !Boolean((data as { locked?: boolean }).locked) });
+          return;
+        case 'confirmLink':
+          runtime.onConfirmConnection?.();
+          return;
       }
-      setShowMenu(false);
     },
-    [id, onAddChild, onAIExpand, onDuplicate, onDeleteNode]
+    [data.pinned, id, runtime]
   );
 
-  // ─── Render ─────────────────────────────────────────────────────────────
-
   return (
-    <motion.div
-      ref={containerRef}
-      onMouseEnter={() => {
-        console.log('🖱️ Node hovered:', { nodeId: id, isHovered: true });
-        setIsHovered(true);
+    <motion.article
+      initial={{ opacity: 0, scale: 0.9, y: 8 }}
+      animate={{
+        opacity: 1,
+        scale: isLinkingSource ? 1.05 : selected ? 1.02 : 1,
+        y: 0,
       }}
-      onMouseLeave={() => {
-        console.log('🖱️ Node unhovered:', { nodeId: id, isHovered: false });
-        setIsHovered(false);
-        setShowMenu(false);
-      }}
+      transition={{ type: 'spring', damping: 22, stiffness: 340 }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       onClick={() => {
-        // If in linking mode and nó isn't the source, confirm connection
         if (isInLinkingMode && !isLinkingSource) {
-          console.log('🖱️ Node clicked during linking:', {
-            nodeId: id,
-            isInLinkingMode,
-            isLinkingSource,
-          });
-          onConfirmConnection?.();
+          runAction('confirmLink');
         }
       }}
-      animate={{
-        scale: isLinkingSource ? 1.05 : selected ? 1.02 : 1,
-        boxShadow: isLinkingSource
-          ? `0 0 32px #10b98160, 0 0 64px #10b98140`
-          : selected
-            ? `0 0 24px ${config.color}30, 0 0 48px ${config.color}10`
-            : isHovered
-              ? `0 0 16px ${config.color}15`
-              : 'none',
-      }}
-      className={`relative group min-w-[240px] max-w-[340px]
-        rounded-2xl overflow-hidden cursor-pointer transition-all
-        ${isLinkingSource ? 'border-2 border-green-500/60' : ''}
-        ${isInLinkingMode && !isLinkingSource ? 'opacity-75 hover:opacity-100 cursor-crosshair' : 'opacity-100'}
-        bg-[#0c1220]/90 backdrop-blur-xl
-        border transition-all duration-300
-        border-white/[0.06]
-        hover:border-white/[0.12]`}
+      className={`relative border bg-[#090f1f]/92 backdrop-blur-xl shadow-[0_16px_48px_rgba(2,6,23,0.45)] transition-all duration-300 ${
+        appearance.surface.wrapper
+      } ${isInLinkingMode && !isLinkingSource ? 'cursor-crosshair opacity-80 hover:opacity-100' : 'cursor-pointer'} ${
+        selected ? `ring-2 ${appearance.ringClass}` : ''
+      }`}
       style={{
-        borderColor: selected ? `${config.color}60` : undefined,
+        width,
+        borderColor: selected ? `${appearance.accentColor}70` : 'rgba(255,255,255,0.10)',
+        boxShadow: isHovered || selected ? `0 0 30px ${appearance.glowColor}` : undefined,
       }}
     >
-      {/* Glow effect */}
-      {(selected || isHovered) && (
-        <div
-          className="absolute inset-0 opacity-30 pointer-events-none"
-          style={{
-            background: `radial-gradient(ellipse at 50% 0%, ${config.color}15 0%, transparent 70%)`,
-          }}
-        />
-      )}
+      <div
+        className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${appearance.overlayClass} opacity-90`}
+      />
 
-      {/* ─── Header ──────────────────────────────────────────────── */}
       <div className="relative px-4 pt-3 pb-2">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            {/* Type badge */}
-            <div
-              className={`flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center
-              bg-gradient-to-br ${config.gradient} border ${config.borderColor}`}
-            >
-              <Icon className="w-3.5 h-3.5" style={{ color: config.color }} />
-            </div>
+        <div className="mb-2 flex items-start gap-2">
+          <div
+            className={`h-9 w-9 flex-shrink-0 rounded-xl border ${config.borderColor} bg-gradient-to-br ${config.gradient} flex items-center justify-center`}
+          >
+            <Icon className="h-4 w-4" style={{ color: config.color }} />
+          </div>
 
-            <div className="flex-1 min-w-0">
-              {/* Type & Status */}
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <span
-                  className="text-[9px] font-semibold uppercase tracking-wider"
-                  style={{ color: config.color }}
-                >
-                  {config.label}
+          <div className="flex-1 min-w-0">
+            <div className="mb-1 flex flex-wrap items-center gap-1.5">
+              <span
+                className="rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-[0.1em]"
+                style={{ color: appearance.typeColor, borderColor: `${appearance.typeColor}55` }}
+              >
+                {config.label}
+              </span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${statusConfig.bg} ${statusConfig.color}`}>
+                {statusConfig.label}
+              </span>
+              {data.blueprintId && (
+                <span className="rounded-full border border-white/10 px-2 py-0.5 text-[9px] uppercase tracking-wide text-slate-400">
+                  {data.blueprintId.replace(/-/g, ' ')}
                 </span>
-                <span
-                  className={`text-[9px] px-1.5 py-0.5 rounded-full ${statusConfig.bg} ${statusConfig.color}`}
-                >
-                  {statusConfig.label}
-                </span>
-                {data.ai?.generated && (
-                  <Sparkles className="w-3 h-3 text-purple-400 flex-shrink-0" />
-                )}
-              </div>
-
-              {/* Title */}
-              {isEditing ? (
-                <input
-                  autoFocus
-                  defaultValue={data.label}
-                  onBlur={(e) => {
-                    const newLabel = e.target.value.trim();
-                    setIsEditing(false);
-                    if (newLabel && newLabel !== data.label) {
-                      onUpdateData?.(id, { label: newLabel });
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      const newLabel = (e.target as HTMLInputElement).value.trim();
-                      setIsEditing(false);
-                      if (newLabel && newLabel !== data.label) {
-                        onUpdateData?.(id, { label: newLabel });
-                      }
-                    }
-                    if (e.key === 'Escape') setIsEditing(false);
-                  }}
-                  className="w-full bg-transparent text-sm font-semibold text-white outline-none
-                    border-b border-cyan-500/30 pb-0.5"
-                />
-              ) : (
-                <h3
-                  className="text-sm font-semibold text-white truncate leading-tight"
-                  onDoubleClick={() => setIsEditing(true)}
-                >
-                  {data.label}
-                </h3>
               )}
+              {data.ai?.generated && <Sparkles className="h-3.5 w-3.5 text-cyan-300" />}
             </div>
+
+            {isEditing ? (
+              <input
+                autoFocus
+                defaultValue={data.label}
+                onBlur={(event) => {
+                  const nextLabel = event.target.value.trim();
+                  if (nextLabel && nextLabel !== data.label) {
+                    runtime.onUpdateData?.(id, { label: nextLabel });
+                  }
+                  setIsEditing(false);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    const nextLabel = (event.target as HTMLInputElement).value.trim();
+                    if (nextLabel && nextLabel !== data.label) {
+                      runtime.onUpdateData?.(id, { label: nextLabel });
+                    }
+                    setIsEditing(false);
+                  }
+                  if (event.key === 'Escape') {
+                    setIsEditing(false);
+                  }
+                }}
+                className="w-full bg-transparent border-b border-white/20 pb-1 text-base font-semibold text-white outline-none"
+              />
+            ) : (
+              <h3
+                onDoubleClick={(event) => {
+                  event.stopPropagation();
+                  setIsEditing(true);
+                }}
+                className="break-words text-base font-semibold leading-snug text-white"
+              >
+                {data.label}
+              </h3>
+            )}
           </div>
 
-          {/* Priority indicator */}
-          <div className={`flex-shrink-0 text-[10px] font-bold ${priorityConfig.color}`}>
+          <span className={`text-sm ${priorityConfig.color}`} title={priorityConfig.label}>
             {priorityConfig.icon}
-          </div>
+          </span>
         </div>
 
-        {/* Description */}
         {data.description && (
-          <p className="text-[11px] text-slate-400 mt-1.5 line-clamp-2 leading-relaxed">
+          <p className="max-h-36 overflow-y-auto pr-1 break-words whitespace-pre-wrap text-[12px] leading-relaxed text-slate-200/90">
             {data.description}
           </p>
         )}
       </div>
 
-      {/* ─── Metrics Row ─────────────────────────────────────────── */}
-      {((data.impact > 0 && data.impact !== 50) ||
-        (data.effort > 0 && data.effort !== 50) ||
-        (data.confidence > 0 && data.confidence !== 50) ||
-        data.progress > 0) && (
-        <div className="px-4 py-2 flex items-center gap-3 border-t border-white/[0.04]">
-          <div className="flex items-center gap-1">
-            <span className="text-[9px] text-slate-500">IMP</span>
-            <span className="text-[10px] font-bold text-emerald-400">{data.impact}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-[9px] text-slate-500">ESF</span>
-            <span className="text-[10px] font-bold text-amber-400">{data.effort}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-[9px] text-slate-500">CONF</span>
-            <span className="text-[10px] font-bold text-cyan-400">{data.confidence}</span>
-          </div>
+      <div className="relative border-t border-white/8 px-4 py-2.5 space-y-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <StatsPill label="Imp" value={data.impact} tone="text-emerald-300" />
+          <StatsPill label="Eff" value={data.effort} tone="text-amber-300" />
+          <StatsPill label="Conf" value={data.confidence} tone="text-cyan-300" />
           <div className="ml-auto">
-            <ProgressRing progress={data.progress} color={config.color} />
+            <ProgressRing value={resolveProgress(data.progress)} color={appearance.accentColor} />
           </div>
         </div>
-      )}
 
-      {/* ─── Chart Preview ───────────────────────────────────────── */}
-      {hasChart && (
-        <div className="px-4 py-2 border-t border-white/[0.04]">
-          <div className="text-[9px] text-slate-500 mb-1.5">{data.chart!.title}</div>
-          {data.chart!.type === 'bar' && (
-            <MiniBarChart data={data.chart!.datasets[0].data} color={config.color} />
-          )}
-          {data.chart!.type === 'line' && (
-            <MiniLineChart data={data.chart!.datasets[0].data} color={config.color} />
-          )}
-          {data.chart!.type === 'pie' && (
-            <div className="flex justify-center">
-              <MiniPieChart data={data.chart!.datasets[0].data} />
+        {chartValues.length > 0 && (
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-2.5 py-2">
+            <div className="mb-1.5 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-slate-400">
+              <BarChart3 className="h-3.5 w-3.5 text-cyan-300" />
+              <span>{data.chart?.title || 'Data preview'}</span>
             </div>
-          )}
-        </div>
-      )}
+            <MiniLineChart values={chartValues} color={appearance.accentColor} />
+          </div>
+        )}
 
-      {/* ─── Table Preview ───────────────────────────────────────── */}
-      {hasTable && (
-        <div className="px-4 py-2 border-t border-white/[0.04]">
-          <table className="w-full text-[10px]">
-            <thead>
-              <tr className="text-slate-500 border-b border-white/5">
-                {data.table!.columns.slice(0, 3).map((col) => (
-                  <th key={col.key} className="text-left py-1 font-medium">
-                    {col.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.table!.rows.slice(0, 3).map((row, i) => (
-                <tr key={i} className="text-slate-300 border-b border-white/[0.02]">
-                  {data.table!.columns.slice(0, 3).map((col) => (
-                    <td key={col.key} className="py-1">
-                      {String(row[col.key] ?? '')}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {data.table!.rows.length > 3 && (
-            <div className="text-[9px] text-slate-500 text-center mt-1">
-              +{data.table!.rows.length - 3} linhas
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ─── Checklist Preview ───────────────────────────────────── */}
-      {hasChecklist && (
-        <div className="px-4 py-2 border-t border-white/[0.04]">
-          <button
-            onClick={() => setShowChecklist(!showChecklist)}
-            className="flex items-center gap-1.5 text-[10px] text-slate-400 w-full"
-          >
-            {showChecklist ? (
-              <ChevronDown className="w-3 h-3" />
-            ) : (
-              <ChevronRight className="w-3 h-3" />
-            )}
-            <span>
-              Checklist ({data.checklist!.filter((c) => c.completed).length}/
-              {data.checklist!.length})
-            </span>
-            <div className="flex-1 h-1 bg-white/5 rounded-full ml-1">
+        {checklistItems.length > 0 && (
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-2.5 py-2">
+            <button
+              onClick={(event) => {
+                event.stopPropagation();
+                setExpandedChecklist((previous) => !previous);
+              }}
+              className="mb-2 flex w-full items-center justify-between text-[11px] text-slate-300"
+            >
+              <span>
+                Checklist {checklistDone}/{checklistItems.length}
+              </span>
+              <span className="text-cyan-300">{checklistProgress}%</span>
+            </button>
+            <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-white/8">
               <div
-                className="h-full rounded-full bg-emerald-400/50 transition-all"
+                className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-emerald-400 transition-all duration-500"
                 style={{ width: `${checklistProgress}%` }}
               />
             </div>
-          </button>
-          {showChecklist && (
-            <div className="mt-1.5 space-y-1">
-              {data.checklist!.slice(0, 5).map((item) => (
-                <div key={item.id} className="flex items-center gap-1.5 text-[10px]">
+            <div className="space-y-1">
+              {(expandedChecklist ? checklistItems : checklistItems.slice(0, 3)).map((item) => (
+                <div key={item.id} className="flex items-start gap-1.5 text-[11px] text-slate-300">
                   {item.completed ? (
-                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 text-emerald-300" />
                   ) : (
-                    <Circle className="w-3 h-3 text-slate-500" />
+                    <Circle className="mt-0.5 h-3.5 w-3.5 text-slate-500" />
                   )}
-                  <span
-                    className={item.completed ? 'text-slate-500 line-through' : 'text-slate-300'}
-                  >
+                  <span className={item.completed ? 'line-through text-slate-500' : 'break-words'}>
                     {item.text}
                   </span>
                 </div>
               ))}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
 
-      {/* ─── Tags ────────────────────────────────────────────────── */}
-      {data.tags && data.tags.length > 0 && (
-        <div className="px-4 py-2 flex flex-wrap gap-1 border-t border-white/[0.04]">
-          {data.tags.slice(0, 4).map((tag, i) => (
-            <span
-              key={i}
-              className="px-2 py-0.5 rounded-full text-[9px] font-medium
-              bg-white/5 text-slate-400 border border-white/[0.06]"
-            >
-              {tag}
-            </span>
-          ))}
-          {data.tags.length > 4 && (
-            <span className="text-[9px] text-slate-500">+{data.tags.length - 4}</span>
-          )}
-        </div>
-      )}
-
-      {/* ─── Footer ──────────────────────────────────────────────── */}
-      <div className="px-4 py-2 flex items-center justify-between border-t border-white/[0.04]">
-        <div className="flex items-center gap-2">
-          {/* Creator avatar */}
-          {data.creator && (
-            <div
-              className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white"
-              style={{ backgroundColor: data.creator.color || '#6366f1' }}
-              title={data.creator.displayName}
-            >
-              {data.creator.displayName?.charAt(0).toUpperCase() || 'U'}
-            </div>
-          )}
-
-          {/* Assignees */}
-          {data.assignees && data.assignees.length > 0 && (
-            <div className="flex -space-x-1.5">
-              {data.assignees.slice(0, 3).map((a, i) => (
-                <div
-                  key={i}
-                  className="w-5 h-5 rounded-full border border-[#0c1220] flex items-center justify-center
-                  text-[8px] font-bold text-white"
-                  style={{ backgroundColor: a.color }}
-                  title={a.displayName}
-                >
-                  {a.displayName?.charAt(0).toUpperCase() || 'U'}
+        {todoSeed.length > 0 && (
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-2.5 py-2">
+            <div className="mb-1 text-[10px] uppercase tracking-wide text-slate-400">Todo Seed</div>
+            <div className="space-y-1">
+              {todoSeed.slice(0, 4).map((item, index) => (
+                <div key={`${item}_${index}`} className="flex items-center gap-1.5 text-[11px] text-slate-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
+                  <span className="break-words">{item}</span>
                 </div>
               ))}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        <div className="flex items-center gap-2 text-slate-500">
-          {data.commentCount && data.commentCount > 0 && (
-            <div className="flex items-center gap-0.5 text-[10px]">
-              <MessageSquare className="w-3 h-3" />
-              <span>{data.commentCount}</span>
+        {vaultItems.length > 0 && (
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-2.5 py-2">
+            <div className="mb-2 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-slate-400">
+              <FileArchive className="h-3.5 w-3.5 text-violet-300" />
+              <span>Document Vault</span>
+              <span className="ml-auto text-[10px] text-slate-500">{vaultItems.length}</span>
             </div>
-          )}
-          {data.attachments && data.attachments.length > 0 && (
-            <div className="flex items-center gap-0.5 text-[10px]">
-              <Paperclip className="w-3 h-3" />
-              <span>{data.attachments.length}</span>
+            <div className="grid grid-cols-2 gap-1.5">
+              {vaultItems.slice(0, 4).map((document) => (
+                <DocumentBadge key={document.id} document={document} />
+              ))}
             </div>
-          )}
-          {data.connectionCount !== undefined && data.connectionCount > 0 && (
-            <div className="flex items-center gap-0.5 text-[10px]">
-              <GitBranch className="w-3 h-3" />
-              <span>{data.connectionCount}</span>
-            </div>
-          )}
+          </div>
+        )}
+      </div>
+
+      <div className="relative border-t border-white/8 px-4 py-2">
+        {data.tags?.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1">
+            {data.tags.slice(0, 6).map((tag) => (
+              <span
+                key={tag}
+                className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-slate-300"
+              >
+                #{tag}
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center justify-between text-[10px] text-slate-500">
+          <div className="flex items-center gap-2">
+            {data.commentCount ? (
+              <span className="inline-flex items-center gap-1">
+                <MessageSquare className="h-3.5 w-3.5" />
+                {data.commentCount}
+              </span>
+            ) : null}
+            {data.attachments?.length ? (
+              <span className="inline-flex items-center gap-1">
+                <Paperclip className="h-3.5 w-3.5" />
+                {data.attachments.length}
+              </span>
+            ) : null}
+            {data.connectionCount ? (
+              <span className="inline-flex items-center gap-1">
+                <GitBranch className="h-3.5 w-3.5" />
+                {data.connectionCount}
+              </span>
+            ) : null}
+          </div>
+          <span>{data.readingMode || 'comfortable'} mode</span>
         </div>
       </div>
 
-      {/* ─── Premium Hover Toolbar ─────────────────────────────────────── */}
       <AnimatePresence>
-        {isHovered && (
+        {(isHovered || selected) && (
           <motion.div
-            ref={toolbarRef}
-            initial={{ opacity: 0, y: toolbarPosition === 'top' ? -8 : 8, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: toolbarPosition === 'top' ? -8 : 8, scale: 0.95 }}
-            transition={{ duration: 0.15, ease: 'easeOut' }}
-            className={`absolute left-1/2 -translate-x-1/2 z-20 ${
-              toolbarPosition === 'top' ? '-top-14' : '-bottom-14'
-            }`}
-            onMouseLeave={() => setActiveSubmenu(null)}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            className="absolute -bottom-11 left-1/2 z-30 -translate-x-1/2"
           >
-            {/* Main Toolbar */}
-            <div
-              className="flex items-center gap-0.5 px-3 py-2 
-              bg-gradient-to-b from-[#1a2332]/98 to-[#0f1419]/98 backdrop-blur-xl 
-              border border-white/10 rounded-2xl shadow-2xl
-              relative before:absolute before:inset-0 before:rounded-2xl 
-              before:bg-gradient-to-r before:from-cyan-500/0 before:via-cyan-500/5 before:to-purple-500/0 before:pointer-events-none"
-            >
-              {/* Primary Actions */}
+            <div className="flex items-center gap-1 rounded-2xl border border-white/12 bg-[#0a1428]/96 px-2 py-1.5 shadow-[0_12px_32px_rgba(2,6,23,0.45)] backdrop-blur-xl">
+              <ToolbarButton label="Add child" icon={Plus} onClick={() => runAction('addChild')} />
+              <ToolbarButton label="AI expand" icon={Sparkles} onClick={() => runAction('aiExpand')} />
+              <ToolbarButton label="Duplicate" icon={Copy} onClick={() => runAction('duplicate')} />
               <ToolbarButton
-                icon={Edit3}
-                label="Editar"
-                color="blue"
-                onClick={() => setIsEditing(true)}
-                shortcut="Double-click"
+                label={data.pinned ? 'Unpin' : 'Pin'}
+                icon={data.pinned ? PinOff : Pin}
+                onClick={() => runAction('togglePin')}
               />
-
               <ToolbarButton
-                icon={Plus}
-                label="Filho"
-                color="cyan"
-                onClick={() => handleAction('addChild')}
-                shortcut="⤵"
+                label={(data as { locked?: boolean }).locked ? 'Unlock' : 'Lock'}
+                icon={(data as { locked?: boolean }).locked ? LockOpen : Lock}
+                onClick={() => runAction('toggleLock')}
               />
-
-              <ToolbarButton
-                icon={Copy}
-                label="Duplicar"
-                color="amber"
-                onClick={() => handleAction('duplicate')}
-                shortcut="Ctrl+D"
-              />
-
-              {/* AI Actions Submenu */}
-              <AISubmenuTrigger
-                isActive={activeSubmenu === 'ai'}
-                onHover={() => setActiveSubmenu('ai')}
-                onClick={() => setActiveSubmenu(activeSubmenu === 'ai' ? null : 'ai')}
-                onAction={handleAction}
-              />
-
-              {/* More Actions Submenu */}
-              <MoreSubmenuTrigger
-                isActive={activeSubmenu === 'more'}
-                onHover={() => setActiveSubmenu('more')}
-                onClick={() => setActiveSubmenu(activeSubmenu === 'more' ? null : 'more')}
-                isPinned={Boolean(data.pinned)}
-                isLocked={Boolean(data.locked)}
-                nodeId={id}
-                onUpdateData={onUpdateData}
-              />
-
-              {/* Delete Action */}
-              <ToolbarButton
-                icon={Trash2}
-                label="Excluir"
-                color="red"
-                onClick={() => handleAction('delete')}
-                shortcut="Del"
-                danger
-              />
-            </div>
-
-            {/* AI Submenu */}
-            <AnimatePresence>
-              {activeSubmenu === 'ai' && (
-                <AISubmenu onAction={handleAction} nodeId={id} toolbarPosition={toolbarPosition} />
-              )}
-            </AnimatePresence>
-
-            {/* More Submenu */}
-            <AnimatePresence>
-              {activeSubmenu === 'more' && (
-                <MoreSubmenu
-                  isPinned={data.pinned}
-                  isLocked={Boolean(data.locked)}
-                  nodeId={id}
-                  onUpdateData={onUpdateData}
-                  onAction={handleAction}
-                  toolbarPosition={toolbarPosition}
-                />
-              )}
-            </AnimatePresence>
-
-            {/* Arrow Indicator */}
-            <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2">
-              <div className="w-2.5 h-2.5 bg-[#1a2332]/98 border border-white/10 rotate-45 rounded-sm" />
+              <ToolbarButton label="Delete" icon={Trash2} onClick={() => runAction('delete')} danger />
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ─── Smart Connection Handles (Hidden until hover) ───────────────────────────────── */}
       <ConnectionHandlesSet
         nodeId={id}
-        onStartConnection={onStartConnection || (() => {})}
+        onStartConnection={runtime.onStartConnection || (() => {})}
         allowedPositions={[Position.Top, Position.Bottom, Position.Left, Position.Right]}
-        isNodeHovered={isHovered}
+        isNodeHovered={isHovered || selected}
       />
-    </motion.div>
+    </motion.article>
   );
 };
 
