@@ -204,11 +204,74 @@ interface OrchestratorResult {
 class AIOrchestrator {
   private model: string;
   private maxTokens: number;
+  private disableParallelToolUseSupported: boolean | null;
 
   constructor() {
     // FIXED: Always use Haiku for cost efficiency
     this.model = 'claude-haiku-4-5';
     this.maxTokens = 4096;
+    this.disableParallelToolUseSupported = null;
+  }
+
+  private shouldAttachDisableParallelToolUse(disableParallelToolUse?: boolean): boolean {
+    if (disableParallelToolUse !== true) {
+      return false;
+    }
+
+    return this.disableParallelToolUseSupported !== false;
+  }
+
+  private buildAnthropicToolChoice(
+    toolChoice: AgentRawParams['toolChoice'],
+    disableParallelToolUse?: boolean,
+    forceDisableParallelToolUseOff: boolean = false
+  ): any {
+    if (!toolChoice) {
+      return undefined;
+    }
+
+    if (
+      forceDisableParallelToolUseOff ||
+      !this.shouldAttachDisableParallelToolUse(disableParallelToolUse)
+    ) {
+      return toolChoice;
+    }
+
+    return {
+      ...toolChoice,
+      disable_parallel_tool_use: true,
+    };
+  }
+
+  private isDisableParallelToolUseUnsupported(error: unknown): boolean {
+    const errMsg =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : JSON.stringify(error ?? null);
+    const normalized = errMsg.toLowerCase();
+
+    return (
+      normalized.includes('disable_parallel_tool_use') &&
+      (normalized.includes('extra inputs are not permitted') || normalized.includes('invalid_request_error'))
+    );
+  }
+
+  private markDisableParallelToolUseSupport(isSupported: boolean, reason: string): void {
+    if (this.disableParallelToolUseSupported === isSupported) {
+      return;
+    }
+
+    this.disableParallelToolUseSupported = isSupported;
+
+    const logData = { disableParallelToolUseSupported: isSupported, reason };
+    if (isSupported) {
+      logger.info(logData, 'Anthropic capability detected');
+      return;
+    }
+
+    logger.warn(logData, 'Anthropic capability fallback enabled');
   }
 
   /**
@@ -495,6 +558,8 @@ Seja conciso mas completo em suas respostas.`,
    * Call Claude API directly with tool-use support (Agent Mode)
    * This is the REAL Claude API call with tools
    */
+  // Tool payloads are intentionally permissive to support SDK/API compatibility fallbacks.
+  /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unnecessary-type-assertion */
   async callAgentRaw(params: AgentRawParams): Promise<any> {
     const {
       model,
@@ -550,6 +615,8 @@ Seja conciso mas completo em suas respostas.`,
       description: t.description,
       input_schema: t.input_schema,
     }));
+    const primaryToolChoice = this.buildAnthropicToolChoice(toolChoice, disableParallelToolUse);
+    const isPrimaryUsingDisableParallel = primaryToolChoice?.disable_parallel_tool_use === true;
 
     try {
       const requestParams: any = {
@@ -559,13 +626,16 @@ Seja conciso mas completo em suas respostas.`,
         system: systemPrompt,
         messages: anthropicMessages,
         tools: anthropicTools as any,
-        tool_choice: toolChoice as any,
+        tool_choice: primaryToolChoice as any,
       };
-      if (disableParallelToolUse === true) {
-        requestParams.disable_parallel_tool_use = true;
-      }
 
       const response = await anthropic.messages.create(requestParams);
+      if (isPrimaryUsingDisableParallel) {
+        this.markDisableParallelToolUseSupport(
+          true,
+          'tool_choice.disable_parallel_tool_use accepted by provider'
+        );
+      }
 
       logger.info({
         model: response.model,
@@ -578,6 +648,42 @@ Seja conciso mas completo em suas respostas.`,
 
       return response;
     } catch (error) {
+      if (isPrimaryUsingDisableParallel && this.isDisableParallelToolUseUnsupported(error)) {
+        this.markDisableParallelToolUseSupport(
+          false,
+          'tool_choice.disable_parallel_tool_use rejected by provider'
+        );
+
+        logger.warn(
+          { model: selectedModel },
+          'callAgentRaw: Retrying without disable_parallel_tool_use'
+        );
+
+        const fallbackRequestParams: any = {
+          model: selectedModel,
+          max_tokens: maxTokens || this.maxTokens,
+          temperature: temperature ?? 0.7,
+          system: systemPrompt,
+          messages: anthropicMessages,
+          tools: anthropicTools as any,
+          tool_choice: this.buildAnthropicToolChoice(toolChoice, disableParallelToolUse, true) as any,
+        };
+
+        const fallbackResponse = await anthropic.messages.create(fallbackRequestParams);
+
+        logger.info({
+          model: fallbackResponse.model,
+          inputTokens: fallbackResponse.usage.input_tokens,
+          outputTokens: fallbackResponse.usage.output_tokens,
+          stopReason: fallbackResponse.stop_reason,
+          contentBlocks: fallbackResponse.content.length,
+          autoSelected: !!modelSelection,
+          fallbackApplied: true,
+        }, 'callAgentRaw: Claude API response received after fallback');
+
+        return fallbackResponse;
+      }
+
       const errMsg = error instanceof Error ? error.message : String(error);
       logger.error({ error: errMsg, model: selectedModel }, 'callAgentRaw: Claude API call failed');
       throw error;
@@ -652,77 +758,109 @@ Seja conciso mas completo em suas respostas.`,
       description: t.description,
       input_schema: t.input_schema,
     }));
+    const primaryToolChoice = this.buildAnthropicToolChoice(toolChoice, disableParallelToolUse);
+    const isPrimaryUsingDisableParallel = primaryToolChoice?.disable_parallel_tool_use === true;
 
     try {
       // Emit thinking start
       onEvent('thinking_start', { message: 'Analisando contexto e planejando ações...' });
 
-      const streamParams: any = {
-        model: selectedModel,
-        max_tokens: maxTokens || this.maxTokens,
-        temperature: temperature ?? 0.7,
-        system: systemPrompt,
-        messages: anthropicMessages,
-        tools: anthropicTools as any,
-        tool_choice: toolChoice as any,
-      };
-      if (disableParallelToolUse === true) {
-        streamParams.disable_parallel_tool_use = true;
-      }
+      const runStreamAttempt = async (activeToolChoice: any): Promise<any> => {
+        const streamParams: any = {
+          model: selectedModel,
+          max_tokens: maxTokens || this.maxTokens,
+          temperature: temperature ?? 0.7,
+          system: systemPrompt,
+          messages: anthropicMessages,
+          tools: anthropicTools as any,
+          tool_choice: activeToolChoice as any,
+        };
 
-      const stream = anthropic.messages.stream(streamParams);
+        const stream = anthropic.messages.stream(streamParams);
 
-      let currentBlockType: string | null = null;
-      let currentBlockIndex = -1;
-      let currentToolName = '';
-      let textAccumulator = '';
+        let currentBlockType: string | null = null;
+        let currentBlockIndex = -1;
+        let currentToolName = '';
+        let textAccumulator = '';
 
-      // Use the SDK's built-in high-level events
-      stream.on('text', (textDelta: string, textSnapshot: string) => {
-        textAccumulator = textSnapshot;
-        onEvent('text_delta', { text: textDelta, accumulated: textSnapshot });
-      });
-
-      stream.on('inputJson', (partialJson: string, _jsonSnapshot: unknown) => {
-        onEvent('tool_input_delta', {
-          name: currentToolName,
-          partialJson,
+        // Use the SDK's built-in high-level events
+        stream.on('text', (textDelta: string, textSnapshot: string) => {
+          textAccumulator = textSnapshot;
+          onEvent('text_delta', { text: textDelta, accumulated: textSnapshot });
         });
-      });
 
-      stream.on('contentBlock', (block: any) => {
-        if (block.type === 'tool_use') {
-          onEvent('tool_complete', {
-            name: block.name,
-            input: block.input,
+        stream.on('inputJson', (partialJson: string, _jsonSnapshot: unknown) => {
+          onEvent('tool_input_delta', {
+            name: currentToolName,
+            partialJson,
           });
-          currentToolName = '';
-        } else if (block.type === 'text') {
-          onEvent('text_complete', { text: block.text });
-        }
-      });
+        });
 
-      // Use streamEvent for lower-level block start detection
-      stream.on('streamEvent', (event: any) => {
-        if (event.type === 'content_block_start') {
-          currentBlockIndex++;
-          if (event.content_block?.type === 'text') {
-            currentBlockType = 'text';
-            onEvent('text_start', { index: currentBlockIndex });
-          } else if (event.content_block?.type === 'tool_use') {
-            currentBlockType = 'tool_use';
-            currentToolName = event.content_block.name;
-            onEvent('tool_start', {
-              index: currentBlockIndex,
-              name: currentToolName,
-              id: event.content_block.id,
+        stream.on('contentBlock', (block: any) => {
+          if (block.type === 'tool_use') {
+            onEvent('tool_complete', {
+              name: block.name,
+              input: block.input,
             });
+            currentToolName = '';
+          } else if (block.type === 'text') {
+            onEvent('text_complete', { text: block.text });
           }
-        }
-      });
+        });
 
-      // Wait for stream to complete
-      const finalMessage = await stream.finalMessage();
+        // Use streamEvent for lower-level block start detection
+        stream.on('streamEvent', (event: any) => {
+          if (event.type === 'content_block_start') {
+            currentBlockIndex++;
+            if (event.content_block?.type === 'text') {
+              currentBlockType = 'text';
+              onEvent('text_start', { index: currentBlockIndex });
+            } else if (event.content_block?.type === 'tool_use') {
+              currentBlockType = 'tool_use';
+              currentToolName = event.content_block.name;
+              onEvent('tool_start', {
+                index: currentBlockIndex,
+                name: currentToolName,
+                id: event.content_block.id,
+              });
+            }
+          }
+        });
+
+        return stream.finalMessage();
+      };
+
+      let finalMessage: any;
+      try {
+        finalMessage = await runStreamAttempt(primaryToolChoice);
+        if (isPrimaryUsingDisableParallel) {
+          this.markDisableParallelToolUseSupport(
+            true,
+            'tool_choice.disable_parallel_tool_use accepted by provider'
+          );
+        }
+      } catch (error) {
+        if (isPrimaryUsingDisableParallel && this.isDisableParallelToolUseUnsupported(error)) {
+          this.markDisableParallelToolUseSupport(
+            false,
+            'tool_choice.disable_parallel_tool_use rejected by provider'
+          );
+
+          logger.warn(
+            { model: selectedModel },
+            'streamAgentRaw: Retrying stream without disable_parallel_tool_use'
+          );
+
+          const fallbackToolChoice = this.buildAnthropicToolChoice(
+            toolChoice,
+            disableParallelToolUse,
+            true
+          );
+          finalMessage = await runStreamAttempt(fallbackToolChoice);
+        } else {
+          throw error;
+        }
+      }
 
       onEvent('complete', {
         content: finalMessage.content,
@@ -745,6 +883,7 @@ Seja conciso mas completo em suas respostas.`,
       throw error;
     }
   }
+  /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unnecessary-type-assertion */
 }
 
 // Export singleton instance
