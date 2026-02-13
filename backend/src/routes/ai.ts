@@ -3,20 +3,107 @@ import { z } from 'zod';
 import { authenticate, asyncHandler } from '../middleware';
 import { ValidationError } from '../utils/errors';
 import { logger } from '../utils/logger';
-import { supabaseAdmin } from '../services/supabase';
 
 // ═══ New NeuralMap AI Engine ═══
 import { getOrchestrator } from '../ai/orchestrator/index';
 import { aiMiddleware } from '../ai/middleware';
 import { getAvailableAgents, getAgentInfo } from '../ai/agents';
-import { conversationMemory } from '../ai/memory';
 import type { AgentType, ConversationMessage } from '../ai/core/types';
-import { AGENT_REGISTRY } from '../ai/core/constants';
 
 // Legacy import for backward compatibility with /agent endpoint
-import { aiOrchestrator, AIAgentType } from '../ai/orchestrator';
+import { aiOrchestrator } from '../ai/orchestrator';
 
 const router = Router();
+
+const ACTION_AGENT_TYPES = new Set<string>([
+  'generate',
+  'expand',
+  'organize',
+  'task_convert',
+  'to_tasks',
+  'research',
+  'hypothesize',
+  'connect',
+  'visualize',
+  'chart',
+  'analyze',
+  'critique',
+  'summarize',
+]);
+
+const actionTypeDetection: Array<{ type: string; pattern: RegExp }> = [
+  { type: 'generate', pattern: /(gere|gerar|ideia|brainstorm|expandir mapa)/i },
+  { type: 'expand', pattern: /(expand|aprofund|detalh|subtop|sub-t[oó]p)/i },
+  { type: 'summarize', pattern: /(resum|sintetiz|sumari)/i },
+  { type: 'organize', pattern: /(organiz|reestrutur|reorganiz|layout)/i },
+  { type: 'research', pattern: /(pesquis|fonte|refer[eê]ncia|web|artigo)/i },
+  { type: 'task_convert', pattern: /(tarefa|plano de a[cç][aã]o|checklist|todo)/i },
+  { type: 'analyze', pattern: /(analis|avali|diagn[oó]st)/i },
+  { type: 'critique', pattern: /(cr[ií]tica|review|melhoria)/i },
+  { type: 'connect', pattern: /(conex|relac|link)/i },
+  { type: 'hypothesize', pattern: /(hip[oó]tes|cen[aá]rio|what if)/i },
+];
+
+type LegacyAgentMessage = {
+  role?: 'user' | 'assistant';
+  content?: string;
+};
+
+function getLastUserMessage(messages: LegacyAgentMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === 'user' && typeof messages[i]?.content === 'string') {
+      return messages[i]?.content || '';
+    }
+  }
+
+  return '';
+}
+
+function detectLegacyAgentType(
+  explicitAgentType: string | undefined,
+  mode: string,
+  messages: LegacyAgentMessage[]
+): string {
+  if (explicitAgentType && explicitAgentType.trim().length > 0) {
+    return explicitAgentType.trim().toLowerCase();
+  }
+
+  if (mode !== 'agent') {
+    return 'chat';
+  }
+
+  const lastUserMessage = getLastUserMessage(messages);
+  for (const detector of actionTypeDetection) {
+    if (detector.pattern.test(lastUserMessage)) {
+      return detector.type;
+    }
+  }
+
+  return 'generate';
+}
+
+function getLegacyToolChoice(
+  toolsCount: number,
+  forceToolUse: boolean
+): { type: 'auto' } | { type: 'any' } {
+  if (!toolsCount) {
+    return { type: 'auto' };
+  }
+
+  return forceToolUse ? { type: 'any' } : { type: 'auto' };
+}
+
+async function ensureMapAccess(req: Request, mapId: string): Promise<void> {
+  if (!req.supabase) {
+    throw new ValidationError('Authentication context not available');
+  }
+
+  const { data: map, error } = await req.supabase.from('maps').select('id').eq('id', mapId).maybeSingle();
+
+  if (error || !map) {
+    throw new ValidationError('Map not found or access denied');
+  }
+}
 
 // Validation schemas
 const generateSchema = z.object({
@@ -619,6 +706,8 @@ router.get(
 // ─────────────────────────────────────────────────────────────────────────
 
 const agentSchema = z.object({
+  map_id: z.string().uuid('Invalid map ID'),
+  agent_type: z.string().optional(),
   model: z.string().optional(),
   mode: z.string().optional().default('agent'),
   systemPrompt: z.string().min(1),
@@ -635,21 +724,57 @@ const agentSchema = z.object({
       input_schema: z.any(),
     })
   ),
-  maxTokens: z.number().optional().default(4096),
-  temperature: z.number().optional().default(0.7),
+  maxTokens: z.number().int().min(256).max(8192).optional().default(4096),
+  temperature: z.number().min(0).max(1).optional().default(0.7),
+  force_tool_use: z.boolean().optional().default(false),
+  require_action: z.boolean().optional().default(false),
+  disable_parallel_tool_use: z.boolean().optional().default(true),
 });
 
 router.post(
   '/agent',
   authenticate,
+  aiMiddleware.rateLimiter(),
+  aiMiddleware.contentFilter(),
   asyncHandler(async (req: Request, res: Response) => {
     const parsed = agentSchema.safeParse(req.body);
     if (!parsed.success) {
       throw new ValidationError(parsed.error.errors.map((e) => e.message).join(', '));
     }
 
-    const { model, mode, systemPrompt, messages, tools, maxTokens, temperature } = parsed.data;
+    const {
+      map_id,
+      agent_type,
+      model,
+      mode,
+      systemPrompt,
+      messages,
+      tools,
+      maxTokens,
+      temperature,
+      force_tool_use,
+      require_action,
+      disable_parallel_tool_use,
+    } = parsed.data;
     const startTime = Date.now();
+
+    await ensureMapAccess(req, map_id);
+    const normalizedMessages = messages.filter(
+      (message): message is { role: 'user' | 'assistant'; content: string } =>
+        (message.role === 'user' || message.role === 'assistant') && typeof message.content === 'string'
+    );
+    if (normalizedMessages.length === 0) {
+      throw new ValidationError('At least one valid message is required');
+    }
+
+    const detectedAgentType = detectLegacyAgentType(agent_type, mode, normalizedMessages);
+    const shouldForceToolUse =
+      force_tool_use || require_action || mode === 'agent' || ACTION_AGENT_TYPES.has(detectedAgentType);
+    const toolChoice = tools.length > 0 ? getLegacyToolChoice(tools.length, shouldForceToolUse) : undefined;
+
+    if (shouldForceToolUse && tools.length === 0) {
+      throw new ValidationError('At least one tool is required when action execution is enabled');
+    }
 
     // Use auto-selection by default for best cost efficiency
     // Auto intelligently chooses: Haiku (simple) → Sonnet 3.5 (balanced) → Opus (complex)
@@ -657,10 +782,15 @@ router.post(
 
     logger.info(
       {
+        mapId: map_id,
         mode,
+        agentType: detectedAgentType,
         model: selectedModel,
-        messageCount: messages.length,
+        messageCount: normalizedMessages.length,
         toolCount: tools.length,
+        toolChoice,
+        disableParallelToolUse: disable_parallel_tool_use,
+        requireAction: require_action,
         userId: req.user?.id,
       },
       'AI Agent request received'
@@ -671,7 +801,7 @@ router.post(
       const response = await aiOrchestrator.callAgentRaw({
         model: selectedModel,
         systemPrompt,
-        messages: messages.map((m) => ({
+        messages: normalizedMessages.map((m) => ({
           role: m.role,
           content: m.content,
         })),
@@ -682,17 +812,34 @@ router.post(
         })),
         maxTokens,
         temperature,
+        toolChoice,
+        disableParallelToolUse: disable_parallel_tool_use,
       });
 
       const durationMs = Date.now() - startTime;
+      const toolUseCount = Array.isArray(response.content)
+        ? response.content.filter((block: any) => block?.type === 'tool_use').length
+        : 0;
+
+      if (require_action && toolUseCount === 0) {
+        return res.status(422).json({
+          success: false,
+          error: 'Agent did not emit a tool_use block for this action-required request',
+          stop_reason: response.stop_reason,
+          agent_type: detectedAgentType,
+        });
+      }
 
       logger.info(
         {
+          mapId: map_id,
+          agentType: detectedAgentType,
           model: selectedModel,
           durationMs,
           inputTokens: response.usage?.input_tokens,
           outputTokens: response.usage?.output_tokens,
           stopReason: response.stop_reason,
+          toolUseCount,
           userId: req.user?.id,
         },
         'AI Agent response completed'
@@ -706,11 +853,17 @@ router.post(
           stop_reason: response.stop_reason,
           model: response.model,
           usage: response.usage,
+          agent_type: detectedAgentType,
+          map_id,
+          tool_use_count: toolUseCount,
         },
         content: response.content,
         stop_reason: response.stop_reason,
         model: response.model,
         usage: response.usage,
+        agent_type: detectedAgentType,
+        map_id,
+        tool_use_count: toolUseCount,
         durationMs,
       });
     } catch (error) {
@@ -763,20 +916,58 @@ router.post(
 router.post(
   '/agent/stream',
   authenticate,
+  aiMiddleware.rateLimiter(),
+  aiMiddleware.contentFilter(),
   asyncHandler(async (req: Request, res: Response) => {
     const parsed = agentSchema.safeParse(req.body);
     if (!parsed.success) {
       throw new ValidationError(parsed.error.errors.map((e) => e.message).join(', '));
     }
 
-    const { model, mode, systemPrompt, messages, tools, maxTokens, temperature } = parsed.data;
+    const {
+      map_id,
+      agent_type,
+      model,
+      mode,
+      systemPrompt,
+      messages,
+      tools,
+      maxTokens,
+      temperature,
+      force_tool_use,
+      require_action,
+      disable_parallel_tool_use,
+    } = parsed.data;
     const selectedModel = model || 'auto';
+    await ensureMapAccess(req, map_id);
+    const normalizedMessages = messages.filter(
+      (message): message is { role: 'user' | 'assistant'; content: string } =>
+        (message.role === 'user' || message.role === 'assistant') && typeof message.content === 'string'
+    );
+    if (normalizedMessages.length === 0) {
+      throw new ValidationError('At least one valid message is required');
+    }
+
+    const detectedAgentType = detectLegacyAgentType(agent_type, mode, normalizedMessages);
+    const shouldForceToolUse =
+      force_tool_use || require_action || mode === 'agent' || ACTION_AGENT_TYPES.has(detectedAgentType);
+    const toolChoice = tools.length > 0 ? getLegacyToolChoice(tools.length, shouldForceToolUse) : undefined;
+
+    if (shouldForceToolUse && tools.length === 0) {
+      throw new ValidationError('At least one tool is required when action execution is enabled');
+    }
 
     logger.info(
       {
+        mapId: map_id,
         mode,
+        agentType: detectedAgentType,
         model: selectedModel,
-        messageCount: messages.length,
+        messageCount: normalizedMessages.length,
+        toolCount: tools.length,
+        toolChoice,
+        disableParallelToolUse: disable_parallel_tool_use,
+        requireAction: require_action,
         userId: req.user?.id,
       },
       'AI Agent STREAM request received'
@@ -798,7 +989,7 @@ router.post(
         {
           model: selectedModel,
           systemPrompt,
-          messages: messages.map((m) => ({ role: m.role, content: m.content })),
+          messages: normalizedMessages.map((m) => ({ role: m.role, content: m.content })),
           tools: tools.map((t) => ({
             name: t.name,
             description: t.description,
@@ -806,6 +997,8 @@ router.post(
           })),
           maxTokens,
           temperature,
+          toolChoice,
+          disableParallelToolUse: disable_parallel_tool_use,
         },
         sendEvent
       );
@@ -857,6 +1050,8 @@ const neuralSchema = z.object({
 router.post(
   '/neural',
   authenticate,
+  aiMiddleware.rateLimiter(),
+  aiMiddleware.contentFilter(),
   asyncHandler(async (req: Request, res: Response) => {
     const parsed = neuralSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -864,6 +1059,7 @@ router.post(
     }
 
     const { map_id, agent_type, message, context, options, model, stream } = parsed.data;
+    await ensureMapAccess(req, map_id);
 
     const orchestrator = getOrchestrator();
 
@@ -917,6 +1113,8 @@ router.post(
 router.post(
   '/neural/stream',
   authenticate,
+  aiMiddleware.rateLimiter(),
+  aiMiddleware.contentFilter(),
   asyncHandler(async (req: Request, res: Response) => {
     const parsed = neuralSchema.safeParse({ ...req.body, stream: true });
     if (!parsed.success) {
@@ -924,6 +1122,7 @@ router.post(
     }
 
     const { map_id, agent_type, message, context, options, model } = parsed.data;
+    await ensureMapAccess(req, map_id);
 
     const orchestrator = getOrchestrator();
     const detectedAgent = agent_type

@@ -16,6 +16,21 @@ import { RATE_LIMITS, COST_LIMITS, GUARDRAIL_CONFIG } from '../core/constants';
 import { estimateTokens } from '../memory';
 import { logger } from '../../utils/logger';
 
+type RequestWithUserId = Request & { userId?: string };
+
+function getRequestUserId(req: Request): string {
+  const explicitUserId = (req as RequestWithUserId).userId;
+  if (typeof explicitUserId === 'string' && explicitUserId.length > 0) {
+    return explicitUserId;
+  }
+
+  if (req.user?.id) {
+    return req.user.id;
+  }
+
+  return req.ip || 'anonymous';
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // RATE LIMITER
 // ═══════════════════════════════════════════════════════════════════════════
@@ -39,7 +54,7 @@ export function aiRateLimiter(
   maxTokensPerMinute: number = RATE_LIMITS.tokensPerMinute,
 ) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    const userId = (req as any).userId || req.ip || 'anonymous';
+    const userId = getRequestUserId(req);
     const now = Date.now();
 
     let entry = rateLimitStore.get(userId);
@@ -101,6 +116,7 @@ export function contentFilter() {
     }
 
     const content = extractTextContent(req.body);
+    const userId = getRequestUserId(req);
 
     // Check for prompt injection patterns
     if (GUARDRAIL_CONFIG.enableInjectionDetection) {
@@ -110,7 +126,7 @@ export function contentFilter() {
           logger.warn({
             pattern,
             content: content.substring(0, 100),
-          }, `Content filter triggered for user ${(req as any).userId}`);
+          }, `Content filter triggered for user ${userId}`);
 
           // Don't block — just sanitize and log
           // Claude is designed to handle adversarial inputs robustly
@@ -181,7 +197,7 @@ const costStore = new Map<string, CostEntry>();
  */
 export function costTracker() {
   return (req: Request, _res: Response, next: NextFunction): void => {
-    const userId = (req as any).userId || 'anonymous';
+    const userId = getRequestUserId(req);
     const today = new Date().toISOString().split('T')[0];
     const month = today.substring(0, 7);
 

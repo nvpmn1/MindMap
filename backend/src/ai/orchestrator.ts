@@ -170,6 +170,8 @@ interface AgentRawParams {
   tools: Array<{ name: string; description: string; input_schema: any }>;
   maxTokens: number;
   temperature: number;
+  toolChoice?: { type: 'auto' | 'any' | 'none' } | { type: 'tool'; name: string };
+  disableParallelToolUse?: boolean;
 }
 
 // Orchestrator input
@@ -494,7 +496,16 @@ Seja conciso mas completo em suas respostas.`,
    * This is the REAL Claude API call with tools
    */
   async callAgentRaw(params: AgentRawParams): Promise<any> {
-    const { model, systemPrompt, messages, tools, maxTokens, temperature } = params;
+    const {
+      model,
+      systemPrompt,
+      messages,
+      tools,
+      maxTokens,
+      temperature,
+      toolChoice,
+      disableParallelToolUse,
+    } = params;
 
     // Auto-select model based on complexity
     let selectedModel = model;
@@ -523,6 +534,8 @@ Seja conciso mas completo em suas respostas.`,
       messageCount: messages.length,
       toolCount: tools.length,
       maxTokens,
+      toolChoice: toolChoice || { type: 'auto' },
+      disableParallelToolUse: disableParallelToolUse === true,
     }, 'callAgentRaw: Calling Claude API with tool-use');
 
     // Build Anthropic API request
@@ -539,14 +552,20 @@ Seja conciso mas completo em suas respostas.`,
     }));
 
     try {
-      const response = await anthropic.messages.create({
+      const requestParams: any = {
         model: selectedModel,
         max_tokens: maxTokens || this.maxTokens,
         temperature: temperature ?? 0.7,
         system: systemPrompt,
         messages: anthropicMessages,
         tools: anthropicTools as any,
-      });
+        tool_choice: toolChoice as any,
+      };
+      if (disableParallelToolUse === true) {
+        requestParams.disable_parallel_tool_use = true;
+      }
+
+      const response = await anthropic.messages.create(requestParams);
 
       logger.info({
         model: response.model,
@@ -575,7 +594,16 @@ Seja conciso mas completo em suas respostas.`,
     params: AgentRawParams,
     onEvent: (event: string, data: any) => void,
   ): Promise<void> {
-    const { model, systemPrompt, messages, tools, maxTokens, temperature } = params;
+    const {
+      model,
+      systemPrompt,
+      messages,
+      tools,
+      maxTokens,
+      temperature,
+      toolChoice,
+      disableParallelToolUse,
+    } = params;
 
     // Auto-select model based on complexity
     let selectedModel = model;
@@ -610,6 +638,8 @@ Seja conciso mas completo em suas respostas.`,
       reason: modelSelection?.reason,
       messageCount: messages.length,
       toolCount: tools.length,
+      toolChoice: toolChoice || { type: 'auto' },
+      disableParallelToolUse: disableParallelToolUse === true,
     }, 'streamAgentRaw: Starting Claude streaming');
 
     const anthropicMessages = messages.map(m => ({
@@ -627,14 +657,20 @@ Seja conciso mas completo em suas respostas.`,
       // Emit thinking start
       onEvent('thinking_start', { message: 'Analisando contexto e planejando ações...' });
 
-      const stream = anthropic.messages.stream({
+      const streamParams: any = {
         model: selectedModel,
         max_tokens: maxTokens || this.maxTokens,
         temperature: temperature ?? 0.7,
         system: systemPrompt,
         messages: anthropicMessages,
         tools: anthropicTools as any,
-      });
+        tool_choice: toolChoice as any,
+      };
+      if (disableParallelToolUse === true) {
+        streamParams.disable_parallel_tool_use = true;
+      }
+
+      const stream = anthropic.messages.stream(streamParams);
 
       let currentBlockType: string | null = null;
       let currentBlockIndex = -1;

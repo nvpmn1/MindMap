@@ -1313,6 +1313,7 @@ function NeuralMapEditorInner() {
         <AgentPanel
           isOpen={showAIPanel}
           onClose={() => setShowAIPanel(false)}
+          mapId={mapId ?? null}
           nodes={nodes}
           edges={edges}
           selectedNodeId={selectedNodeId}
@@ -1355,6 +1356,7 @@ function NeuralMapEditorInner() {
         <ResearchPanel
           isOpen={showResearchPanel}
           onClose={() => setShowResearchPanel(false)}
+          mapId={mapId}
           selectedNodeTitle={selectedNode?.data?.label}
           onInsertAsNode={handleInsertResearchAsNode}
         />

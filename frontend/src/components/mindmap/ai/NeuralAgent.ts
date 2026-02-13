@@ -83,6 +83,7 @@ export class NeuralAIAgent {
   private executionContext: ExecutionContext | null = null;
   private currentTodos: AgentTodoItem[] = [];
   private agentType: string = 'chat';
+  private mapId: string | null = null;
 
   constructor() {
     this.config = {
@@ -116,6 +117,10 @@ export class NeuralAIAgent {
 
   setExecutionContext(ctx: ExecutionContext) {
     this.executionContext = ctx;
+  }
+
+  setMapId(mapId: string | null | undefined) {
+    this.mapId = mapId?.trim() || null;
   }
 
   isActive(): boolean {
@@ -181,6 +186,51 @@ export class NeuralAIAgent {
     return FALLBACK_PROD_API_URL;
   }
 
+  private getRequiredMapId(): string {
+    if (!this.mapId) {
+      throw new Error('Map ID is required for agent execution');
+    }
+
+    return this.mapId;
+  }
+
+  private inferAgentTypeFromMessage(message: string): string {
+    const text = message.toLowerCase();
+    const rules: Array<{ type: string; pattern: RegExp }> = [
+      { type: 'generate', pattern: /(gere|gerar|ideia|brainstorm)/i },
+      { type: 'expand', pattern: /(expand|aprofund|detalh|subtop|sub-t[oó]p)/i },
+      { type: 'summarize', pattern: /(resum|sintetiz|sumari)/i },
+      { type: 'organize', pattern: /(organiz|reestrutur|reorganiz|layout)/i },
+      { type: 'research', pattern: /(pesquis|fonte|refer[eê]ncia|web|artigo)/i },
+      { type: 'task_convert', pattern: /(tarefa|todo|checklist|plano de a[cç][aã]o)/i },
+      { type: 'analyze', pattern: /(analis|avali|diagn[oó]st)/i },
+      { type: 'critique', pattern: /(cr[ií]tica|review|melhoria)/i },
+      { type: 'connect', pattern: /(conex|relac|link)/i },
+      { type: 'hypothesize', pattern: /(hip[oó]tes|cen[aá]rio|what if)/i },
+    ];
+
+    for (const rule of rules) {
+      if (rule.pattern.test(text)) {
+        return rule.type;
+      }
+    }
+
+    return 'chat';
+  }
+
+  private resolveAgentType(message: string, explicitAgentType?: string): string {
+    if (explicitAgentType && explicitAgentType.trim().length > 0) {
+      return explicitAgentType.trim().toLowerCase();
+    }
+
+    const inferred = this.inferAgentTypeFromMessage(message);
+    if (this.config.mode === 'agent' && inferred === 'chat') {
+      return 'generate';
+    }
+
+    return inferred;
+  }
+
   private isActionDrivenRequest(): boolean {
     const actionableTypes = new Set([
       'generate',
@@ -234,17 +284,29 @@ export class NeuralAIAgent {
     edges: PowerEdge[],
     selectedNodeId?: string | null,
     callbacks?: StreamCallbacks,
-    agentType?: string
+    agentType?: string,
+    mapId?: string | null
   ): Promise<AgentResponse> {
     if (this.isProcessing) {
       return { response: '⏳ Aguarde, estou processando a tarefa anterior...', actions: [] };
     }
 
-    if (agentType) {
-      this.agentType = agentType;
+    if (mapId !== undefined) {
+      this.setMapId(mapId);
     }
+    this.agentType = this.resolveAgentType(message, agentType);
 
     const requiresExecution = this.isActionDrivenRequest();
+    if (!this.mapId) {
+      return {
+        response:
+          '❌ Nao foi possivel identificar o mapa atual para executar o modo agente. Recarregue o editor e tente novamente.',
+        actions: [],
+        confidence: 0,
+        executionValidated: false,
+      };
+    }
+
     if (requiresExecution && !this.executionContext) {
       return {
         response:
@@ -289,9 +351,6 @@ export class NeuralAIAgent {
         result = await this.callStreamingAPI(
           message,
           mapContext,
-          nodes,
-          edges,
-          selectedNodeId,
           callbacks
         );
       } catch (streamError) {
@@ -302,10 +361,7 @@ export class NeuralAIAgent {
         try {
           const apiResult = await this.callAgentAPI(
             message,
-            mapContext,
-            nodes,
-            edges,
-            selectedNodeId
+            mapContext
           );
           result = apiResult.agentResponse;
 
@@ -445,9 +501,6 @@ export class NeuralAIAgent {
   private async callStreamingAPI(
     userMessage: string,
     mapContext: string,
-    nodes: PowerNode[],
-    edges: PowerEdge[],
-    selectedNodeId?: string | null,
     callbacks?: StreamCallbacks
   ): Promise<AgentResponse> {
     const history = formatConversationHistory(
@@ -461,8 +514,10 @@ export class NeuralAIAgent {
         ? [...history.slice(0, -1), { role: 'user' as const, content: contextMessage }]
         : [{ role: 'user' as const, content: contextMessage }];
 
-    // ALWAYS use /agent/stream — it works reliably with tool-use
+    const enforceToolUse = this.isActionDrivenRequest();
     const body = {
+      map_id: this.getRequiredMapId(),
+      agent_type: this.agentType,
       model: 'claude-haiku-4-5', // FIXED: Always Haiku
       mode: this.config.mode,
       systemPrompt: this.buildEffectiveSystemPrompt(),
@@ -470,6 +525,9 @@ export class NeuralAIAgent {
       tools: AGENT_TOOLS,
       maxTokens: this.config.maxTokens,
       temperature: this.config.temperature,
+      force_tool_use: enforceToolUse,
+      require_action: enforceToolUse,
+      disable_parallel_tool_use: true,
     };
 
     const headers = await this.buildAuthHeaders();
@@ -750,10 +808,7 @@ export class NeuralAIAgent {
 
   private async callAgentAPI(
     userMessage: string,
-    mapContext: string,
-    nodes: PowerNode[],
-    edges: PowerEdge[],
-    selectedNodeId?: string | null
+    mapContext: string
   ): Promise<{ agentResponse: AgentResponse; toolCalls: ToolUseBlock[] }> {
     const history = formatConversationHistory(
       this.conversationHistory.map((m) => ({ role: m.role, content: m.content })),
@@ -766,7 +821,10 @@ export class NeuralAIAgent {
         ? [...history.slice(0, -1), { role: 'user' as const, content: contextMessage }]
         : [{ role: 'user' as const, content: contextMessage }];
 
+    const enforceToolUse = this.isActionDrivenRequest();
     const body = {
+      map_id: this.getRequiredMapId(),
+      agent_type: this.agentType,
       model: 'claude-haiku-4-5', // FIXED: Always Haiku
       mode: this.config.mode,
       systemPrompt: this.buildEffectiveSystemPrompt(),
@@ -774,6 +832,9 @@ export class NeuralAIAgent {
       tools: AGENT_TOOLS,
       maxTokens: this.config.maxTokens,
       temperature: this.config.temperature,
+      force_tool_use: enforceToolUse,
+      require_action: enforceToolUse,
+      disable_parallel_tool_use: true,
     };
 
     const headers = await this.buildAuthHeaders();

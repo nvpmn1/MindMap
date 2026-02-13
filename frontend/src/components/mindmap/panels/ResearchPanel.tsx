@@ -15,6 +15,7 @@ import { neuralAgent } from '../ai/NeuralAgent';
 interface ResearchPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  mapId?: string | null;
   selectedNodeTitle?: string;
   onInsertAsNode?: (data: ResearchResult) => void;
 }
@@ -38,7 +39,7 @@ interface ResearchSession {
 }
 
 export const ResearchPanel: React.FC<ResearchPanelProps> = ({
-  isOpen, onClose, selectedNodeTitle, onInsertAsNode
+  isOpen, onClose, mapId, selectedNodeTitle, onInsertAsNode
 }) => {
   const [query, setQuery] = useState('');
   const [sessions, setSessions] = useState<ResearchSession[]>([]);
@@ -63,10 +64,20 @@ export const ResearchPanel: React.FC<ResearchPanelProps> = ({
     setQuery('');
 
     try {
+      if (!mapId) {
+        throw new Error('Map ID is required');
+      }
+
+      neuralAgent.setMapId(mapId);
+      neuralAgent.setMode('research');
       const response = await neuralAgent.processMessage(
         `Pesquise profundamente sobre: "${newSession.query}". Retorne um resumo completo, pontos-chave, fontes relevantes e tópicos relacionados.`,
-        [], [],
-        undefined
+        [],
+        [],
+        undefined,
+        undefined,
+        'chat',
+        mapId
       );
 
       const result: ResearchResult = {
@@ -86,7 +97,7 @@ export const ResearchPanel: React.FC<ResearchPanelProps> = ({
         s.id === sessionId ? { ...s, isLoading: false, error: 'Erro na pesquisa' } : s
       ));
     }
-  }, [query]);
+  }, [mapId, query]);
 
   const handleSaveResult = useCallback((result: ResearchResult) => {
     setSavedResults(prev => {

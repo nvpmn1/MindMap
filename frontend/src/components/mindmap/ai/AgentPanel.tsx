@@ -53,6 +53,7 @@ import type { ExecutionContext } from './ActionExecutor';
 interface AgentPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  mapId: string | null;
   nodes: PowerNode[];
   edges: PowerEdge[];
   selectedNodeId: string | null;
@@ -415,6 +416,7 @@ const ToolCallDisplay: React.FC<{ toolName: string; isComplete: boolean }> = ({
 export const AgentPanel: React.FC<AgentPanelProps> = ({
   isOpen,
   onClose,
+  mapId,
   nodes,
   edges,
   selectedNodeId,
@@ -471,6 +473,18 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
     async (text?: string, agentType?: string) => {
       const msgText = text || input.trim();
       if (!msgText || isProcessing) return;
+      if (!mapId) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `error_${Date.now()}`,
+            role: 'system',
+            content: '❌ Nao foi possivel identificar o mapa atual para executar o modo agente.',
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        return;
+      }
 
       setInput('');
       setIsProcessing(true);
@@ -482,6 +496,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
       setActionSteps([]);
       setThinkingText('');
       neuralAgent.setMode(mode);
+      neuralAgent.setMapId(mapId);
 
       // Add user message
       const userMsg: AIAgentMessage = {
@@ -606,7 +621,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
           edges,
           selectedNodeId,
           callbacks,
-          agentType
+          agentType,
+          mapId
         );
 
         // Auto-apply actions to the map (Agent Mode = no manual "Apply" needed)
@@ -667,7 +683,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
         setActiveToolCalls([]);
       }
     },
-    [input, isProcessing, mode, nodes, edges, selectedNodeId]
+    [input, isProcessing, mapId, mode, nodes, edges, selectedNodeId]
   );
 
   const handleApply = useCallback(() => {
