@@ -290,10 +290,7 @@ class AdvancedSaveQueue {
           const existingTarget = String(existing.payload.target_id || '');
           const isSameById = edgeId && existingEdgeId && edgeId === existingEdgeId;
           const isSameByConnection =
-            sourceId &&
-            targetId &&
-            existingSource === sourceId &&
-            existingTarget === targetId;
+            sourceId && targetId && existingSource === sourceId && existingTarget === targetId;
           if (isSameById || isSameByConnection) {
             return existing.id;
           }
@@ -305,10 +302,7 @@ class AdvancedSaveQueue {
           const existingTarget = String(existing.payload.target_id || '');
           const isSameById = edgeId && existingEdgeId && edgeId === existingEdgeId;
           const isSameByConnection =
-            sourceId &&
-            targetId &&
-            existingSource === sourceId &&
-            existingTarget === targetId;
+            sourceId && targetId && existingSource === sourceId && existingTarget === targetId;
           if (isSameById || isSameByConnection) {
             removedPendingCreate = true;
             this.queue.delete(existingId);
@@ -795,34 +789,33 @@ class AdvancedSaveQueue {
             serverId: result?.data?.id,
           };
 
-        case 'edge-delete':
-          {
-            const edgeId = String(op.payload.id || '');
-            if (edgeId && isUuid(edgeId)) {
-              result = await nodesApi.deleteEdge(edgeId);
-              this.assertApiSuccess(result, op.type);
-              break;
-            }
-
-            const rawSource = String(op.payload.source_id || '');
-            const rawTarget = String(op.payload.target_id || '');
-            const sourceId = this.resolveNodeId(op.mapId, rawSource) || rawSource;
-            const targetId = this.resolveNodeId(op.mapId, rawTarget) || rawTarget;
-            const mapId = String(op.payload.map_id || op.mapId || '');
-
-            if (mapId && sourceId && targetId && isUuid(sourceId) && isUuid(targetId)) {
-              result = await nodesApi.deleteEdgeByConnection({
-                map_id: mapId,
-                source_id: sourceId,
-                target_id: targetId,
-              });
-              this.assertApiSuccess(result, op.type);
-              break;
-            }
-
-            // Edge could not be resolved to a persistent identifier.
-            return { success: true };
+        case 'edge-delete': {
+          const edgeId = String(op.payload.id || '');
+          if (edgeId && isUuid(edgeId)) {
+            result = await nodesApi.deleteEdge(edgeId);
+            this.assertApiSuccess(result, op.type);
+            break;
           }
+
+          const rawSource = String(op.payload.source_id || '');
+          const rawTarget = String(op.payload.target_id || '');
+          const sourceId = this.resolveNodeId(op.mapId, rawSource) || rawSource;
+          const targetId = this.resolveNodeId(op.mapId, rawTarget) || rawTarget;
+          const mapId = String(op.payload.map_id || op.mapId || '');
+
+          if (mapId && sourceId && targetId && isUuid(sourceId) && isUuid(targetId)) {
+            result = await nodesApi.deleteEdgeByConnection({
+              map_id: mapId,
+              source_id: sourceId,
+              target_id: targetId,
+            });
+            this.assertApiSuccess(result, op.type);
+            break;
+          }
+
+          // Edge could not be resolved to a persistent identifier.
+          return { success: true };
+        }
 
         default:
           throw new Error(`Unknown operation type: ${op.type}`);
@@ -969,7 +962,9 @@ class AdvancedSaveQueue {
   private assertApiSuccess(result: any, operation: string): void {
     if (result?.success === false) {
       const message =
-        result?.error?.message || result?.message || `Operation ${operation} returned success=false`;
+        result?.error?.message ||
+        result?.message ||
+        `Operation ${operation} returned success=false`;
       const code = result?.error?.code || 'API_ERROR';
       const err: any = new Error(message);
       err.code = code;
@@ -1126,7 +1121,9 @@ class AdvancedSaveQueue {
   /**
    * Force immediate processing (for Ctrl+S or unload)
    */
-  async forceSync(options: { timeoutMs?: number; mapId?: string; includeDeadLetter?: boolean } = {}): Promise<ForceSyncResult> {
+  async forceSync(
+    options: { timeoutMs?: number; mapId?: string; includeDeadLetter?: boolean } = {}
+  ): Promise<ForceSyncResult> {
     const timeoutMs = options.timeoutMs ?? 8000;
     const startedAt = Date.now();
     const mapId = options.mapId;
@@ -1220,7 +1217,10 @@ class AdvancedSaveQueue {
     return String(op.localId || op.payload.id || '');
   }
 
-  private sortNodeCreateOperations(mapId: string, operations: QueuedOperation[]): QueuedOperation[] {
+  private sortNodeCreateOperations(
+    mapId: string,
+    operations: QueuedOperation[]
+  ): QueuedOperation[] {
     const operationByNodeId = new Map<string, QueuedOperation>();
     for (const op of operations) {
       const key = this.getNodeOperationKey(op);

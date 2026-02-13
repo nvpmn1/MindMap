@@ -52,7 +52,7 @@ export function captureException(error: unknown, context?: Record<string, unknow
   }
 
   if (logtailClient) {
-    const err = error instanceof Error ? error : new Error(String(error));
+    const err = error instanceof Error ? error : new Error(errorToMessage(error));
     void logtailClient.error(`${env.OBSERVABILITY_SERVICE_NAME}: unhandled exception`, {
       errorName: err.name,
       errorMessage: err.message,

@@ -1,13 +1,13 @@
 -- ============================================
--- MindMap Hub - Database Schema (Compatível com o backend atual)
+-- MindMap Hub - Database Schema (Compativel com o backend atual)
 -- Execute este arquivo no Supabase SQL Editor
 -- ============================================
 
--- Habilitar extensões necessárias
+-- Habilitar extensoes necessarias
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ============================================
--- 1. TABELA: profiles (SEM DEPENDÊNCIAS - PRIMEIRA!)
+-- 1. TABELA: profiles (SEM DEPENDENCIAS - PRIMEIRA!)
 -- ============================================
 CREATE TABLE IF NOT EXISTS profiles (
     id UUID PRIMARY KEY,
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 );
 
 CREATE INDEX idx_profiles_email ON profiles(email);
-COMMENT ON TABLE profiles IS 'Perfil visual do usuário (nome, avatar, cor)';
+COMMENT ON TABLE profiles IS 'Perfil visual do usuario (nome, avatar, cor)';
 
 -- ============================================
 -- 2. TABELA: workspaces (depende de profiles)
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
 );
 
 CREATE INDEX idx_workspaces_name ON workspaces(name);
-COMMENT ON TABLE workspaces IS 'Espaços de trabalho compartilhados entre membros';
+COMMENT ON TABLE workspaces IS 'Espacos de trabalho compartilhados entre membros';
 
 -- ============================================
 -- 3. TABELA: workspace_members (depende de workspaces + profiles)
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS workspace_members (
 
 CREATE INDEX idx_workspace_members_workspace ON workspace_members(workspace_id);
 CREATE INDEX idx_workspace_members_user ON workspace_members(user_id);
-COMMENT ON TABLE workspace_members IS 'Relacionamento entre usuários e workspaces';
+COMMENT ON TABLE workspace_members IS 'Relacionamento entre usuarios e workspaces';
 
 -- ============================================
 -- 4. TABELA: maps
@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS maps (
 
 CREATE INDEX idx_maps_workspace ON maps(workspace_id);
 CREATE INDEX idx_maps_created_by ON maps(created_by);
+CREATE INDEX idx_maps_updated_at ON maps(updated_at DESC);
 COMMENT ON TABLE maps IS 'Mapas mentais do workspace';
 
 -- ============================================
@@ -100,7 +101,7 @@ CREATE TABLE IF NOT EXISTS nodes (
 
 CREATE INDEX idx_nodes_map ON nodes(map_id);
 CREATE INDEX idx_nodes_parent ON nodes(parent_id);
-COMMENT ON TABLE nodes IS 'Nós (elementos) do mindmap';
+COMMENT ON TABLE nodes IS 'Nos (elementos) do mindmap';
 
 -- ============================================
 -- 6. TABELA: edges
@@ -115,13 +116,15 @@ CREATE TABLE IF NOT EXISTS edges (
     style JSONB DEFAULT '{}',
     animated BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
+    CHECK (source_id <> target_id),
     UNIQUE(source_id, target_id)
 );
 
 CREATE INDEX idx_edges_map ON edges(map_id);
 CREATE INDEX idx_edges_source ON edges(source_id);
 CREATE INDEX idx_edges_target ON edges(target_id);
-COMMENT ON TABLE edges IS 'Conexões visuais (linhas) entre nós';
+CREATE INDEX idx_edges_map_source_target ON edges(map_id, source_id, target_id);
+COMMENT ON TABLE edges IS 'Conexoes visuais (linhas) entre nos';
 
 -- ============================================
 -- 7. TABELA: node_links
@@ -136,7 +139,7 @@ CREATE TABLE IF NOT EXISTS node_links (
 
 CREATE INDEX idx_node_links_source ON node_links(source_node_id);
 CREATE INDEX idx_node_links_target ON node_links(target_node_id);
-COMMENT ON TABLE node_links IS 'Conexões semânticas entre nós';
+COMMENT ON TABLE node_links IS 'Conexoes semanticas entre nos';
 
 -- ============================================
 -- 8. TABELA: tasks
@@ -161,7 +164,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE INDEX idx_tasks_node ON tasks(node_id);
 CREATE INDEX idx_tasks_assigned ON tasks(assigned_to);
 CREATE INDEX idx_tasks_status ON tasks(status);
-COMMENT ON TABLE tasks IS 'Tarefas atribuíveis derivadas de nós';
+COMMENT ON TABLE tasks IS 'Tarefas atribuiveis derivadas de nos';
 
 -- ============================================
 -- 9. TABELA: comments
@@ -179,7 +182,7 @@ CREATE TABLE IF NOT EXISTS comments (
 
 CREATE INDEX idx_comments_node ON comments(node_id);
 CREATE INDEX idx_comments_user ON comments(user_id);
-COMMENT ON TABLE comments IS 'Comentários em nós do mapa';
+COMMENT ON TABLE comments IS 'Comentarios em nos do mapa';
 
 -- ============================================
 -- 10. TABELA: notifications
@@ -197,7 +200,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 CREATE INDEX idx_notifications_user ON notifications(user_id);
 CREATE INDEX idx_notifications_unread ON notifications(user_id) WHERE read = FALSE;
-COMMENT ON TABLE notifications IS 'Notificações para usuários';
+COMMENT ON TABLE notifications IS 'Notificacoes para usuarios';
 
 -- ============================================
 -- 11. TABELA: activity_events
@@ -241,7 +244,7 @@ CREATE TABLE IF NOT EXISTS ai_runs (
 
 CREATE INDEX idx_ai_runs_map ON ai_runs(map_id);
 CREATE INDEX idx_ai_runs_status ON ai_runs(status);
-COMMENT ON TABLE ai_runs IS 'Log de execuções de IA';
+COMMENT ON TABLE ai_runs IS 'Log de execucoes de IA';
 
 -- ============================================
 -- 13. TABELA: references
@@ -259,7 +262,7 @@ CREATE TABLE IF NOT EXISTS "references" (
 );
 
 CREATE INDEX idx_references_node ON "references"(node_id);
-COMMENT ON TABLE "references" IS 'Referências e links externos anexados a nós';
+COMMENT ON TABLE "references" IS 'Referencias e links externos anexados a nos';
 
 -- ============================================
 -- TRIGGERS: auto_update_timestamp
@@ -312,6 +315,37 @@ CREATE TRIGGER increment_node_version
     FOR EACH ROW EXECUTE FUNCTION increment_version();
 
 -- ============================================
+-- TRIGGER: validate_edges_node_map
+-- Garante integridade referencial entre edges.map_id e nodes.map_id
+-- ============================================
+CREATE OR REPLACE FUNCTION validate_edges_node_map()
+RETURNS TRIGGER AS $$
+DECLARE
+    src_map UUID;
+    tgt_map UUID;
+BEGIN
+    SELECT map_id INTO src_map FROM nodes WHERE id = NEW.source_id;
+    SELECT map_id INTO tgt_map FROM nodes WHERE id = NEW.target_id;
+
+    IF src_map IS NULL OR tgt_map IS NULL THEN
+        RAISE EXCEPTION 'Edge references missing node(s)'
+            USING ERRCODE = '23503';
+    END IF;
+
+    IF src_map <> NEW.map_id OR tgt_map <> NEW.map_id THEN
+        RAISE EXCEPTION 'Edge nodes must belong to the same map_id as edge'
+            USING ERRCODE = '23514';
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER validate_edges_node_map_trigger
+    BEFORE INSERT OR UPDATE OF map_id, source_id, target_id ON edges
+    FOR EACH ROW EXECUTE FUNCTION validate_edges_node_map();
+
+-- ============================================
 -- TRIGGER: notify_task_delegation
 -- ============================================
 CREATE OR REPLACE FUNCTION notify_task_delegation()
@@ -330,8 +364,8 @@ BEGIN
         VALUES (
             NEW.assigned_to,
             'task_assigned',
-            'Nova tarefa atribuída',
-            COALESCE(assigner_name, 'Alguém') || ' atribuiu a tarefa "' || NEW.title || '"',
+            'Nova tarefa atribuida',
+            COALESCE(assigner_name, 'Alguem') || ' atribuiu a tarefa "' || NEW.title || '"',
             jsonb_build_object('task_id', NEW.id, 'node_id', NEW.node_id)
         );
     END IF;
@@ -362,8 +396,8 @@ BEGIN
             VALUES (
                 mentioned_user,
                 'comment_mention',
-                'Você foi mencionado',
-                COALESCE(author_name, 'Alguém') || ' mencionou você em "' || COALESCE(node_label, 'um nó') || '"',
+                'Voce foi mencionado',
+                COALESCE(author_name, 'Alguem') || ' mencionou voce em "' || COALESCE(node_label, 'um no') || '"',
                 jsonb_build_object('comment_id', NEW.id, 'node_id', NEW.node_id)
             );
         END IF;
@@ -386,7 +420,7 @@ INSERT INTO workspaces (id, name, slug, description) VALUES (
     '11111111-1111-1111-1111-111111111111'::uuid,
     'MindLab',
     'mindlab',
-    'Workspace padrão do sistema'
+    'Workspace padrao do sistema'
 ) ON CONFLICT DO NOTHING;
 
 ALTER TABLE workspaces DISABLE ROW LEVEL SECURITY;

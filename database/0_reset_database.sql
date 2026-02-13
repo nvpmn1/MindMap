@@ -90,12 +90,14 @@ DROP TRIGGER IF EXISTS set_updated_at_nodes ON nodes;
 DROP TRIGGER IF EXISTS set_updated_at_tasks ON tasks;
 DROP TRIGGER IF EXISTS set_updated_at_comments ON comments;
 DROP TRIGGER IF EXISTS increment_node_version ON nodes;
+DROP TRIGGER IF EXISTS validate_edges_node_map_trigger ON edges;
 DROP TRIGGER IF EXISTS on_task_delegation ON tasks;
 DROP TRIGGER IF EXISTS on_comment_mention ON comments;
 
 -- Dropar funções
 DROP FUNCTION IF EXISTS update_updated_at() CASCADE;
 DROP FUNCTION IF EXISTS increment_version() CASCADE;
+DROP FUNCTION IF EXISTS validate_edges_node_map() CASCADE;
 DROP FUNCTION IF EXISTS notify_task_delegation() CASCADE;
 DROP FUNCTION IF EXISTS notify_comment_mention() CASCADE;
 DROP FUNCTION IF EXISTS is_workspace_member(uuid) CASCADE;

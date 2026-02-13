@@ -68,7 +68,6 @@ import {
 } from '../components/mindmap/menus/NeuralContextMenu';
 import { NeuralLoadingScreen } from '../components/NeuralLoadingScreen';
 import { robustMapDelete } from '../lib/robustMapDelete';
-import { robustMapSave } from '../lib/robustMapSave';
 
 // ─── Node & Edge type registrations ────────────────────────────────────────
 
@@ -536,59 +535,6 @@ function NeuralMapEditorInner() {
     setSettings,
     nodes
   );
-
-  // Save on unmount & before unload (ROBUST data persistence)
-  const saveRef = useRef({ nodes, edges, mapInfo, mapId });
-  saveRef.current = { nodes, edges, mapInfo, mapId };
-
-  useEffect(() => {
-    const handleBeforeUnload = async () => {
-      const { nodes: n, edges: e, mapInfo: m, mapId: id } = saveRef.current;
-      if (n.length > 0 && id && m) {
-        // Strip callback functions from node data before saving
-        const cleanNodes = n.map((nd: any) => ({
-          ...nd,
-          data: Object.fromEntries(
-            Object.entries(nd.data).filter(
-              ([k]) =>
-                ![
-                  'onAddChild',
-                  'onAIExpand',
-                  'onDuplicate',
-                  'onDeleteNode',
-                  'onUpdateData',
-                ].includes(k)
-            )
-          ),
-        }));
-
-        // Always save to localStorage as immediate backup
-        localStorage.setItem(
-          `neuralmap_${id}`,
-          JSON.stringify({
-            mapInfo: m,
-            nodes: cleanNodes,
-            edges: e,
-            savedAt: new Date().toISOString(),
-          })
-        );
-        // Data saved to localStorage before unload
-
-        // Also queue save to robust system (non-blocking)
-        try {
-          robustMapSave.queueSave(id, cleanNodes, e, m).catch(() => {});
-        } catch {
-          // Silent fail on robust save during unload
-        }
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      handleBeforeUnload(); // Also save on React unmount (navigation)
-    };
-  }, []);
 
   // Inject callbacks into nodes for PowerNode hover toolbar
   const nodesWithCallbacks = useMemo(() => {

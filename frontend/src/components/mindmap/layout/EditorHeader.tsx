@@ -2,7 +2,7 @@
 // NeuralMap - Editor Header (Top Bar)
 // ============================================================================
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft,
@@ -36,7 +36,6 @@ import {
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { SaveStatusIndicator } from './SaveStatusIndicator';
-import { mapsApi } from '@/lib/api';
 import type { MapInfo, ViewMode, CollaboratorInfo, EditorSettings } from '../editor/types';
 
 interface EditorHeaderProps {
@@ -102,71 +101,41 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
   const [showMenu, setShowMenu] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [currentTitle, setCurrentTitle] = useState(mapInfo?.title || '');
-  const titleSaveTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const [isSavingTitle, setIsSavingTitle] = useState(false);
 
-  // Sync currentTitle when mapInfo changes
+  // Keep local input in sync when map title changes from autosave/load.
   useEffect(() => {
     setCurrentTitle(mapInfo?.title || '');
   }, [mapInfo?.title]);
 
-  // Debounced title save - use advanced queue for reliability
-  useEffect(() => {
-    if (!mapInfo?.id || !isEditingTitle) return;
-    if (currentTitle === mapInfo.title) return; // No change
+  const commitTitleEdit = useCallback(() => {
+    const normalizedTitle = currentTitle.trim();
+    if (!normalizedTitle) {
+      toast.error('O titulo nao pode ser vazio', { duration: 2500 });
+      setCurrentTitle(mapInfo?.title || '');
+      setIsEditingTitle(false);
+      return;
+    }
 
-    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current);
+    if (normalizedTitle !== currentTitle) {
+      setCurrentTitle(normalizedTitle);
+    }
 
-    titleSaveTimerRef.current = setTimeout(async () => {
-      if (currentTitle.trim() === '') {
-        toast.error('O título não pode ser vazio', { duration: 2500 });
-        setCurrentTitle(mapInfo.title || '');
-        return;
-      }
+    onUpdateMapInfo({ title: normalizedTitle });
+    setIsEditingTitle(false);
 
-      try {
-        setIsSavingTitle(true);
-        const toastId = toast.loading('Salvando título...', { duration: 5000 });
-
-        // Use advanced queue for title updates with retry logic
-        const { advancedSaveQueue } = await import('@/lib/advanced-save-queue');
-        advancedSaveQueue.enqueueOperation({
-          mapId: mapInfo.id,
-          type: 'map-update',
-          payload: {
-            title: currentTitle,
-            description: mapInfo.description || '',
-          },
-        });
-
-        // Force immediate sync for title changes
-        await advancedSaveQueue.forceSync();
-
-        toast.dismiss(toastId);
-        toast.success('Título salvo com sucesso!', { duration: 2000 });
-        onUpdateMapInfo({ title: currentTitle }); // Update parent state
-        setIsSavingTitle(false);
-      } catch (error) {
-        console.error('[Header] Failed to save title:', error);
-        toast.error('Erro ao salvar título - será salvo automaticamente', { duration: 3000 });
-        // Don't reset title - let the auto-save handle it
-        setIsSavingTitle(false);
-      }
-    }, 1500); // 1.5 second debounce
-
-    return () => {
-      if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current);
-    };
-  }, [currentTitle, mapInfo?.id, mapInfo?.title, isEditingTitle, onUpdateMapInfo]);
+    if (normalizedTitle !== (mapInfo?.title || '')) {
+      onSave();
+    }
+  }, [currentTitle, mapInfo?.title, onSave, onUpdateMapInfo]);
 
   const formatSavedTime = useCallback(() => {
     if (isSaving) return 'Salvando...';
     if (!lastSaved) return '';
     const diff = Math.floor((Date.now() - lastSaved.getTime()) / 1000);
     if (diff < 10) return 'Salvo agora';
-    if (diff < 60) return `Salvo há ${diff}s`;
-    if (diff < 3600) return `Salvo há ${Math.floor(diff / 60)}min`;
-    return `Salvo às ${lastSaved.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+    if (diff < 60) return `Salvo ha ${diff}s`;
+    if (diff < 3600) return `Salvo ha ${Math.floor(diff / 60)}min`;
+    return `Salvo as ${lastSaved.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
   }, [isSaving, lastSaved]);
 
   // Enhanced save handler with validation
@@ -191,7 +160,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
       className="h-14 bg-[#080d16]/90 backdrop-blur-xl border-b border-white/[0.04]
       flex items-center justify-between px-4 z-30 relative"
     >
-      {/* ─── Left Section ──────────────────────────────────────────── */}
+      {/* Left Section */}
       <div className="flex items-center gap-3">
         {/* Back */}
         <button
@@ -221,10 +190,18 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
               value={currentTitle}
               onChange={(e) => {
                 setCurrentTitle(e.target.value);
-                onUpdateMapInfo({ title: e.target.value });
               }}
-              onBlur={() => setIsEditingTitle(false)}
-              onKeyDown={(e) => e.key === 'Enter' && setIsEditingTitle(false)}
+              onBlur={commitTitleEdit}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  commitTitleEdit();
+                }
+                if (e.key === 'Escape') {
+                  setCurrentTitle(mapInfo?.title || '');
+                  setIsEditingTitle(false);
+                }
+              }}
               className="bg-transparent text-sm font-semibold text-white outline-none
                 border-b border-cyan-500/30 pb-0.5 min-w-[200px]"
             />
@@ -237,14 +214,12 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
             </button>
           )}
           <div className="flex items-center gap-2 text-[10px] text-slate-500">
-            <span>{nodeCount} nós</span>
-            <span>•</span>
-            <span>{edgeCount} conexões</span>
-            <span>•</span>
+            <span>{nodeCount} nos</span>
+            <span>|</span>
+            <span>{edgeCount} conexoes</span>
+            <span>|</span>
             <span className="flex items-center gap-1">
-              {isSavingTitle ? (
-                <Loader2 className="w-2.5 h-2.5 animate-spin text-cyan-400" />
-              ) : isSaving ? (
+              {isSaving ? (
                 <Loader2 className="w-2.5 h-2.5 animate-spin" />
               ) : lastSaved ? (
                 <Cloud className="w-2.5 h-2.5 text-emerald-400" />
@@ -257,7 +232,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
         </div>
       </div>
 
-      {/* ─── Center Section - View Modes ───────────────────────────── */}
+      {/* Center Section - View Modes */}
       <div
         className="absolute left-1/2 -translate-x-1/2 flex items-center gap-0.5 
         bg-white/[0.03] rounded-xl border border-white/[0.06] p-1"
@@ -279,7 +254,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
         ))}
       </div>
 
-      {/* ─── Right Section ─────────────────────────────────────────── */}
+      {/* Right Section */}
       <div className="flex items-center gap-3">
         {/* Save Status Indicator */}
         <SaveStatusIndicator mapId={mapInfo?.id} />
@@ -351,7 +326,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
         <button
           onClick={onToggleAnalytics}
           className="p-2 rounded-xl text-slate-400 hover:text-pink-400 hover:bg-pink-500/10 transition-all"
-          title="Mostrar analítica do mapa"
+          title="Mostrar analitica do mapa"
           aria-label="Toggle analytics panel"
         >
           <Activity className="w-4 h-4" />
@@ -408,7 +383,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
           <button
             onClick={() => setShowMenu(!showMenu)}
             className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all"
-            title="Mais opções"
+            title="Mais opcoes"
             aria-label="More options menu"
             aria-expanded={showMenu}
             aria-haspopup="menu"
@@ -427,7 +402,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
                 onMouseLeave={() => setShowMenu(false)}
                 role="menu"
               >
-                <MenuSection label="Visualização">
+                <MenuSection label="Visualizacao">
                   <MenuItem
                     icon={Grid3X3}
                     label="Grade"
@@ -462,7 +437,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
                         document.documentElement.requestFullscreen();
                         closeMenu();
                       } catch (err) {
-                        toast.error('Tela cheia não disponível');
+                        toast.error('Tela cheia nao disponivel');
                       }
                     }}
                   />
@@ -515,7 +490,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
   );
 };
 
-// ─── Menu Components ────────────────────────────────────────────────────────
+// Menu Components
 
 const MenuSection: React.FC<{ label: string; children: React.ReactNode }> = ({
   label,

@@ -471,7 +471,10 @@ export function useMapPersistence(
   );
 
   const normalizeGraphIds = useCallback(
-    (inputNodes: PowerNode[], inputEdges: PowerEdge[]): { nodes: PowerNode[]; edges: PowerEdge[] } => {
+    (
+      inputNodes: PowerNode[],
+      inputEdges: PowerEdge[]
+    ): { nodes: PowerNode[]; edges: PowerEdge[] } => {
       const nodeIdMap = new Map<string, string>();
 
       for (const node of inputNodes) {
@@ -726,7 +729,11 @@ export function useMapPersistence(
       }
 
       try {
-        const mapResponse = await withRetry(() => mapsApi.get(mapId, { includeGraph: true }), 3, 500);
+        const mapResponse = await withRetry(
+          () => mapsApi.get(mapId, { includeGraph: true }),
+          3,
+          500
+        );
         const mapData = mapResponse.data as any;
         if (!mapData?.id) {
           throw new Error('Map payload is missing id');
@@ -737,7 +744,9 @@ export function useMapPersistence(
 
         if (!nodesPayload || !edgesPayload) {
           const [nodesFallback, edgesFallback] = await Promise.all([
-            !nodesPayload ? withRetry(() => nodesApi.listByMap(mapId), 3, 500) : Promise.resolve(null),
+            !nodesPayload
+              ? withRetry(() => nodesApi.listByMap(mapId), 3, 500)
+              : Promise.resolve(null),
             !edgesPayload
               ? withRetry(
                   async () => {
@@ -754,10 +763,14 @@ export function useMapPersistence(
           ]);
 
           if (!nodesPayload) {
-            nodesPayload = Array.isArray((nodesFallback as any)?.data) ? ((nodesFallback as any).data as any[]) : [];
+            nodesPayload = Array.isArray((nodesFallback as any)?.data)
+              ? ((nodesFallback as any).data as any[])
+              : [];
           }
           if (!edgesPayload) {
-            edgesPayload = Array.isArray((edgesFallback as any)?.data) ? ((edgesFallback as any).data as any[]) : [];
+            edgesPayload = Array.isArray((edgesFallback as any)?.data)
+              ? ((edgesFallback as any).data as any[])
+              : [];
           }
         }
 
@@ -832,9 +845,7 @@ export function useMapPersistence(
             ? loadedEdges
             : normalizedNodes
                 .map((n) => {
-                  const source = (nodesPayload as any[])?.find(
-                    (raw) => raw.id === n.id
-                  )?.parent_id;
+                  const source = (nodesPayload as any[])?.find((raw) => raw.id === n.id)?.parent_id;
                   if (!source) return null;
                   return {
                     id: generateUuid(),
