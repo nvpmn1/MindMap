@@ -451,8 +451,14 @@ export function useMapPersistence(
   }, []);
 
   const sanitizeNodeData = useCallback(
-    (data: NeuralNodeData): Record<string, unknown> =>
-      JSON.parse(stableStringify(data)) as Record<string, unknown>,
+    (data: NeuralNodeData): Record<string, unknown> => {
+      const sanitized = JSON.parse(stableStringify(data)) as Record<string, unknown>;
+      // Keep metadata authoritative in SQL columns; avoid stale version/timestamps in JSON data.
+      delete sanitized.version;
+      delete sanitized.createdAt;
+      delete sanitized.updatedAt;
+      return sanitized;
+    },
     [stableStringify]
   );
 
@@ -809,11 +815,25 @@ export function useMapPersistence(
               type: 'power',
               position: { x: n.position_x || 0, y: n.position_y || 0 },
               data: {
+                ...DEFAULT_NODE_DATA,
+                ...(typeof n.data === 'object' && n.data !== null ? n.data : {}),
                 label: n.label || 'Sem titulo',
                 type: n.type || 'idea',
                 description: n.content || '',
-                ...DEFAULT_NODE_DATA,
-                ...(typeof n.data === 'object' && n.data !== null ? n.data : {}),
+                version:
+                  typeof n.version === 'number'
+                    ? n.version
+                    : typeof (n.data as any)?.version === 'number'
+                      ? (n.data as any).version
+                      : undefined,
+                createdAt:
+                  n.created_at || (typeof (n.data as any)?.createdAt === 'string'
+                    ? (n.data as any).createdAt
+                    : undefined),
+                updatedAt:
+                  n.updated_at || (typeof (n.data as any)?.updatedAt === 'string'
+                    ? (n.data as any).updatedAt
+                    : undefined),
               },
             }))
           : [];
@@ -850,6 +870,9 @@ export function useMapPersistence(
                 description: '',
                 status: 'active',
                 priority: 'high',
+                version: typeof rootNode?.version === 'number' ? rootNode.version : 1,
+                createdAt: rootNode?.created_at,
+                updatedAt: rootNode?.updated_at,
               },
             },
           ];
@@ -978,6 +1001,11 @@ export function useMapPersistence(
     for (const node of nodes) {
       const currentFingerprint = nextNodeSnapshot.get(node.id)!;
       const previousFingerprint = previousNodes.get(node.id);
+      const expectedVersionRaw = Number((node.data as any)?.version);
+      const expectedVersion =
+        Number.isFinite(expectedVersionRaw) && expectedVersionRaw > 0
+          ? Math.floor(expectedVersionRaw)
+          : undefined;
 
       const parentEdge = edges.find((edge) => edge.target === node.id);
       const parentId = parentEdge?.source || null;
@@ -1021,6 +1049,7 @@ export function useMapPersistence(
             position_y: node.position?.y || 0,
             data: sanitizeNodeData(node.data),
             collapsed: Boolean(node.data.collapsed),
+            ...(expectedVersion ? { expected_version: expectedVersion } : {}),
           },
         });
       }

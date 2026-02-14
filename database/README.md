@@ -42,9 +42,21 @@
 
 ---
 
+### 4️⃣ **HARDENING DE INTEGRIDADE (fortemente recomendado)**
+
+```sql
+-- Reforça integridade para save/edit/delete concorrente:
+-- valida parent_id/map_id, node_links, touch automático de updated_at em maps
+```
+
+**Arquivo:** `3_save_integrity_hardening.sql`  
+**Configura:** Guardrails de consistência para salvamento e concorrência
+
+---
+
 ## 📋 Checklist Pós-Execução
 
-Após executar os 3 arquivos SQL, configure no **Supabase Dashboard**:
+Após executar os SQLs (3 obrigatórios + hardening recomendado), configure no **Supabase Dashboard**:
 
 ### Authentication
 

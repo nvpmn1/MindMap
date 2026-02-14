@@ -104,6 +104,7 @@ class AdvancedSaveQueue {
   private BATCH_SIZE = 50;
   private idMappings = new Map<string, Map<string, string>>(); // mapId -> localId -> serverId
   private syncedEdgeKeys = new Map<string, Set<string>>(); // mapId -> source__target
+  private nodeVersions = new Map<string, Map<string, number>>(); // mapId -> nodeId -> version
 
   // IndexedDB for persistence
   private dbName = 'mindmap-save-queue';
@@ -195,6 +196,12 @@ class AdvancedSaveQueue {
     if (op.type === 'node-delete') {
       const nodeId = String(op.payload.id || '');
       if (nodeId) {
+        this.clearNodeVersion(op.mapId, nodeId);
+        const mappedNodeId = this.resolveNodeId(op.mapId, nodeId);
+        if (mappedNodeId && mappedNodeId !== nodeId) {
+          this.clearNodeVersion(op.mapId, mappedNodeId);
+        }
+
         for (const [existingId, existing] of this.queue) {
           if (existing.mapId !== op.mapId) continue;
 
@@ -233,6 +240,19 @@ class AdvancedSaveQueue {
         op.payload.id = mappedNodeId;
         nodeId = mappedNodeId;
       }
+
+      if (nodeId) {
+        const knownVersion = this.getNodeVersion(op.mapId, nodeId);
+        const incomingVersion = Number(op.payload.expected_version);
+        if (
+          knownVersion !== null &&
+          knownVersion > 0 &&
+          (!Number.isFinite(incomingVersion) || knownVersion > incomingVersion)
+        ) {
+          op.payload.expected_version = knownVersion;
+        }
+      }
+
       if (nodeId) {
         for (const [existingId, existing] of this.queue) {
           if (
@@ -518,6 +538,10 @@ class AdvancedSaveQueue {
                   const mappingKey = String(op.localId || op.payload.id || '');
                   if (mappingKey) {
                     this.idMappings.get(mapId)!.set(mappingKey, result.serverId);
+                    this.remapNodeVersion(mapId, mappingKey, result.serverId);
+                  }
+                  if (typeof result.serverVersion === 'number' && result.serverVersion > 0) {
+                    this.setNodeVersion(mapId, result.serverId, result.serverVersion);
                   }
                 }
                 processed.push(op);
@@ -643,6 +667,10 @@ class AdvancedSaveQueue {
           try {
             const result = await this.executeWithRetry(op);
             if (result.success) {
+              const deletedNodeId = String(op.payload.id || '');
+              if (deletedNodeId) {
+                this.clearNodeVersion(mapId, deletedNodeId);
+              }
               processed.push(op);
             }
           } catch (err) {
@@ -674,7 +702,7 @@ class AdvancedSaveQueue {
    */
   private async executeWithRetry(
     op: QueuedOperation
-  ): Promise<{ success: boolean; serverId?: string }> {
+  ): Promise<{ success: boolean; serverId?: string; serverVersion?: number }> {
     // Check if should retry
     if (op.retries >= op.maxRetries) {
       console.warn(`[SaveQueue] Max retries exceeded for operation ${op.id}`);
@@ -698,7 +726,7 @@ class AdvancedSaveQueue {
           this.assertApiSuccess(result, op.type);
           break;
 
-        case 'node-create':
+        case 'node-create': {
           console.log('[SaveQueue] Creating node:', op.payload.id);
           {
             const payload = { ...op.payload } as Record<string, any>;
@@ -739,10 +767,20 @@ class AdvancedSaveQueue {
           if (!result?.data?.id || !isUuid(String(result.data.id))) {
             throw new Error('Node create returned invalid server id');
           }
+          const createdNodeId = String(result.data.id);
+          const createdNodeVersion = Number(result?.data?.version);
+          if (Number.isFinite(createdNodeVersion) && createdNodeVersion > 0) {
+            this.setNodeVersion(op.mapId, createdNodeId, createdNodeVersion);
+          }
           return {
             success: true,
-            serverId: result?.data?.id,
+            serverId: createdNodeId,
+            serverVersion:
+              Number.isFinite(createdNodeVersion) && createdNodeVersion > 0
+                ? createdNodeVersion
+                : undefined,
           };
+        }
 
         case 'node-update':
           {
@@ -760,6 +798,16 @@ class AdvancedSaveQueue {
             const payload = { ...op.payload, id: resolvedNodeId } as Record<string, any>;
             const normalizedPayloadType = normalizeNodeType(payload.type);
             const normalizedDataType = normalizeNodeType(payload?.data?.type);
+            const knownVersion = this.getNodeVersion(op.mapId, resolvedNodeId);
+            const incomingExpectedVersion = Number(payload.expected_version);
+
+            if (
+              knownVersion !== null &&
+              knownVersion > 0 &&
+              (!Number.isFinite(incomingExpectedVersion) || knownVersion > incomingExpectedVersion)
+            ) {
+              payload.expected_version = knownVersion;
+            }
 
             if (normalizedPayloadType) {
               payload.type = normalizedPayloadType;
@@ -786,9 +834,24 @@ class AdvancedSaveQueue {
             }
 
             op.payload.id = resolvedNodeId;
+            op.payload.expected_version = payload.expected_version;
             result = await nodesApi.update(resolvedNodeId, payload as any);
+            this.assertApiSuccess(result, op.type);
+
+            const returnedVersion = Number(result?.data?.version);
+            const expectedVersion = Number(payload.expected_version);
+            const nextVersion =
+              Number.isFinite(returnedVersion) && returnedVersion > 0
+                ? returnedVersion
+                : Number.isFinite(expectedVersion) && expectedVersion > 0
+                  ? expectedVersion + 1
+                  : null;
+
+            if (nextVersion) {
+              this.setNodeVersion(op.mapId, resolvedNodeId, nextVersion);
+              op.payload.expected_version = nextVersion;
+            }
           }
-          this.assertApiSuccess(result, op.type);
           break;
 
         case 'node-delete':
@@ -948,9 +1011,51 @@ class AdvancedSaveQueue {
         }
       }
 
+      if (statusCode === 409 && op.type === 'node-update') {
+        const resolvedNodeId = this.resolveNodeId(op.mapId, String(op.payload.id || ''));
+
+        if (resolvedNodeId) {
+          try {
+            const latestResponse = await nodesApi.get(resolvedNodeId);
+            const latestNode = latestResponse?.data as Record<string, any> | undefined;
+
+            if (latestNode) {
+              const latestVersion = Number(latestNode.version);
+              if (Number.isFinite(latestVersion) && latestVersion > 0) {
+                this.setNodeVersion(op.mapId, resolvedNodeId, latestVersion);
+              }
+
+              if (this.isNodeStateSatisfied(latestNode, op.payload, op.mapId)) {
+                return {
+                  success: true,
+                  serverId: resolvedNodeId,
+                  serverVersion:
+                    Number.isFinite(latestVersion) && latestVersion > 0
+                      ? latestVersion
+                      : undefined,
+                };
+              }
+
+              if (Number.isFinite(latestVersion) && latestVersion > 0) {
+                op.payload.expected_version = latestVersion;
+                this.deferOperation(op, 250);
+                return { success: false };
+              }
+            }
+          } catch (lookupErr) {
+            console.warn('[SaveQueue] Failed to fetch latest node during conflict handling:', lookupErr);
+          }
+        }
+      }
+
       // Treat only idempotent delete/update cleanup operations as reconciled on 404.
       if (statusCode === 404) {
-        if (op.type === 'node-delete' || op.type === 'edge-delete' || op.type === 'map-update') {
+        if (
+          op.type === 'node-delete' ||
+          op.type === 'edge-delete' ||
+          op.type === 'map-update' ||
+          op.type === 'node-update'
+        ) {
           console.log(
             `[SaveQueue] Resource not found (404) for ${op.type}; treating as already reconciled`
           );
@@ -999,6 +1104,15 @@ class AdvancedSaveQueue {
         }
 
         const resolvedPayload = { ...op.payload, id: resolvedNodeId } as Record<string, any>;
+        const knownVersion = this.getNodeVersion(op.mapId, resolvedNodeId);
+        const incomingExpectedVersion = Number(resolvedPayload.expected_version);
+        if (
+          knownVersion !== null &&
+          knownVersion > 0 &&
+          (!Number.isFinite(incomingExpectedVersion) || knownVersion > incomingExpectedVersion)
+        ) {
+          resolvedPayload.expected_version = knownVersion;
+        }
 
         if (resolvedPayload.parent_id !== undefined && resolvedPayload.parent_id !== null) {
           const resolvedParentId = this.resolveNodeId(op.mapId, String(resolvedPayload.parent_id));
@@ -1030,6 +1144,9 @@ class AdvancedSaveQueue {
         ...(op.payload.collapsed !== undefined && { collapsed: op.payload.collapsed }),
         ...(op.payload.style !== undefined && { style: op.payload.style }),
         ...(op.payload.data !== undefined && { data: op.payload.data }),
+        ...(Number.isFinite(Number(op.payload.expected_version)) && {
+          expected_version: Number(op.payload.expected_version),
+        }),
       }));
 
       console.log('[SaveQueue] Attempting batch node update with', payload.length, 'nodes');
@@ -1048,6 +1165,37 @@ class AdvancedSaveQueue {
         throw new Error(
           `Batch update returned partial failure (${failedCount}/${payload.length} failed)`
         );
+      }
+
+      const returnedItems = Array.isArray((result as any)?.data?.items)
+        ? ((result as any).data.items as any[])
+        : [];
+      const returnedVersionById = new Map<string, number>();
+      for (const item of returnedItems) {
+        const itemId = String(item?.id || '');
+        const itemVersion = Number(item?.version);
+        if (itemId && Number.isFinite(itemVersion) && itemVersion > 0) {
+          returnedVersionById.set(itemId, itemVersion);
+        }
+      }
+
+      for (const op of readyOps) {
+        const nodeId = String(op.payload.id || '');
+        if (!nodeId) continue;
+
+        const returnedVersion = returnedVersionById.get(nodeId);
+        if (typeof returnedVersion === 'number' && returnedVersion > 0) {
+          this.setNodeVersion(op.mapId, nodeId, returnedVersion);
+          op.payload.expected_version = returnedVersion;
+          continue;
+        }
+
+        const expectedVersion = Number(op.payload.expected_version);
+        if (Number.isFinite(expectedVersion) && expectedVersion > 0) {
+          const nextVersion = expectedVersion + 1;
+          this.setNodeVersion(op.mapId, nodeId, nextVersion);
+          op.payload.expected_version = nextVersion;
+        }
       }
 
       console.log('[SaveQueue] Batch node update succeeded');
@@ -1070,6 +1218,116 @@ class AdvancedSaveQueue {
       err.statusCode = code === 'CONFLICT' ? 409 : 400;
       throw err;
     }
+  }
+
+  private getNodeVersion(mapId: string, nodeId: string): number | null {
+    if (!mapId || !nodeId) return null;
+    return this.nodeVersions.get(mapId)?.get(nodeId) ?? null;
+  }
+
+  private setNodeVersion(mapId: string, nodeId: string, version: number): void {
+    if (!mapId || !nodeId || !Number.isFinite(version) || version <= 0) return;
+    if (!this.nodeVersions.has(mapId)) {
+      this.nodeVersions.set(mapId, new Map());
+    }
+
+    const versionMap = this.nodeVersions.get(mapId)!;
+    const current = versionMap.get(nodeId);
+    if (current === undefined || version >= current) {
+      versionMap.set(nodeId, Math.floor(version));
+    }
+  }
+
+  private clearNodeVersion(mapId: string, nodeId: string): void {
+    if (!mapId || !nodeId) return;
+    this.nodeVersions.get(mapId)?.delete(nodeId);
+  }
+
+  private remapNodeVersion(mapId: string, fromNodeId: string, toNodeId: string): void {
+    if (!mapId || !fromNodeId || !toNodeId || fromNodeId === toNodeId) return;
+    const versionMap = this.nodeVersions.get(mapId);
+    if (!versionMap) return;
+
+    const fromVersion = versionMap.get(fromNodeId);
+    if (fromVersion !== undefined) {
+      this.setNodeVersion(mapId, toNodeId, fromVersion);
+      versionMap.delete(fromNodeId);
+    }
+  }
+
+  private normalizeComparable(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((item) => this.normalizeComparable(item));
+    }
+
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+        out[key] = this.normalizeComparable((value as Record<string, unknown>)[key]);
+      }
+      return out;
+    }
+
+    return value;
+  }
+
+  private isValueEqual(left: unknown, right: unknown): boolean {
+    return JSON.stringify(this.normalizeComparable(left)) === JSON.stringify(this.normalizeComparable(right));
+  }
+
+  private isNodeStateSatisfied(
+    serverNode: Record<string, any>,
+    payload: Record<string, any>,
+    mapId: string
+  ): boolean {
+    if (payload.label !== undefined && !this.isValueEqual(serverNode.label, payload.label)) {
+      return false;
+    }
+    if (payload.content !== undefined && !this.isValueEqual(serverNode.content, payload.content)) {
+      return false;
+    }
+    if (payload.type !== undefined && !this.isValueEqual(serverNode.type, payload.type)) {
+      return false;
+    }
+    if (
+      payload.position_x !== undefined &&
+      !this.isValueEqual(serverNode.position_x, payload.position_x)
+    ) {
+      return false;
+    }
+    if (
+      payload.position_y !== undefined &&
+      !this.isValueEqual(serverNode.position_y, payload.position_y)
+    ) {
+      return false;
+    }
+    if (
+      payload.collapsed !== undefined &&
+      !this.isValueEqual(Boolean(serverNode.collapsed), Boolean(payload.collapsed))
+    ) {
+      return false;
+    }
+
+    if (payload.parent_id !== undefined) {
+      const expectedParentRaw = payload.parent_id === null ? null : String(payload.parent_id);
+      const expectedParent =
+        expectedParentRaw === null
+          ? null
+          : this.resolveNodeId(mapId, expectedParentRaw) || expectedParentRaw;
+      const serverParent = serverNode.parent_id === null ? null : String(serverNode.parent_id);
+      if (!this.isValueEqual(serverParent, expectedParent)) {
+        return false;
+      }
+    }
+
+    if (payload.style !== undefined && !this.isValueEqual(serverNode.style, payload.style)) {
+      return false;
+    }
+    if (payload.data !== undefined && !this.isValueEqual(serverNode.data, payload.data)) {
+      return false;
+    }
+
+    return true;
   }
 
   private resolveNodeId(mapId: string, nodeId: string): string | null {
@@ -1281,6 +1539,7 @@ class AdvancedSaveQueue {
 
     this.syncedEdgeKeys.delete(mapId);
     this.idMappings.delete(mapId);
+    this.nodeVersions.delete(mapId);
     this.deadLetter = this.deadLetter.filter((op) => op.mapId !== mapId);
 
     return canceledCount;
@@ -1293,6 +1552,7 @@ class AdvancedSaveQueue {
     this.queue.clear();
     this.syncedEdgeKeys.clear();
     this.idMappings.clear();
+    this.nodeVersions.clear();
     this.deadLetter = [];
     if (this.db) {
       const transaction = this.db.transaction([this.storeName], 'readwrite');

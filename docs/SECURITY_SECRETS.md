@@ -11,7 +11,7 @@
   - `SUPABASE_SERVICE_ROLE_KEY`
   - `CLAUDE_API_KEY`
 - **Operacional (automação):** rotação mensal
-  - `SMOKE_BEARER_TOKEN`
+  - `SMOKE_REFRESH_TOKEN`
 - **Revisão de necessidade:** mensal
   - `SUPABASE_ANON_KEY` (rotacionar quando houver evidência de abuso)
 

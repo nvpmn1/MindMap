@@ -982,7 +982,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({
 
                 <div className="pt-2 text-center">
                   <p className="text-[10px] text-slate-600">
-                    ðŸ§  Powered by Claude (Anthropic) â€¢ Resultados reais via API
+                    Powered by Claude (Anthropic) - Resultados reais via API
                   </p>
                 </div>
               </motion.div>

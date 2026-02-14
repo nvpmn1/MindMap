@@ -206,10 +206,10 @@ const PowerNodeComponent: React.FC<NodeProps> = ({ id, data: rawData, selected }
           runtime.onDeleteNode?.(id);
           return;
         case 'togglePin':
-          runtime.onUpdateData?.(id, { pinned: !Boolean(data.pinned) });
+          runtime.onUpdateData?.(id, { pinned: !data.pinned });
           return;
         case 'toggleLock':
-          runtime.onUpdateData?.(id, { locked: !Boolean((data as { locked?: boolean }).locked) });
+          runtime.onUpdateData?.(id, { locked: !(data as { locked?: boolean }).locked });
           return;
         case 'confirmLink':
           runtime.onConfirmConnection?.();

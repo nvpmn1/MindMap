@@ -226,11 +226,18 @@ function checkAgainstBaseline(current, baseline) {
 
   const baselineWarnings = baseline.totals?.warnings || 0;
   const currentWarnings = current.totals.warnings;
+  const currentErrors = current.totals.errors || 0;
 
   console.log('\n=== Lint Baseline Summary ===');
   console.log(`Baseline warnings: ${baselineWarnings}`);
   console.log(`Current warnings:  ${currentWarnings}`);
   console.log(`Delta:             ${currentWarnings - baselineWarnings}`);
+  console.log(`Current errors:    ${currentErrors}`);
+
+  if (currentErrors > 0) {
+    console.error('\n❌ ESLint errors detected. Fix lint errors before running baseline checks.');
+    process.exit(1);
+  }
 
   if (regressions.length > 0) {
     console.error('\n❌ Lint warning regressions detected by module:');

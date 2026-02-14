@@ -1,9 +1,25 @@
 import { Router, Request, Response } from 'express';
-import { asyncHandler } from '../middleware';
+import { asyncHandler, authenticate, requireSystemAdmin } from '../middleware';
 import { supabaseAdmin } from '../services/supabase';
 import { logger } from '../utils/logger';
+import { env } from '../utils/env';
 
 const router = Router();
+
+const blockInProduction = (req: Request, res: Response, next: () => void): void => {
+  if (env.NODE_ENV === 'production') {
+    logger.warn({ path: req.originalUrl, method: req.method }, 'Blocked admin route in production');
+    res.status(404).json({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'Endpoint not found' },
+    });
+    return;
+  }
+
+  next();
+};
+
+router.use(blockInProduction, authenticate, requireSystemAdmin);
 
 /**
  * DELETE /api/admin/cleanup-profiles

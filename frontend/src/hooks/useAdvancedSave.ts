@@ -80,6 +80,11 @@ export function useAdvancedSave(options: UseAdvancedSaveOptions) {
   const queueNodeUpdate = useCallback(
     (nodeId: string, updates: Partial<PowerNode>) => {
       if (!mapId || !isRemoteMap || !isUuid(nodeId)) return;
+      const expectedVersionRaw = Number((updates.data as any)?.version);
+      const expectedVersion =
+        Number.isFinite(expectedVersionRaw) && expectedVersionRaw > 0
+          ? Math.floor(expectedVersionRaw)
+          : undefined;
 
       advancedSaveQueue.enqueueOperation({
         mapId,
@@ -91,6 +96,7 @@ export function useAdvancedSave(options: UseAdvancedSaveOptions) {
           label: updates.data?.label,
           content: updates.data?.description,
           type: updates.data?.type,
+          ...(expectedVersion ? { expected_version: expectedVersion } : {}),
         },
       });
     },
@@ -106,6 +112,12 @@ export function useAdvancedSave(options: UseAdvancedSaveOptions) {
 
       for (const node of nodes) {
         if (isUuid(node.id)) {
+          const expectedVersionRaw = Number((node.data as any)?.version);
+          const expectedVersion =
+            Number.isFinite(expectedVersionRaw) && expectedVersionRaw > 0
+              ? Math.floor(expectedVersionRaw)
+              : undefined;
+
           advancedSaveQueue.enqueueOperation({
             mapId,
             type: 'node-update',
@@ -116,6 +128,7 @@ export function useAdvancedSave(options: UseAdvancedSaveOptions) {
               label: node.data.label,
               content: node.data.description,
               type: node.data.type,
+              ...(expectedVersion ? { expected_version: expectedVersion } : {}),
             },
           });
         }
@@ -300,6 +313,12 @@ export async function batchSaveMap(
       });
     } else {
       // Existing node - queue update
+      const expectedVersionRaw = Number((node.data as any)?.version);
+      const expectedVersion =
+        Number.isFinite(expectedVersionRaw) && expectedVersionRaw > 0
+          ? Math.floor(expectedVersionRaw)
+          : undefined;
+
       advancedSaveQueue.enqueueOperation({
         mapId,
         type: 'node-update',
@@ -310,6 +329,7 @@ export async function batchSaveMap(
           label: node.data.label,
           content: node.data.description,
           type: node.data.type,
+          ...(expectedVersion ? { expected_version: expectedVersion } : {}),
         },
       });
     }

@@ -21,14 +21,21 @@ class RobustMapDeleteManager {
     this.lastStatus = 'idle';
     this.lastUpdated = Date.now();
 
-    // Remove from local cache immediately for instant UI feedback
-    mapPersistence.removeFromCache(mapId);
+    // Cancel any pending save operations before delete to avoid stale writes after removal.
+    try {
+      const { advancedSaveQueue } = await import('@/lib/advanced-save-queue');
+      advancedSaveQueue.cancelMapQueue(mapId);
+    } catch (error) {
+      console.warn('[Delete] Failed to cancel pending save queue:', error);
+    }
 
     let lastError = '';
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
         const response = await mapsApi.delete(mapId);
         if (response.success || (response as any).message) {
+          // Invalidate cache only when backend confirms deletion.
+          mapPersistence.removeFromCache(mapId);
           console.log('[Delete] Map deleted:', mapId);
           this.pendingCount = Math.max(0, this.pendingCount - 1);
           this.lastStatus = 'deleted';
@@ -40,11 +47,21 @@ class RobustMapDeleteManager {
         lastError = err?.message || 'Network error';
         // If 404, map is already gone - that's fine
         if (err?.statusCode === 404) {
+          // Resource is already gone server-side: cache can be safely invalidated.
+          mapPersistence.removeFromCache(mapId);
           console.log('[Delete] Map already gone:', mapId);
           this.pendingCount = Math.max(0, this.pendingCount - 1);
           this.lastStatus = 'deleted';
           this.lastUpdated = Date.now();
           return { success: true };
+        }
+        // Authorization errors are not recoverable by retry.
+        if (err?.statusCode === 401 || err?.statusCode === 403) {
+          console.warn('[Delete] Delete denied by authorization policy:', mapId);
+          this.pendingCount = Math.max(0, this.pendingCount - 1);
+          this.lastStatus = 'error';
+          this.lastUpdated = Date.now();
+          return { success: false, error: lastError };
         }
         // Wait before retry
         if (attempt < MAX_RETRIES - 1) {

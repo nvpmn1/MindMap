@@ -359,7 +359,7 @@ export const mapsApi = {
 export const nodesApi = {
   listByMap: (mapId: string) => api.get(`/api/nodes/map/${mapId}`, { useCache: false }),
 
-  get: (nodeId: string) => api.get(`/api/nodes/${nodeId}`),
+  get: (nodeId: string) => api.get(`/api/nodes/${nodeId}`, { useCache: false }),
 
   create: (data: {
     id?: string;
@@ -388,6 +388,7 @@ export const nodesApi = {
       collapsed?: boolean;
       style?: Record<string, unknown>;
       data?: Record<string, unknown>;
+      expected_version?: number;
     }
   ) => api.patch(`/api/nodes/${nodeId}`, data),
 
@@ -405,6 +406,7 @@ export const nodesApi = {
       collapsed?: boolean;
       style?: Record<string, unknown>;
       data?: Record<string, unknown>;
+      expected_version?: number;
     }>
   ) => api.patch('/api/nodes/batch', { nodes }),
 

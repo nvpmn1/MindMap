@@ -1,11 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authenticate, asyncHandler } from '../middleware';
-import { ValidationError, NotFoundError } from '../utils/errors';
+import { ValidationError, NotFoundError, ConflictError } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { env } from '../utils/env';
 import { supabaseAdmin } from '../services/supabase';
 import { Insertable, Updatable } from '../types/database';
+import { resolveNodeDeleteLookup, resolveNodeUpdateOutcome } from './nodeMutationSemantics';
 
 const router = Router();
 
@@ -42,6 +43,7 @@ const updateNodeSchema = z.object({
   style: z.record(z.any()).optional(),
   data: z.record(z.any()).optional(),
   collapsed: z.boolean().optional(),
+  expected_version: z.number().int().positive().optional(),
 });
 
 const batchUpdateSchema = z.object({
@@ -72,6 +74,7 @@ const batchUpdateSchema = z.object({
         collapsed: z.boolean().optional(),
         style: z.record(z.any()).optional(),
         data: z.record(z.any()).optional(),
+        expected_version: z.number().int().positive().optional(),
       })
     )
     .min(1)
@@ -322,36 +325,100 @@ router.patch(
     }
 
     const { nodes } = parsed.data;
-    const results: Array<{ id: string; map_id: string }> = [];
-    const errors: Array<{ id: string; error: string }> = [];
+    const results: Array<{ id: string; map_id: string; version: number }> = [];
+    const errors: Array<{
+      id: string;
+      error: string;
+      code: string;
+      current_version?: number;
+    }> = [];
 
     // Update nodes in parallel
     await Promise.all(
       nodes.map(async (nodeUpdate) => {
-        const { id, ...updateData } = nodeUpdate;
+        const { id, expected_version, ...updateData } = nodeUpdate;
 
-        const { data, error } = await req.supabase
+        let updateQuery = req.supabase
           .from('nodes')
           .update({
             ...updateData,
             updated_at: new Date().toISOString(),
           })
-          .eq('id', id)
-          .select('id, map_id')
-          .single();
+          .eq('id', id);
+
+        if (typeof expected_version === 'number') {
+          updateQuery = updateQuery.eq('version', expected_version);
+        }
+
+        const { data, error } = await updateQuery.select('id, map_id, version').maybeSingle();
 
         if (error) {
-          errors.push({ id, error: error.message });
-        } else if (data) {
-          results.push(data);
+          errors.push({ id, error: error.message, code: error.code || 'UPDATE_FAILED' });
+          return;
         }
+
+        if (data) {
+          results.push(data);
+          return;
+        }
+
+        if (typeof expected_version === 'number') {
+          const { data: currentNode, error: currentNodeError } = await req.supabase
+            .from('nodes')
+            .select('id, version')
+            .eq('id', id)
+            .maybeSingle();
+
+          if (currentNodeError) {
+            errors.push({
+              id,
+              error: currentNodeError.message,
+              code: currentNodeError.code || 'LOOKUP_FAILED',
+            });
+            return;
+          }
+
+          if (currentNode) {
+            errors.push({
+              id,
+              error: `Version conflict: expected ${expected_version}, current ${currentNode.version}`,
+              code: 'VERSION_CONFLICT',
+              current_version: currentNode.version,
+            });
+            return;
+          }
+        }
+
+        errors.push({
+          id,
+          error: 'Node not found or access denied',
+          code: 'NOT_FOUND',
+        });
       })
     );
 
-    logger.debug({ count: results.length, userId: req.user.id }, 'Batch node update');
-
     const touchedMaps = new Set<string>(results.map((item) => item.map_id));
     await Promise.all(Array.from(touchedMaps).map((id) => touchMap(req.supabase, id)));
+
+    const conflictCount = errors.filter((item) => item.code === 'VERSION_CONFLICT').length;
+    const responsePayload = {
+      updated: results.length,
+      failed: errors.length,
+      conflicts: conflictCount,
+      items: results,
+      errors,
+    };
+
+    logger.debug(
+      {
+        userId: req.user.id,
+        attempted: nodes.length,
+        updated: results.length,
+        failed: errors.length,
+        conflicts: conflictCount,
+      },
+      'Batch node update processed'
+    );
 
     if (errors.length > 0) {
       logger.warn(
@@ -360,26 +427,20 @@ router.patch(
           attempted: nodes.length,
           updated: results.length,
           failed: errors.length,
+          conflicts: conflictCount,
           errors,
         },
         'Batch node update had failures'
       );
       return res.status(207).json({
         success: true,
-        data: {
-          updated: results.length,
-          failed: errors.length,
-          errors,
-        },
+        data: responsePayload,
       });
     }
 
     res.json({
       success: true,
-      data: {
-        updated: results.length,
-        failed: 0,
-      },
+      data: responsePayload,
     });
   })
 );
@@ -388,139 +449,185 @@ router.patch(
  * PATCH /api/nodes/:nodeId
  * Update node
  */
+export const updateNodeHandler = async (req: Request, res: Response): Promise<void> => {
+  const { nodeId } = req.params;
+
+  const parsed = updateNodeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw new ValidationError(parsed.error.errors[0].message);
+  }
+
+  if (parsed.data.parent_id) {
+    const { data: parentNode, error: parentNodeError } = await req.supabase
+      .from('nodes')
+      .select('id, map_id')
+      .eq('id', parsed.data.parent_id)
+      .maybeSingle();
+
+    if (parentNodeError || !parentNode) {
+      throw new ValidationError('Parent node not found');
+    }
+
+    const { data: currentNode, error: currentNodeError } = await req.supabase
+      .from('nodes')
+      .select('map_id')
+      .eq('id', nodeId)
+      .maybeSingle();
+
+    if (
+      currentNodeError ||
+      !currentNode ||
+      currentNode.map_id !== parentNode.map_id ||
+      parsed.data.parent_id === nodeId
+    ) {
+      throw new ValidationError('Invalid parent assignment');
+    }
+  }
+
+  const { expected_version, ...parsedUpdateFields } = parsed.data;
+
+  const updateData: Updatable<'nodes'> & { type?: string } = {
+    ...parsedUpdateFields,
+    updated_at: new Date().toISOString(),
+  } as any;
+
+  let updateQuery = req.supabase.from('nodes').update(updateData).eq('id', nodeId);
+  if (typeof expected_version === 'number') {
+    updateQuery = updateQuery.eq('version', expected_version);
+  }
+
+  const { data: node, error } = await updateQuery.select('*').maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to update node: ${error.message}`);
+  }
+
+  let currentNodeForConflict: { version?: number | null } | null = null;
+  if (!node && typeof expected_version === 'number') {
+    const { data: currentNode, error: currentNodeError } = await req.supabase
+      .from('nodes')
+      .select('id, version')
+      .eq('id', nodeId)
+      .maybeSingle();
+
+    if (currentNodeError) {
+      throw new Error(`Failed to verify node version: ${currentNodeError.message}`);
+    }
+
+    currentNodeForConflict = currentNode || null;
+  }
+
+  const updateOutcome = resolveNodeUpdateOutcome({
+    updatedNode: node,
+    expectedVersion: expected_version,
+    currentNode: currentNodeForConflict,
+  });
+
+  if (updateOutcome.kind === 'conflict') {
+    throw new ConflictError(updateOutcome.message);
+  }
+
+  if (updateOutcome.kind === 'not_found') {
+    throw new NotFoundError('Node not found or access denied');
+  }
+
+  await touchMap(req.supabase, node.map_id);
+
+  logger.debug({ nodeId, userId: req.user.id }, 'Node updated');
+
+  res.json({
+    success: true,
+    data: node,
+  });
+};
+
 router.patch(
   '/:nodeId([0-9a-fA-F-]{36})',
   authenticate,
-  asyncHandler(async (req: Request, res: Response) => {
-    const { nodeId } = req.params;
-
-    const parsed = updateNodeSchema.safeParse(req.body);
-    if (!parsed.success) {
-      throw new ValidationError(parsed.error.errors[0].message);
-    }
-
-    if (parsed.data.parent_id) {
-      const { data: parentNode, error: parentNodeError } = await req.supabase
-        .from('nodes')
-        .select('id, map_id')
-        .eq('id', parsed.data.parent_id)
-        .maybeSingle();
-
-      if (parentNodeError || !parentNode) {
-        throw new ValidationError('Parent node not found');
-      }
-
-      const { data: currentNode, error: currentNodeError } = await req.supabase
-        .from('nodes')
-        .select('map_id')
-        .eq('id', nodeId)
-        .maybeSingle();
-
-      if (
-        currentNodeError ||
-        !currentNode ||
-        currentNode.map_id !== parentNode.map_id ||
-        parsed.data.parent_id === nodeId
-      ) {
-        throw new ValidationError('Invalid parent assignment');
-      }
-    }
-
-    const updateData: Updatable<'nodes'> & { type?: string } = {
-      ...parsed.data,
-      updated_at: new Date().toISOString(),
-    } as any;
-
-    const { data: node, error } = await req.supabase
-      .from('nodes')
-      .update(updateData)
-      .eq('id', nodeId)
-      .select('*')
-      .single();
-
-    if (error || !node) {
-      throw new NotFoundError('Node not found or access denied');
-    }
-
-    await touchMap(req.supabase, node.map_id);
-
-    logger.debug({ nodeId, userId: req.user.id }, 'Node updated');
-
-    res.json({
-      success: true,
-      data: node,
-    });
-  })
+  asyncHandler(async (req: Request, res: Response) => updateNodeHandler(req, res))
 );
 
 /**
  * DELETE /api/nodes/:nodeId
  * Delete node and its children
  */
+export const deleteNodeHandler = async (req: Request, res: Response): Promise<void> => {
+  const { nodeId } = req.params;
+  const { cascade = 'true' } = req.query;
+
+  const { data: node, error: nodeLookupError } = await req.supabase
+    .from('nodes')
+    .select('label, map_id')
+    .eq('id', nodeId)
+    .maybeSingle();
+
+  const deleteLookupOutcome = resolveNodeDeleteLookup({
+    lookupError: nodeLookupError ? { message: nodeLookupError.message } : null,
+    node,
+  });
+
+  if (deleteLookupOutcome.kind === 'error') {
+    logger.error({ nodeId, error: deleteLookupOutcome.message }, 'Failed to lookup node before delete');
+    throw new Error('Failed to delete node');
+  }
+
+  if (deleteLookupOutcome.kind === 'already_deleted') {
+    // Idempotent delete for race conditions/retries.
+    res.json({
+      success: true,
+      message: 'Node already deleted',
+    });
+    return;
+  }
+
+  const nodeIdStr = Array.isArray(nodeId) ? nodeId[0] : nodeId;
+
+  if (cascade === 'true') {
+    const descendants = await getDescendantIds(req.supabase, nodeIdStr);
+    const allNodeIds = [nodeIdStr, ...descendants];
+
+    const { error } = await req.supabase.from('nodes').delete().in('id', allNodeIds);
+
+    if (error) {
+      logger.error({ error: error.message, nodeId }, 'Failed to delete nodes');
+      throw new Error('Failed to delete node');
+    }
+
+    logger.info(
+      { nodeId, descendants: descendants.length, userId: req.user.id },
+      'Node deleted with children'
+    );
+  } else {
+    const { error } = await req.supabase.from('nodes').delete().eq('id', nodeId);
+
+    if (error) {
+      logger.error({ error: error.message, nodeId }, 'Failed to delete node');
+      throw new Error('Failed to delete node');
+    }
+
+    logger.info({ nodeId, userId: req.user.id }, 'Node deleted');
+  }
+
+  await logNodeActivity(
+    req.user.id,
+    node.map_id,
+    null,
+    'node_deleted',
+    `Deleted node "${node.label}"`
+  );
+
+  await touchMap(req.supabase, node.map_id);
+
+  res.json({
+    success: true,
+    message: 'Node deleted successfully',
+  });
+};
+
 router.delete(
   '/:nodeId([0-9a-fA-F-]{36})',
   authenticate,
-  asyncHandler(async (req: Request, res: Response) => {
-    const { nodeId } = req.params;
-    const { cascade = 'true' } = req.query;
-
-    // Get node info for activity log
-    const { data: node } = await req.supabase
-      .from('nodes')
-      .select('label, map_id')
-      .eq('id', nodeId)
-      .single();
-
-    if (!node) {
-      throw new NotFoundError('Node not found');
-    }
-
-    const nodeIdStr = Array.isArray(nodeId) ? nodeId[0] : nodeId;
-
-    if (cascade === 'true') {
-      // Get all descendant nodes
-      const descendants = await getDescendantIds(req.supabase, nodeIdStr);
-      const allNodeIds = [nodeIdStr, ...descendants];
-
-      // Delete all nodes (edges cascade automatically)
-      const { error } = await req.supabase.from('nodes').delete().in('id', allNodeIds);
-
-      if (error) {
-        logger.error({ error: error.message, nodeId }, 'Failed to delete nodes');
-        throw new Error('Failed to delete node');
-      }
-
-      logger.info(
-        { nodeId, descendants: descendants.length, userId: req.user.id },
-        'Node deleted with children'
-      );
-    } else {
-      // Just delete this node, children become orphans
-      const { error } = await req.supabase.from('nodes').delete().eq('id', nodeId);
-
-      if (error) {
-        throw new Error('Failed to delete node');
-      }
-
-      logger.info({ nodeId, userId: req.user.id }, 'Node deleted');
-    }
-
-    // Log activity
-    await logNodeActivity(
-      req.user.id,
-      node.map_id,
-      null,
-      'node_deleted',
-      `Deleted node "${node.label}"`
-    );
-
-    await touchMap(req.supabase, node.map_id);
-
-    res.json({
-      success: true,
-      message: 'Node deleted successfully',
-    });
-  })
+  asyncHandler(async (req: Request, res: Response) => deleteNodeHandler(req, res))
 );
 
 // ============ EDGES ============
@@ -609,6 +716,24 @@ router.post(
       .single();
 
     if (error) {
+      if (error.code === '23505') {
+        const { data: existingAfterConflict } = await req.supabase
+          .from('edges')
+          .select('*')
+          .eq('map_id', map_id)
+          .eq('source_id', source_id)
+          .eq('target_id', target_id)
+          .maybeSingle();
+
+        if (existingAfterConflict) {
+          return res.status(200).json({
+            success: true,
+            data: existingAfterConflict,
+            meta: { duplicate: true },
+          });
+        }
+      }
+
       logger.error({ error: error.message, source_id, target_id }, 'Failed to create edge');
       throw new Error(`Failed to create edge: ${error.message}`);
     }

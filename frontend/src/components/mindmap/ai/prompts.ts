@@ -8,7 +8,7 @@ import type { AIAgentMode } from '../editor/types';
 // â”€â”€â”€ Platform Context (injected into every prompt) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const PLATFORM_CONTEXT = `
-VocÃª Ã© o **NeuralAgent**, a IA integrada Ã  plataforma **NeuralMap** â€” uma ferramenta colaborativa de mapas mentais de Ãºltima geraÃ§Ã£o.
+Voce e o **NeuralAgent**, a IA integrada a plataforma **NeuralMap** - uma ferramenta colaborativa de mapas mentais de ultima geracao.
 
 ## IDENTIDADE
 - Nome: NeuralAgent
@@ -322,8 +322,8 @@ export function buildMapContextMessage(ctx: MapContextInput): string {
 
   function renderNode(node: typeof nodes[0], depth: number): void {
     const indent = '  '.repeat(depth);
-    const statusIcon = node.status === 'completed' ? 'âœ…' : node.status === 'blocked' ? 'ðŸš«' : node.status === 'review' ? 'ðŸ‘ï¸' : 'â€¢';
-    const priorityIcon = node.priority === 'urgent' ? 'ðŸ”´' : node.priority === 'high' ? 'ðŸŸ ' : node.priority === 'medium' ? 'ðŸŸ¡' : 'âšª';
+    const statusIcon = node.status === 'completed' ? '[done]' : node.status === 'blocked' ? '[blocked]' : node.status === 'review' ? '[review]' : '[active]';
+    const priorityIcon = node.priority === 'urgent' ? '[urgent]' : node.priority === 'high' ? '[high]' : node.priority === 'medium' ? '[medium]' : '[low]';
     const selected = node.id === selectedNodeId ? ' â† SELECIONADO' : '';
     
     let info = `${indent}${statusIcon} [${node.type}] "${node.label}" (id:${node.id}) ${priorityIcon}`;

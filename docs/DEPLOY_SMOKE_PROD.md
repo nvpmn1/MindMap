@@ -11,14 +11,15 @@ Script automatizado para validar produção (Vercel + Render + Supabase + Claude
 ## Pré-requisitos
 
 1. Backend e frontend publicados.
-2. Token válido de usuário real (`SMOKE_BEARER_TOKEN`).
+2. Credencial válida de usuário real (`SMOKE_REFRESH_TOKEN` recomendado).
 3. Usuário com acesso a pelo menos um workspace.
 
 ## Variáveis
 
 - `SMOKE_FRONTEND_URL` (ex: `https://mindmap-hub.vercel.app`)
 - `SMOKE_BACKEND_URL` (ex: `https://mindmap-api.onrender.com`)
-- `SMOKE_BEARER_TOKEN` (JWT do usuário)
+- `SMOKE_REFRESH_TOKEN` (refresh token do usuário; recomendado para CI porque não expira em ~1h)
+- `SMOKE_BEARER_TOKEN` (access token/JWT do usuário; útil para execuções pontuais, mas expira em ~1h)
 - `SMOKE_WORKSPACE_ID` (opcional; usa primeiro do `/api/auth/me`)
 - `SMOKE_KEEP_RESOURCES` (opcional, `true` para não deletar mapa de teste)
 - `SMOKE_TIMEOUT_MS` (opcional, default `15000`)
@@ -42,12 +43,13 @@ Comando único de gate + smoke:
 Arquivo: `.github/workflows/production-smoke.yml`
 
 - `smoke-public`: executa sempre que workflow é disparado (manual/schedule)
-- `smoke-authenticated`: executa quando `SMOKE_BEARER_TOKEN` existir
+- `smoke-authenticated`: executa quando `SMOKE_REFRESH_TOKEN` ou `SMOKE_BEARER_TOKEN` existir
 
 Para habilitar 100% da automação no GitHub:
 
 1. Defina `SMOKE_FRONTEND_URL` e `SMOKE_BACKEND_URL` em Repository Variables.
-2. Defina `SMOKE_BEARER_TOKEN` em Repository Secrets.
+2. Defina `SMOKE_REFRESH_TOKEN` em Repository Secrets (recomendado).
+3. (Opcional) Defina `SMOKE_BEARER_TOKEN` em Repository Secrets para execuções pontuais.
 
 ## Resultado esperado
 

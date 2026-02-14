@@ -91,7 +91,7 @@ async function cleanup() {
       const { count: membershipsDeleted } = await supabase
         .from('workspace_members')
         .delete({ count: 'exact' })
-        .in('profile_id', guestIds);
+        .in('user_id', guestIds);
       console.log(`   ↳ Deleted ${membershipsDeleted || 0} workspace memberships`);
 
       // Delete profiles
@@ -168,7 +168,7 @@ async function cleanup() {
       const { count: membershipsDeleted } = await supabase
         .from('workspace_members')
         .delete({ count: 'exact' })
-        .in('profile_id', profileIds);
+        .in('user_id', profileIds);
       console.log(`   ↳ Deleted ${membershipsDeleted || 0} workspace memberships`);
 
       // Delete profiles

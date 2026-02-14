@@ -1057,6 +1057,13 @@ function NeuralMapEditorInner() {
     }
 
     try {
+      // Cancel any pending save operations for this map before attempting delete.
+      const { advancedSaveQueue } = await import('@/lib/advanced-save-queue');
+      const canceled = advancedSaveQueue.cancelMapQueue(mapId);
+      if (canceled > 0) {
+        console.log(`[Delete] Canceled ${canceled} pending operations for map ${mapId}`);
+      }
+
       // Use robust delete system - removes from UI immediately, syncs backend with retry
       const result = await robustMapDelete.queueDelete(mapId);
 
@@ -1064,13 +1071,6 @@ function NeuralMapEditorInner() {
         console.error('❌ Delete queueing failed:', result.error);
         toast.error('Erro ao excluir: ' + (result.error || 'tente novamente'));
         return;
-      }
-
-      // Cancel any pending save operations for this map
-      const { advancedSaveQueue } = await import('@/lib/advanced-save-queue');
-      const canceled = advancedSaveQueue.cancelMapQueue(mapId);
-      if (canceled > 0) {
-        console.log(`[Delete] Canceled ${canceled} pending operations for map ${mapId}`);
       }
 
       toast.success('Mapa excluído com sucesso! Redirecionando...', { duration: 2000 });

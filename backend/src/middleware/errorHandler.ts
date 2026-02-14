@@ -92,9 +92,10 @@ export const errorHandler = (
     code,
     message: err.message,
     stack: err.stack,
-    path: req.path,
+    path: req.originalUrl || req.path,
     method: req.method,
     userId: req.user?.id,
+    requestId: req.headers['x-request-id'],
     isOperational,
   };
 
@@ -108,7 +109,7 @@ export const errorHandler = (
     captureException(err, {
       statusCode,
       code,
-      path: req.path,
+      path: req.originalUrl || req.path,
       method: req.method,
       userId: req.user?.id,
       requestId: req.headers['x-request-id'],

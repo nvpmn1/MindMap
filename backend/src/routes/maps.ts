@@ -9,7 +9,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authenticate, asyncHandler } from '../middleware';
-import { ValidationError, NotFoundError } from '../utils/errors';
+import { ValidationError, NotFoundError, AuthorizationError } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { env } from '../utils/env';
 import { supabaseAdmin } from '../services/supabase';
@@ -214,7 +214,13 @@ router.post(
         { mapId: map.id, error: rootNodeError.message },
         'Map created but failed to create root node'
       );
-      await req.supabase.from('maps').delete().eq('id', map.id);
+      const { error: rollbackError } = await req.supabase.from('maps').delete().eq('id', map.id);
+      if (rollbackError) {
+        logger.error(
+          { mapId: map.id, error: rollbackError.message },
+          'Failed to rollback map after root node initialization error'
+        );
+      }
       throw new Error('Failed to initialize map root node');
     }
 
@@ -302,22 +308,64 @@ router.delete(
     const { mapId } = req.params;
 
     // Get map for activity log
-    const { data: map } = await req.supabase
+    const { data: map, error: mapLookupError } = await req.supabase
       .from('maps')
       .select('title, workspace_id')
       .eq('id', mapId)
-      .single();
+      .maybeSingle();
+
+    if (mapLookupError) {
+      logger.error({ mapId, error: mapLookupError.message }, 'Failed to lookup map before delete');
+      throw new Error('Failed to delete map');
+    }
 
     if (!map) {
-      throw new NotFoundError('Map not found');
+      return res.json({
+        success: true,
+        message: 'Map already deleted',
+      });
     }
 
     // Delete map (cascades to nodes, edges, etc.)
-    const { error } = await req.supabase.from('maps').delete().eq('id', mapId);
+    const { data: deletedMap, error } = await req.supabase
+      .from('maps')
+      .delete()
+      .eq('id', mapId)
+      .select('id')
+      .maybeSingle();
 
     if (error) {
       logger.error({ error: error.message, mapId }, 'Failed to delete map');
       throw new Error('Failed to delete map');
+    }
+
+    if (!deletedMap) {
+      const { data: stillExisting, error: verifyError } = await req.supabase
+        .from('maps')
+        .select('id')
+        .eq('id', mapId)
+        .maybeSingle();
+
+      if (verifyError) {
+        logger.error(
+          { mapId, error: verifyError.message },
+          'Failed to verify map deletion outcome'
+        );
+        throw new Error('Failed to delete map');
+      }
+
+      if (stillExisting) {
+        logger.warn(
+          { mapId, userId: req.user.id },
+          'Map deletion denied by policy despite visibility'
+        );
+        throw new AuthorizationError('Insufficient permissions to delete this map');
+      }
+
+      return res.json({
+        success: true,
+        message: 'Map already deleted',
+      });
     }
 
     // Log activity

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { logger } from '../utils/logger';
 import { randomUUID } from 'crypto';
+import { logger } from '../utils/logger';
 import { captureMessage } from '../observability';
 
 /**
@@ -8,37 +8,33 @@ import { captureMessage } from '../observability';
  * Logs incoming requests and outgoing responses with timing
  */
 export const requestLogger = (req: Request, res: Response, next: NextFunction): void => {
-  // Generate unique request ID
   const requestId = (req.headers['x-request-id'] as string) || randomUUID();
   req.headers['x-request-id'] = requestId;
   res.setHeader('x-request-id', requestId);
 
-  // Record start time
+  const requestPath = req.originalUrl || req.path;
   const startTime = process.hrtime.bigint();
 
-  // Log incoming request
   logger.info(
     {
       type: 'request',
       requestId,
       method: req.method,
-      path: req.path,
+      path: requestPath,
       query: Object.keys(req.query).length > 0 ? req.query : undefined,
       userAgent: req.headers['user-agent'],
       ip: req.ip || req.socket.remoteAddress,
       userId: req.user?.id,
     },
-    `→ ${req.method} ${req.path}`
+    `-> ${req.method} ${requestPath}`
   );
 
-  // Override res.json to capture response body size
   const originalJson = res.json.bind(res);
   res.json = (body: any) => {
     res.locals.responseBody = body;
     return originalJson(body);
   };
 
-  // Log response when finished
   res.on('finish', () => {
     const endTime = process.hrtime.bigint();
     const durationMs = Number(endTime - startTime) / 1_000_000;
@@ -47,32 +43,30 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction): 
       type: 'response',
       requestId,
       method: req.method,
-      path: req.path,
+      path: requestPath,
       statusCode: res.statusCode,
       durationMs: Math.round(durationMs * 100) / 100,
       userId: req.user?.id,
       contentLength: res.get('content-length'),
     };
 
-    // Choose log level based on status code
     if (res.statusCode >= 500) {
-      logger.error(logData, `← ${req.method} ${req.path} ${res.statusCode}`);
+      logger.error(logData, `<- ${req.method} ${requestPath} ${res.statusCode}`);
       captureMessage('error', 'HTTP 5xx response', {
         requestId,
         method: req.method,
-        path: req.path,
+        path: requestPath,
         statusCode: res.statusCode,
         durationMs: logData.durationMs,
         userId: req.user?.id,
       });
     } else if (res.statusCode >= 400) {
-      logger.warn(logData, `← ${req.method} ${req.path} ${res.statusCode}`);
+      logger.warn(logData, `<- ${req.method} ${requestPath} ${res.statusCode}`);
     } else {
-      logger.info(logData, `← ${req.method} ${req.path} ${res.statusCode}`);
+      logger.info(logData, `<- ${req.method} ${requestPath} ${res.statusCode}`);
     }
   });
 
-  // Log if response is aborted
   res.on('close', () => {
     if (!res.writableEnded) {
       const endTime = process.hrtime.bigint();
@@ -83,11 +77,11 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction): 
           type: 'response_aborted',
           requestId,
           method: req.method,
-          path: req.path,
+          path: requestPath,
           durationMs: Math.round(durationMs * 100) / 100,
           userId: req.user?.id,
         },
-        `✕ ${req.method} ${req.path} aborted`
+        `x ${req.method} ${requestPath} aborted`
       );
     }
   });

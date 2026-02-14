@@ -20,7 +20,7 @@
 - [ ] `CLAUDE_API_KEY` rotacionada
 - [ ] `SUPABASE_SERVICE_ROLE_KEY` rotacionada
 - [ ] `SUPABASE_ANON_KEY` revisada/rotacionada quando necessário
-- [ ] `SMOKE_BEARER_TOKEN` renovado
+- [ ] `SMOKE_REFRESH_TOKEN` renovado
 - [ ] Smoke público e autenticado executados após rotação
 
 ## Evidências obrigatórias

@@ -26,6 +26,7 @@
     "smoke:deploy:public": "npm run env:check:smoke:public && npm run smoke:deploy",
     "e2e:critical": "cd frontend && npm run e2e:critical",
     "e2e:install": "cd frontend && npm run e2e:install",
+    "test:backend": "cd backend && npm test",
     "backup:drill:check": "node scripts/supabase-backup-restore-drill.mjs",
     "lint:backend": "cd backend && npm run lint",
     "lint:frontend": "cd frontend && npm run lint",
@@ -34,7 +35,7 @@
     "clean:frontend": "cd frontend && rm -rf node_modules dist .vite",
     "clean:all": "npm run clean && rm -rf node_modules",
     "start": "cd backend && npm run start",
-    "quality:gate": "npm run lint:baseline:check && npm run lint:budget:check && npm run typecheck && npm run build",
+    "quality:gate": "npm run lint && npm run lint:baseline:check && npm run lint:budget:check && npm run typecheck && npm run build && npm run test:backend",
     "release:verify": "npm run quality:gate && npm run smoke:deploy"
   },
   "devDependencies": {

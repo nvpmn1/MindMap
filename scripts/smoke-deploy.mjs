@@ -1,11 +1,14 @@
-const backendUrl = process.env.SMOKE_BACKEND_URL;
+﻿const backendUrl = process.env.SMOKE_BACKEND_URL;
 const frontendUrl = process.env.SMOKE_FRONTEND_URL;
-const bearerToken = process.env.SMOKE_BEARER_TOKEN;
+
+const bearerTokenRaw = process.env.SMOKE_BEARER_TOKEN;
+const refreshToken = process.env.SMOKE_REFRESH_TOKEN;
+
 const keepResources = process.env.SMOKE_KEEP_RESOURCES === 'true';
 const aiPrompt = process.env.SMOKE_AI_PROMPT || 'Resuma este mapa em uma frase curta';
 
 if (!backendUrl || !frontendUrl) {
-  console.error('❌ Missing required env vars: SMOKE_BACKEND_URL and SMOKE_FRONTEND_URL');
+  console.error('ERROR: Missing required env vars: SMOKE_BACKEND_URL and SMOKE_FRONTEND_URL');
   process.exit(1);
 }
 
@@ -66,22 +69,18 @@ async function requestJsonWithRetry(url, options = {}, retryConfig = {}) {
         return result;
       }
 
-      lastError = new Error(
-        `${stepName} attempt ${attempt}/${attempts}: status ${result.response.status}`
-      );
+      lastError = new Error(`${stepName} attempt ${attempt}/${attempts}: status ${result.response.status}`);
 
       if (attempt < attempts) {
         console.log(
-          `⏳ ${stepName} got ${result.response.status}. Waiting ${delayMs}ms before retry... (${attempt}/${attempts})`
+          `RETRY: ${stepName} got ${result.response.status}. Waiting ${delayMs}ms... (${attempt}/${attempts})`
         );
         await sleep(delayMs);
       }
     } catch (error) {
       lastError = error;
       if (attempt < attempts) {
-        console.log(
-          `⏳ ${stepName} network error. Waiting ${delayMs}ms before retry... (${attempt}/${attempts})`
-        );
+        console.log(`RETRY: ${stepName} network error. Waiting ${delayMs}ms... (${attempt}/${attempts})`);
         await sleep(delayMs);
       }
     }
@@ -92,20 +91,73 @@ async function requestJsonWithRetry(url, options = {}, retryConfig = {}) {
 
 function assertStatus(step, response, expectedStatuses = [200]) {
   if (!expectedStatuses.includes(response.status)) {
-    throw new Error(
-      `${step} failed: expected ${expectedStatuses.join('/')} got ${response.status}`
-    );
+    throw new Error(`${step} failed: expected ${expectedStatuses.join('/')} got ${response.status}`);
   }
 }
 
+function maskToken(token) {
+  if (!token) return '[empty]';
+  if (token.length <= 12) return '[masked]';
+  return `${token.slice(0, 6)}...${token.slice(-4)}`;
+}
+
+function decodeJwtPayload(token) {
+  try {
+    const parts = String(token).split('.');
+    if (parts.length !== 3) return null;
+    return JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function isJwtExpired(token, skewSeconds = 30) {
+  const payload = decodeJwtPayload(token);
+  if (!payload || typeof payload.exp !== 'number') return false;
+  const now = Math.floor(Date.now() / 1000);
+  return now >= payload.exp - skewSeconds;
+}
+
+async function getAccessToken() {
+  // Prefer refresh token if bearer is missing/expired.
+  if (bearerTokenRaw && !isJwtExpired(bearerTokenRaw)) {
+    return { token: bearerTokenRaw, source: 'SMOKE_BEARER_TOKEN' };
+  }
+
+  if (bearerTokenRaw && refreshToken) {
+    console.warn(
+      `WARN: SMOKE_BEARER_TOKEN is missing or expired (${maskToken(bearerTokenRaw)}). Will refresh using SMOKE_REFRESH_TOKEN.`
+    );
+  }
+
+  if (!refreshToken) {
+    return null;
+  }
+
+  const { response, body } = await requestJson(`${backendUrl.replace(/\/$/, '')}/api/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+
+  assertStatus('POST /api/auth/refresh', response, [200]);
+
+  const accessToken = body?.data?.session?.access_token;
+  if (!accessToken) {
+    throw new Error('Token refresh failed: missing access_token in response body');
+  }
+
+  return { token: accessToken, source: 'SMOKE_REFRESH_TOKEN' };
+}
+
 async function main() {
-  console.log('\n🚬 Running production smoke test...');
+  console.log('\nSMOKE: Running production smoke test...');
 
   // Public checks
   {
     const { response } = await requestJson(`${frontendUrl.replace(/\/$/, '')}/`);
     assertStatus('Frontend homepage', response, [200, 301, 302, 307, 308]);
-    console.log('✅ Frontend reachable');
+    console.log('OK: Frontend reachable');
   }
 
   {
@@ -118,29 +170,30 @@ async function main() {
     if (!body || body.status !== 'ok') {
       throw new Error('Backend /health response does not contain status=ok');
     }
-    console.log('✅ Backend health endpoint OK');
+    console.log('OK: Backend health endpoint OK');
   }
 
   {
-    const { response, body } = await requestJson(
-      `${backendUrl.replace(/\/$/, '')}/health/detailed`
-    );
+    const { response, body } = await requestJson(`${backendUrl.replace(/\/$/, '')}/health/detailed`);
     assertStatus('Backend /health/detailed', response, [200, 503]);
     if (!body || !body.checks) {
       throw new Error('Backend /health/detailed response is missing checks payload');
     }
-    console.log('✅ Backend detailed health responded');
+    console.log('OK: Backend detailed health responded');
   }
 
-  if (!bearerToken) {
+  const tokenInfo = await getAccessToken();
+  if (!tokenInfo) {
     console.log(
-      '⚠️ SMOKE_BEARER_TOKEN not provided. Skipping authenticated map/AI/persistence checks.'
+      'WARN: No SMOKE_BEARER_TOKEN/SMOKE_REFRESH_TOKEN provided. Skipping authenticated map/AI/persistence checks.'
     );
     process.exit(0);
   }
 
+  console.log(`OK: Auth token ready via ${tokenInfo.source}`);
+
   const authHeaders = {
-    Authorization: `Bearer ${bearerToken}`,
+    Authorization: `Bearer ${tokenInfo.token}`,
     'Content-Type': 'application/json',
   };
 
@@ -153,7 +206,7 @@ async function main() {
   if (!me.body?.data?.workspaces?.[0]?.id) {
     throw new Error('Auth check failed: no accessible workspace found in /api/auth/me');
   }
-  console.log('✅ Auth validated via /api/auth/me');
+  console.log('OK: Auth validated via /api/auth/me');
 
   const workspaceId = process.env.SMOKE_WORKSPACE_ID || me.body.data.workspaces[0].id;
 
@@ -171,7 +224,7 @@ async function main() {
   assertStatus('POST /api/maps', createdMap.response, [201]);
   const mapId = createdMap.body?.data?.id;
   if (!mapId) throw new Error('Map creation did not return map id');
-  console.log(`✅ Map created (${mapId})`);
+  console.log(`OK: Map created (${mapId})`);
 
   // Map edit
   const editedTitle = `${mapTitle} - updated`;
@@ -181,7 +234,7 @@ async function main() {
     body: JSON.stringify({ title: editedTitle }),
   });
   assertStatus('PATCH /api/maps/:mapId', updatedMap.response, [200]);
-  console.log('✅ Map edit endpoint OK');
+  console.log('OK: Map edit endpoint OK');
 
   // Node create + update (persistence probe)
   const createdNode = await requestJson(`${backendUrl.replace(/\/$/, '')}/api/nodes`, {
@@ -211,9 +264,9 @@ async function main() {
     }),
   });
   assertStatus('PATCH /api/nodes/:nodeId', updatedNode.response, [200]);
-  console.log('✅ Node create/edit persistence path OK');
+  console.log('OK: Node create/edit persistence path OK');
 
-  // AI tool-use check (chat path)
+  // AI check (chat path)
   const ai = await requestJson(`${backendUrl.replace(/\/$/, '')}/api/ai/chat`, {
     method: 'POST',
     headers: authHeaders,
@@ -233,7 +286,7 @@ async function main() {
     }),
   });
   assertStatus('POST /api/ai/chat', ai.response, [200]);
-  console.log('✅ AI endpoint responded');
+  console.log('OK: AI endpoint responded');
 
   // Final map read (persistence verification)
   const fetchedMap = await requestJson(`${backendUrl.replace(/\/$/, '')}/api/maps/${mapId}`, {
@@ -244,7 +297,7 @@ async function main() {
   if (fetchedMap.body?.data?.title !== editedTitle) {
     throw new Error('Persistence validation failed: edited map title not found');
   }
-  console.log('✅ Persistence verified by map re-fetch');
+  console.log('OK: Persistence verified by map re-fetch');
 
   if (!keepResources) {
     const deletedMap = await requestJson(`${backendUrl.replace(/\/$/, '')}/api/maps/${mapId}`, {
@@ -252,14 +305,14 @@ async function main() {
       headers: authHeaders,
     });
     assertStatus('DELETE /api/maps/:mapId', deletedMap.response, [200]);
-    console.log('✅ Cleanup completed (smoke map deleted)');
+    console.log('OK: Cleanup completed (smoke map deleted)');
   }
 
-  console.log('\n🎉 Smoke test completed successfully.');
+  console.log('\nSMOKE: Completed successfully.');
 }
 
 main().catch((error) => {
-  console.error('\n❌ Smoke test failed');
+  console.error('\nSMOKE: FAILED');
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 });

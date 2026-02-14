@@ -171,7 +171,7 @@ async function ensureProfileAndMembership(
     await supabaseAdmin.from('workspace_members').insert({
       workspace_id: env.DEFAULT_WORKSPACE_ID,
       user_id: profileId,
-      role: 'admin',
+      role: 'member',
     });
   }
 }
@@ -336,4 +336,43 @@ export const requireWorkspaceAdmin = (workspaceIdParam: string = 'workspaceId') 
       next(error);
     }
   };
+};
+
+/**
+ * Platform/system admin guard for sensitive operational endpoints.
+ * Uses the default workspace as control plane membership source.
+ */
+export const requireSystemAdmin = async (
+  req: Request,
+  _res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      throw new AuthenticationError();
+    }
+
+    const { data: membership, error } = await supabaseAdmin
+      .from('workspace_members')
+      .select('role')
+      .eq('workspace_id', env.DEFAULT_WORKSPACE_ID)
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+
+    if (error) {
+      logger.error(
+        { userId: req.user.id, workspaceId: env.DEFAULT_WORKSPACE_ID, error: error.message },
+        'Failed to verify system admin membership'
+      );
+      throw new AuthorizationError('Admin access required');
+    }
+
+    if (!membership || !['admin', 'owner'].includes(String(membership.role))) {
+      throw new AuthorizationError('Admin access required');
+    }
+
+    next();
+  } catch (error) {
+    next(error);
+  }
 };

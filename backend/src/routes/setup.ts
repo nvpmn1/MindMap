@@ -1,10 +1,24 @@
 import { Router, Request, Response } from 'express';
-import { asyncHandler } from '../middleware';
+import { asyncHandler, authenticate, requireSystemAdmin } from '../middleware';
 import { supabaseAdmin } from '../services/supabase';
 import { logger } from '../utils/logger';
+import { env } from '../utils/env';
 import { randomUUID } from 'crypto';
 
 const router = Router();
+
+const blockInProduction = (req: Request, res: Response, next: () => void): void => {
+  if (env.NODE_ENV === 'production') {
+    logger.warn({ path: req.originalUrl, method: req.method }, 'Blocked setup route in production');
+    res.status(404).json({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'Endpoint not found' },
+    });
+    return;
+  }
+
+  next();
+};
 
 /**
  * POST /api/setup/seed
@@ -13,6 +27,9 @@ const router = Router();
  */
 router.post(
   '/seed',
+  blockInProduction,
+  authenticate,
+  requireSystemAdmin,
   asyncHandler(async (req: Request, res: Response) => {
     const testEmail = 'test@mindmap.local';
     const testPassword = 'Test@1234567890';
@@ -168,13 +185,13 @@ router.post(
       ].map((edge) => ({
         id: randomUUID(),
         map_id: mapId,
-        source_node_id: edge.source_id,
-        target_node_id: edge.target_id,
-        label: 'related',
-        version: 1,
-        created_by: userId,
+        source_id: edge.source_id,
+        target_id: edge.target_id,
+        type: 'default',
+        label: 'seed-link',
+        style: {},
+        animated: false,
         created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
       }));
 
       const { error: edgesError } = await supabaseAdmin.from('edges').insert(edges);

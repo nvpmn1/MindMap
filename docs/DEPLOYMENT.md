@@ -357,7 +357,8 @@ Configure em **GitHub → Settings → Secrets and variables → Actions**:
 
 ### Secrets
 
-- `SMOKE_BEARER_TOKEN` (JWT válido para smoke autenticado)
+- `SMOKE_REFRESH_TOKEN` (recomendado; permite smoke autenticado sem expirar em ~1h)
+- `SMOKE_BEARER_TOKEN` (access token/JWT; útil para execuções pontuais, mas expira em ~1h)
 
 Com isso, o smoke roda:
 

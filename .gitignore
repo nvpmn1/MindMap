@@ -55,6 +55,11 @@ out/
 coverage/
 .nyc_output/
 
+# ============== REPORTS ======================
+.reports/*.json
+.reports/run/
+.reports/backups/
+
 # ============== IDE & EDITORS ================
 .vscode/
 .idea/

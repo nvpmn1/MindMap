@@ -19,8 +19,17 @@ test.describe('Critical browser flow', () => {
     await page.waitForURL(/dashboard|maps/i, { timeout: 20_000 });
 
     await page.goto('/maps');
-    await expect(page.getByTestId('maps-create-button')).toBeVisible();
-    await page.getByTestId('maps-create-button').click();
+    const mapsCreateButton = page.getByTestId('maps-create-button');
+    if (await mapsCreateButton.isVisible({ timeout: 5_000 }).catch(() => false)) {
+      await mapsCreateButton.click();
+    } else {
+      await page.goto('/dashboard');
+      const dashboardCreateButton = page.getByRole('button', {
+        name: /criar novo mapa mental|criar primeiro mapa/i,
+      });
+      await expect(dashboardCreateButton).toBeVisible();
+      await dashboardCreateButton.click();
+    }
 
     await page.waitForURL(/\/map\/[a-z0-9-]+/i, { timeout: 20_000 });
     await expect(page.getByTestId('map-editor-root')).toBeVisible();

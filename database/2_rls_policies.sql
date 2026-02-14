@@ -412,5 +412,21 @@ CREATE POLICY "references_delete_editor"
 -- ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
 
 -- ============================================
+-- GRANTS: PostgREST (Supabase API) precisa de permissões de tabela
+-- RLS continua sendo o guardrail real de segurança.
+-- ============================================
+
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
+
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO anon;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated;
+
+-- ============================================
 -- FIM DAS POLÍTICAS RLS ✅
 -- ============================================
