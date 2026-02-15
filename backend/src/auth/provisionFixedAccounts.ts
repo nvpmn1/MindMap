@@ -10,11 +10,13 @@ async function listUsersSafe(): Promise<AdminUser[]> {
   if (error) {
     throw new Error(`Failed to list users: ${error.message}`);
   }
-  const users = (data?.users ?? []) as unknown as AdminUser[];
-  return users.map((u) => ({
+  return (data?.users ?? []).map((u) => ({
     id: String(u.id),
     email: u.email ?? null,
-    user_metadata: (u.user_metadata || {}) as Record<string, unknown>,
+    user_metadata:
+      typeof u.user_metadata === 'object' && u.user_metadata !== null
+        ? (u.user_metadata as Record<string, unknown>)
+        : {},
   }));
 }
 
@@ -64,7 +66,13 @@ async function ensureAuthUser(account: FixedAccount, existingUsers: AdminUser[])
 }
 
 async function ensureProfile(userId: string, account: FixedAccount): Promise<void> {
-  const payload: any = {
+  const payload: {
+    id: string;
+    email: string;
+    display_name: string;
+    color: string;
+    updated_at: string;
+  } = {
     id: userId,
     email: account.email.trim().toLowerCase(),
     display_name: account.displayName,
