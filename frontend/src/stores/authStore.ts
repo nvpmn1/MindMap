@@ -1,5 +1,5 @@
 ﻿import { create } from 'zustand';
-import { authApi } from '@/lib/api';
+import { api, authApi } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
 
 interface User {
@@ -168,6 +168,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
 
           // Session exists but backend rejected or failed.
           await supabase.auth.signOut();
+          api.clearCache();
         }
 
         set({
@@ -191,6 +192,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
 
   signOut: () => {
     supabase.auth.signOut().catch(() => {});
+    api.clearCache();
 
     set({
       user: null,

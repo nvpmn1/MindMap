@@ -30,6 +30,64 @@ interface ApiResponse<T> {
   };
 }
 
+function base64UrlDecodeToString(input: string): string {
+  // base64url -> base64
+  const base64 = input.replace(/-/g, '+').replace(/_/g, '/');
+  const padLen = (4 - (base64.length % 4)) % 4;
+  const padded = `${base64}${'='.repeat(padLen)}`;
+
+  // Browser (Vite) path
+  if (typeof atob === 'function') {
+    return atob(padded);
+  }
+
+  // Node fallback (e.g., test runners)
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(padded, 'base64').toString('utf8');
+  }
+
+  throw new Error('No base64 decoder available');
+}
+
+function fnv1a32(input: string): string {
+  // Non-cryptographic, stable hash for cache key scoping.
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    // hash *= 16777619 (with overflow)
+    hash = (hash + (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24)) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+}
+
+function extractJwtSubject(token: string): string | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+
+    const payloadJson = base64UrlDecodeToString(parts[1]);
+    const payload = JSON.parse(payloadJson) as { sub?: unknown; user_id?: unknown; id?: unknown };
+
+    const sub = payload?.sub ?? payload?.user_id ?? payload?.id;
+    return typeof sub === 'string' && sub.length > 0 ? sub : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractAuthCacheScope(authHeader: string | undefined): string | null {
+  if (!authHeader) return null;
+  const value = String(authHeader);
+  if (!value.toLowerCase().startsWith('bearer ')) return null;
+
+  const token = value.slice('bearer '.length).trim();
+  if (!token) return null;
+
+  const sub = extractJwtSubject(token);
+  if (sub) return `uid:${sub}`;
+  return `tok:${fnv1a32(token)}`;
+}
+
 /**
  * Enhanced API client with retry logic, better error handling, and caching
  */
@@ -71,9 +129,14 @@ class ApiClient {
   /**
    * Build cache key for GET requests
    */
-  private getCacheKey(endpoint: string, method: string, useCache: boolean): string | null {
+  private getCacheKey(
+    endpoint: string,
+    method: string,
+    useCache: boolean,
+    vary: string | null = null
+  ): string | null {
     if (useCache && method === 'GET') {
-      return `${this.baseUrl}${endpoint}`;
+      return `${this.baseUrl}${endpoint}${vary ? `::${vary}` : ''}`;
     }
     return null;
   }
@@ -83,6 +146,13 @@ class ApiClient {
    */
   private invalidateCache(): void {
     this.requestCache.clear();
+  }
+
+  /**
+   * Clear cached GET responses (useful when changing auth/session).
+   */
+  clearCache(): void {
+    this.invalidateCache();
   }
 
   /**
@@ -97,8 +167,11 @@ class ApiClient {
     } = options;
     const method = (fetchOptions.method || 'GET').toUpperCase();
 
+    const authHeaders = authenticated ? await this.getAuthHeaders() : {};
+
     // Check cache for GET requests
-    const cacheKey = this.getCacheKey(endpoint, method, useCache);
+    const cacheVary = authenticated ? extractAuthCacheScope(authHeaders['Authorization']) : null;
+    const cacheKey = this.getCacheKey(endpoint, method, useCache, cacheVary);
     if (cacheKey && method === 'GET') {
       const cached = this.requestCache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
@@ -113,7 +186,6 @@ class ApiClient {
 
     // Add auth headers
     if (authenticated) {
-      const authHeaders = await this.getAuthHeaders();
       Object.assign(headers, authHeaders);
     }
 
