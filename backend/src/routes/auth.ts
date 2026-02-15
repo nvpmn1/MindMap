@@ -1,12 +1,20 @@
-﻿import { Router, Request, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { z } from 'zod';
+import { createClient } from '@supabase/supabase-js';
 
 import { asyncHandler, authenticate } from '../middleware';
-import { ValidationError } from '../utils/errors';
+import { AuthorizationError, ValidationError } from '../utils/errors';
 import { logger } from '../utils/logger';
-import { FIXED_ACCOUNTS } from '../auth/fixedAccounts';
+import { env } from '../utils/env';
+import { FIXED_ACCOUNTS, isAllowedFixedAccountEmail } from '../auth/fixedAccounts';
 
 const router = Router();
+
+// Supabase Auth client for refresh-token exchange.
+// Prefer anon key when available; fallback keeps dev setups working.
+const supabaseAuth = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY || env.SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
+});
 
 /**
  * GET /api/auth/accounts
@@ -25,6 +33,42 @@ router.get(
         role: a.workspaceRole,
       })),
     });
+  })
+);
+
+/**
+ * POST /api/auth/refresh
+ * Public: exchange a refresh_token for a new session.
+ *
+ * Useful for CI smoke tests and for clients that don't want to talk to Supabase directly.
+ */
+const refreshSchema = z.object({
+  refresh_token: z.string().min(1, 'refresh_token is required'),
+});
+
+router.post(
+  '/refresh',
+  asyncHandler(async (req: Request, res: Response) => {
+    const parsed = refreshSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError(parsed.error.errors[0].message);
+    }
+
+    const { data, error } = await supabaseAuth.auth.refreshSession({
+      refresh_token: parsed.data.refresh_token,
+    });
+
+    if (error || !data?.session) {
+      logger.warn({ error: error?.message }, '[Auth] Refresh session failed');
+      throw new ValidationError('Invalid or expired refresh token');
+    }
+
+    const normalizedEmail = (data.session.user?.email || '').trim().toLowerCase();
+    if (normalizedEmail && !isAllowedFixedAccountEmail(normalizedEmail)) {
+      throw new AuthorizationError('Conta nao autorizada');
+    }
+
+    res.json({ success: true, data: { session: data.session } });
   })
 );
 

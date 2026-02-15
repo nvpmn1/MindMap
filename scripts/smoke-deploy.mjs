@@ -1,8 +1,19 @@
-﻿const backendUrl = process.env.SMOKE_BACKEND_URL;
+import { createClient } from '@supabase/supabase-js';
+
+const backendUrl = process.env.SMOKE_BACKEND_URL;
 const frontendUrl = process.env.SMOKE_FRONTEND_URL;
 
 const bearerTokenRaw = process.env.SMOKE_BEARER_TOKEN;
 const refreshToken = process.env.SMOKE_REFRESH_TOKEN;
+
+const smokeEmail = process.env.SMOKE_USER_EMAIL;
+const smokePassword = process.env.SMOKE_USER_PASSWORD;
+const smokeSupabaseUrl =
+  process.env.SMOKE_SUPABASE_URL || process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const smokeSupabaseAnonKey =
+  process.env.SMOKE_SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY;
 
 const keepResources = process.env.SMOKE_KEEP_RESOURCES === 'true';
 const aiPrompt = process.env.SMOKE_AI_PROMPT || 'Resuma este mapa em uma frase curta';
@@ -118,20 +129,60 @@ function isJwtExpired(token, skewSeconds = 30) {
   return now >= payload.exp - skewSeconds;
 }
 
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+async function signInWithPassword() {
+  if (!smokeEmail || !smokePassword) {
+    return null;
+  }
+
+  if (!smokeSupabaseUrl || !smokeSupabaseAnonKey) {
+    throw new Error(
+      'SMOKE_USER_EMAIL/SMOKE_USER_PASSWORD provided, but missing SMOKE_SUPABASE_URL/SMOKE_SUPABASE_ANON_KEY (or SUPABASE_URL/SUPABASE_ANON_KEY)'
+    );
+  }
+
+  const supabase = createClient(smokeSupabaseUrl, smokeSupabaseAnonKey, {
+    auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
+  });
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: normalizeEmail(smokeEmail),
+    password: String(smokePassword),
+  });
+
+  const accessToken = data?.session?.access_token;
+  if (error || !accessToken) {
+    throw new Error(`signInWithPassword failed: ${error?.message || 'missing access_token'}`);
+  }
+
+  return { token: accessToken, source: 'SMOKE_USER_PASSWORD' };
+}
+
 async function getAccessToken() {
-  // Prefer refresh token if bearer is missing/expired.
   if (bearerTokenRaw && !isJwtExpired(bearerTokenRaw)) {
     return { token: bearerTokenRaw, source: 'SMOKE_BEARER_TOKEN' };
   }
+
+  // Password-based login is the most reliable option for CI (refresh tokens rotate).
+  if (smokeEmail && smokePassword) {
+    if (bearerTokenRaw) {
+      console.warn(
+        `WARN: SMOKE_BEARER_TOKEN is missing or expired (${maskToken(bearerTokenRaw)}). Will sign in using SMOKE_USER_EMAIL/SMOKE_USER_PASSWORD.`
+      );
+    }
+    const signedIn = await signInWithPassword();
+    if (signedIn) return signedIn;
+  }
+
+  if (!refreshToken) return null;
 
   if (bearerTokenRaw && refreshToken) {
     console.warn(
       `WARN: SMOKE_BEARER_TOKEN is missing or expired (${maskToken(bearerTokenRaw)}). Will refresh using SMOKE_REFRESH_TOKEN.`
     );
-  }
-
-  if (!refreshToken) {
-    return null;
   }
 
   const { response, body } = await requestJson(`${backendUrl.replace(/\/$/, '')}/api/auth/refresh`, {
@@ -140,7 +191,13 @@ async function getAccessToken() {
     body: JSON.stringify({ refresh_token: refreshToken }),
   });
 
-  assertStatus('POST /api/auth/refresh', response, [200]);
+  if (response.status !== 200) {
+    const errMsg =
+      typeof body === 'object' && body?.error?.message ? String(body.error.message) : '';
+    throw new Error(
+      `POST /api/auth/refresh failed: expected 200 got ${response.status}${errMsg ? ` (${errMsg})` : ''}`
+    );
+  }
 
   const accessToken = body?.data?.session?.access_token;
   if (!accessToken) {
@@ -185,7 +242,7 @@ async function main() {
   const tokenInfo = await getAccessToken();
   if (!tokenInfo) {
     console.log(
-      'WARN: No SMOKE_BEARER_TOKEN/SMOKE_REFRESH_TOKEN provided. Skipping authenticated map/AI/persistence checks.'
+      'WARN: No auth method configured (SMOKE_BEARER_TOKEN/SMOKE_REFRESH_TOKEN or SMOKE_USER_EMAIL/SMOKE_USER_PASSWORD). Skipping authenticated map/AI/persistence checks.'
     );
     process.exit(0);
   }

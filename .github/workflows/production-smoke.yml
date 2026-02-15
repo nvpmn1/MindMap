@@ -29,6 +29,10 @@ jobs:
           SMOKE_BACKEND_URL: ${{ vars.SMOKE_BACKEND_URL }}
           SMOKE_BEARER_TOKEN: ${{ secrets.SMOKE_BEARER_TOKEN }}
           SMOKE_REFRESH_TOKEN: ${{ secrets.SMOKE_REFRESH_TOKEN }}
+          SMOKE_USER_EMAIL: ${{ secrets.SMOKE_USER_EMAIL }}
+          SMOKE_USER_PASSWORD: ${{ secrets.SMOKE_USER_PASSWORD }}
+          SMOKE_SUPABASE_URL: ${{ vars.SMOKE_SUPABASE_URL }}
+          SMOKE_SUPABASE_ANON_KEY: ${{ vars.SMOKE_SUPABASE_ANON_KEY }}
         run: |
           CAN_PUBLIC=false
           CAN_AUTH=false
@@ -38,6 +42,10 @@ jobs:
           fi
 
           if [ "${CAN_PUBLIC}" = "true" ] && { [ -n "${SMOKE_BEARER_TOKEN}" ] || [ -n "${SMOKE_REFRESH_TOKEN}" ]; }; then
+            CAN_AUTH=true
+          fi
+
+          if [ "${CAN_PUBLIC}" = "true" ] && [ -n "${SMOKE_USER_EMAIL}" ] && [ -n "${SMOKE_USER_PASSWORD}" ] && [ -n "${SMOKE_SUPABASE_URL}" ] && [ -n "${SMOKE_SUPABASE_ANON_KEY}" ]; then
             CAN_AUTH=true
           fi
 
@@ -117,6 +125,10 @@ jobs:
           SMOKE_BACKEND_URL: ${{ vars.SMOKE_BACKEND_URL }}
           SMOKE_BEARER_TOKEN: ${{ secrets.SMOKE_BEARER_TOKEN }}
           SMOKE_REFRESH_TOKEN: ${{ secrets.SMOKE_REFRESH_TOKEN }}
+          SMOKE_USER_EMAIL: ${{ secrets.SMOKE_USER_EMAIL }}
+          SMOKE_USER_PASSWORD: ${{ secrets.SMOKE_USER_PASSWORD }}
+          SMOKE_SUPABASE_URL: ${{ vars.SMOKE_SUPABASE_URL }}
+          SMOKE_SUPABASE_ANON_KEY: ${{ vars.SMOKE_SUPABASE_ANON_KEY }}
 
       - name: Run authenticated smoke
         run: npm run smoke:deploy
@@ -125,6 +137,10 @@ jobs:
           SMOKE_BACKEND_URL: ${{ vars.SMOKE_BACKEND_URL }}
           SMOKE_BEARER_TOKEN: ${{ secrets.SMOKE_BEARER_TOKEN }}
           SMOKE_REFRESH_TOKEN: ${{ secrets.SMOKE_REFRESH_TOKEN }}
+          SMOKE_USER_EMAIL: ${{ secrets.SMOKE_USER_EMAIL }}
+          SMOKE_USER_PASSWORD: ${{ secrets.SMOKE_USER_PASSWORD }}
+          SMOKE_SUPABASE_URL: ${{ vars.SMOKE_SUPABASE_URL }}
+          SMOKE_SUPABASE_ANON_KEY: ${{ vars.SMOKE_SUPABASE_ANON_KEY }}
           SMOKE_WORKSPACE_ID: ${{ vars.SMOKE_WORKSPACE_ID }}
           SMOKE_HEALTH_MAX_ATTEMPTS: '10'
           SMOKE_HEALTH_RETRY_DELAY_MS: '12000'

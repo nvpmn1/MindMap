@@ -1,6 +1,5 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import crypto from 'node:crypto';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 
@@ -14,112 +13,36 @@ function requiredEnv(name) {
   return val;
 }
 
-const supabaseUrl = requiredEnv('SUPABASE_URL');
-const serviceRoleKey = requiredEnv('SUPABASE_SERVICE_ROLE_KEY');
-const anonKey = requiredEnv('SUPABASE_ANON_KEY');
+const supabaseUrl = process.env.SMOKE_SUPABASE_URL || requiredEnv('SUPABASE_URL');
+const anonKey = process.env.SMOKE_SUPABASE_ANON_KEY || requiredEnv('SUPABASE_ANON_KEY');
 
 const defaultWorkspaceId =
   process.env.DEFAULT_WORKSPACE_ID || '11111111-1111-1111-1111-111111111111';
 
-const smokeEmail = process.env.SMOKE_USER_EMAIL || 'smoke.runner@mindmap.local';
-const smokeDisplayName = process.env.SMOKE_USER_NAME || 'Smoke Runner';
-const smokeColor = process.env.SMOKE_USER_COLOR || '#00D9FF';
+// Fixed-accounts mode: generate tokens for an allowed account (default: admin).
+const smokeEmail = process.env.SMOKE_USER_EMAIL || 'gui_oliveira.16@hotmail.com';
+const smokePassword = process.env.SMOKE_USER_PASSWORD || 'gui1998';
 
 const smokeFrontendUrl = process.env.SMOKE_FRONTEND_URL || 'https://mindmap-hub.vercel.app';
 const smokeBackendUrl = process.env.SMOKE_BACKEND_URL || 'https://mindmap-hub-api.onrender.com';
 
-const admin = createClient(supabaseUrl, serviceRoleKey, {
-  auth: { autoRefreshToken: false, persistSession: false },
-});
 const anon = createClient(supabaseUrl, anonKey, {
-  auth: { autoRefreshToken: false, persistSession: false },
+  auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
 });
-
-async function findUserIdByEmail(email) {
-  let page = 1;
-  const perPage = 200;
-
-  while (true) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
-    if (error) throw new Error(`listUsers failed: ${error.message}`);
-
-    const users = data?.users || [];
-    const found = users.find((u) => (u.email || '').toLowerCase() === email.toLowerCase());
-    if (found) return found.id;
-
-    if (users.length < perPage) return null;
-    page += 1;
-  }
-}
-
-async function ensureWorkspace(workspaceId) {
-  const { data, error } = await admin
-    .from('workspaces')
-    .select('id')
-    .eq('id', workspaceId)
-    .maybeSingle();
-  if (error) throw new Error(`Workspace query failed: ${error.message}`);
-  if (data?.id) return;
-
-  const { error: insertErr } = await admin.from('workspaces').insert({
-    id: workspaceId,
-    name: 'MindLab',
-    slug: 'mindlab',
-    description: 'Workspace padrao do sistema',
-  });
-  if (insertErr) throw new Error(`Workspace create failed: ${insertErr.message}`);
-}
 
 async function main() {
-  await ensureWorkspace(defaultWorkspaceId);
+  const { data, error } = await anon.auth.signInWithPassword({
+    email: String(smokeEmail).trim().toLowerCase(),
+    password: String(smokePassword),
+  });
 
-  // Rotate password every time we generate a new refresh token.
-  const password = `Smk!${crypto.randomBytes(10).toString('hex')}A9`;
-
-  let userId = await findUserIdByEmail(smokeEmail);
-  if (!userId) {
-    const { data, error } = await admin.auth.admin.createUser({
-      email: smokeEmail,
-      password,
-      email_confirm: true,
-      user_metadata: { full_name: smokeDisplayName },
-    });
-    if (error || !data?.user?.id) {
-      throw new Error(`createUser failed: ${error?.message || 'missing user id'}`);
-    }
-    userId = data.user.id;
-  } else {
-    const { error } = await admin.auth.admin.updateUserById(userId, {
-      password,
-      email_confirm: true,
-      user_metadata: { full_name: smokeDisplayName },
-    });
-    if (error) throw new Error(`updateUserById failed: ${error.message}`);
+  if (error || !data?.session?.refresh_token || !data?.session?.access_token) {
+    throw new Error(`signInWithPassword failed: ${error?.message || 'missing tokens'}`);
   }
 
-  await admin.from('profiles').upsert({
-    id: userId,
-    email: smokeEmail,
-    display_name: smokeDisplayName,
-    color: smokeColor,
-  });
-
-  await admin.from('workspace_members').upsert({
-    workspace_id: defaultWorkspaceId,
-    user_id: userId,
-    role: 'admin',
-  });
-
-  const { data: signInData, error: signInErr } = await anon.auth.signInWithPassword({
-    email: smokeEmail,
-    password,
-  });
-  if (signInErr || !signInData?.session?.refresh_token || !signInData?.session?.access_token) {
-    throw new Error(`signInWithPassword failed: ${signInErr?.message || 'missing tokens'}`);
-  }
-
-  const refreshToken = signInData.session.refresh_token;
-  const accessToken = signInData.session.access_token;
+  const refreshToken = data.session.refresh_token;
+  const accessToken = data.session.access_token;
+  const userId = data.session.user?.id || '';
 
   const outDir = path.resolve(process.cwd(), '.reports', 'run');
   fs.mkdirSync(outDir, { recursive: true });
@@ -141,7 +64,7 @@ async function main() {
 
   const masked = `${refreshToken.slice(0, 6)}...${refreshToken.slice(-4)}`;
   console.log(`OK: wrote ${path.relative(process.cwd(), outFile)}`);
-  console.log(`OK: smoke user ${smokeEmail} (${userId}) in workspace ${defaultWorkspaceId}`);
+  console.log(`OK: smoke user ${smokeEmail} (${userId || 'unknown'}) in workspace ${defaultWorkspaceId}`);
   console.log(`OK: refresh token masked: ${masked}`);
 }
 

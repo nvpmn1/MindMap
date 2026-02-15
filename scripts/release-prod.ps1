@@ -1,6 +1,8 @@
 param(
   [string]$SmokeFrontendUrl = "https://mindmap-hub.vercel.app",
   [string]$SmokeBackendUrl  = "https://mindmap-hub-api.onrender.com",
+  [string]$SmokeUserEmail   = "gui_oliveira.16@hotmail.com",
+  [string]$SmokeUserPassword = "gui1998",
   [switch]$ApplyHardening,
   [switch]$DoGit,
   [string]$TagName = "",
@@ -29,28 +31,32 @@ $env:SMOKE_BACKEND_URL  = $SmokeBackendUrl
 npm run env:check:smoke:public
 npm run smoke:deploy
 
-# 3) Generate refresh token + smoke auth env (local-only)
-Write-Info "Generating SMOKE_REFRESH_TOKEN locally (writes .reports/run/smoke-auth.env)..."
-node scripts/generate-smoke-refresh.mjs
+# 3) Smoke authenticated (prod) via password login (more reliable than refresh tokens in CI)
+Write-Info "Preparing authenticated smoke (prod) using SMOKE_USER_EMAIL/SMOKE_USER_PASSWORD..."
 
-$smokeEnvPath = Join-Path $repoRoot ".reports\run\smoke-auth.env"
-if (!(Test-Path $smokeEnvPath)) {
-  throw "Missing expected file: $smokeEnvPath"
-}
-
-# Load smoke env file into current session for the authenticated smoke.
-Get-Content $smokeEnvPath | ForEach-Object {
+# Load .env into this session (for SUPABASE_URL and SUPABASE_ANON_KEY)
+Get-Content ".\\.env" | ForEach-Object {
   if ($_ -match '^[A-Za-z_][A-Za-z0-9_]*=') {
     $k, $v = $_ -split '=', 2
-    Set-Item -Path "Env:$k" -Value $v
+    if ($k -in @("SUPABASE_URL","SUPABASE_ANON_KEY")) {
+      Set-Item -Path "Env:$k" -Value $v
+    }
   }
 }
 
-# Ensure urls are the ones requested (override file defaults)
+if (-not $env:SUPABASE_URL) { throw "SUPABASE_URL missing in .env" }
+if (-not $env:SUPABASE_ANON_KEY) { throw "SUPABASE_ANON_KEY missing in .env" }
+
+$env:SMOKE_USER_EMAIL = $SmokeUserEmail
+$env:SMOKE_USER_PASSWORD = $SmokeUserPassword
+$env:SMOKE_SUPABASE_URL = $env:SUPABASE_URL
+$env:SMOKE_SUPABASE_ANON_KEY = $env:SUPABASE_ANON_KEY
+
+# Ensure urls are the ones requested
 $env:SMOKE_FRONTEND_URL = $SmokeFrontendUrl
 $env:SMOKE_BACKEND_URL  = $SmokeBackendUrl
 
-Write-Info "Running smoke authenticated (prod) using SMOKE_REFRESH_TOKEN..."
+Write-Info "Running smoke authenticated (prod)..."
 npm run env:check:smoke:auth
 npm run smoke:deploy
 
@@ -114,9 +120,23 @@ if ($ConfigureGitHubSecrets) {
 
   & $ghExe variable set SMOKE_FRONTEND_URL --repo $repo --body $SmokeFrontendUrl | Out-Null
   & $ghExe variable set SMOKE_BACKEND_URL  --repo $repo --body $SmokeBackendUrl  | Out-Null
+  if ($env:SMOKE_SUPABASE_URL) {
+    & $ghExe variable set SMOKE_SUPABASE_URL --repo $repo --body $env:SMOKE_SUPABASE_URL | Out-Null
+  }
+  if ($env:SMOKE_SUPABASE_ANON_KEY) {
+    & $ghExe variable set SMOKE_SUPABASE_ANON_KEY --repo $repo --body $env:SMOKE_SUPABASE_ANON_KEY | Out-Null
+  }
   if ($env:SMOKE_WORKSPACE_ID) {
     & $ghExe variable set SMOKE_WORKSPACE_ID --repo $repo --body $env:SMOKE_WORKSPACE_ID | Out-Null
   }
+  if ($env:SMOKE_USER_EMAIL) {
+    $env:SMOKE_USER_EMAIL | & $ghExe secret set SMOKE_USER_EMAIL --repo $repo | Out-Null
+  }
+  if ($env:SMOKE_USER_PASSWORD) {
+    $env:SMOKE_USER_PASSWORD | & $ghExe secret set SMOKE_USER_PASSWORD --repo $repo | Out-Null
+  }
+
+  # Backwards compat: still set refresh token if present.
   if ($env:SMOKE_REFRESH_TOKEN) {
     $env:SMOKE_REFRESH_TOKEN | & $ghExe secret set SMOKE_REFRESH_TOKEN --repo $repo | Out-Null
   }

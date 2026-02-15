@@ -1,4 +1,4 @@
-﻿const mode = process.argv[2] || 'smoke-public';
+const mode = process.argv[2] || 'smoke-public';
 
 const validators = {
   'smoke-public': {
@@ -6,7 +6,6 @@ const validators = {
   },
   'smoke-auth': {
     required: ['SMOKE_FRONTEND_URL', 'SMOKE_BACKEND_URL'],
-    oneOf: ['SMOKE_BEARER_TOKEN', 'SMOKE_REFRESH_TOKEN'],
   },
 };
 
@@ -36,7 +35,7 @@ function hasValue(key) {
 }
 
 function validate() {
-  const { required, oneOf } = validators[mode];
+  const { required } = validators[mode];
   const missing = [];
 
   for (const key of required) {
@@ -45,8 +44,25 @@ function validate() {
     }
   }
 
-  if (oneOf && !oneOf.some((key) => hasValue(key))) {
-    missing.push(`${oneOf.join(' OR ')}`);
+  if (mode === 'smoke-auth') {
+    const hasBearer = hasValue('SMOKE_BEARER_TOKEN');
+    const hasRefresh = hasValue('SMOKE_REFRESH_TOKEN');
+
+    const hasSupabaseUrl =
+      hasValue('SMOKE_SUPABASE_URL') || hasValue('SUPABASE_URL') || hasValue('VITE_SUPABASE_URL');
+    const hasSupabaseAnonKey =
+      hasValue('SMOKE_SUPABASE_ANON_KEY') ||
+      hasValue('SUPABASE_ANON_KEY') ||
+      hasValue('VITE_SUPABASE_ANON_KEY');
+
+    const hasPasswordLogin =
+      hasValue('SMOKE_USER_EMAIL') && hasValue('SMOKE_USER_PASSWORD') && hasSupabaseUrl && hasSupabaseAnonKey;
+
+    if (!hasBearer && !hasRefresh && !hasPasswordLogin) {
+      missing.push(
+        'SMOKE_BEARER_TOKEN OR SMOKE_REFRESH_TOKEN OR (SMOKE_USER_EMAIL+SMOKE_USER_PASSWORD+SMOKE_SUPABASE_URL+SMOKE_SUPABASE_ANON_KEY)'
+      );
+    }
   }
 
   if (missing.length > 0) {
@@ -78,6 +94,13 @@ function validate() {
     }
     if (hasValue('SMOKE_REFRESH_TOKEN')) {
       console.log(` - SMOKE_REFRESH_TOKEN: ${maskToken(process.env.SMOKE_REFRESH_TOKEN)}`);
+    }
+    if (hasValue('SMOKE_USER_EMAIL') && hasValue('SMOKE_USER_PASSWORD')) {
+      console.log(` - SMOKE_USER_EMAIL: ${process.env.SMOKE_USER_EMAIL}`);
+      console.log(` - SMOKE_USER_PASSWORD: [SET]`);
+    }
+    if (hasValue('SMOKE_SUPABASE_URL')) {
+      console.log(` - SMOKE_SUPABASE_URL: ${process.env.SMOKE_SUPABASE_URL}`);
     }
   }
 }
