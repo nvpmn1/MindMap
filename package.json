@@ -37,7 +37,9 @@
     "start": "cd backend && npm run start",
     "quality:gate": "npm run lint && npm run lint:baseline:check && npm run lint:budget:check && npm run typecheck && npm run build && npm run test:backend",
     "release:verify": "npm run quality:gate && npm run smoke:deploy",
-    "release:prod": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-prod.ps1"
+    "release:prod": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-prod.ps1",
+    "release:prod:ci": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-prod.ps1 -ConfigureGitHubSecrets",
+    "release:prod:full": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-prod.ps1 -ApplyHardening -ConfigureGitHubSecrets"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
