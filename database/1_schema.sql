@@ -5,6 +5,7 @@
 
 -- Habilitar extensoes necessarias
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- ============================================
 -- 1. TABELA: profiles (SEM DEPENDENCIAS - PRIMEIRA!)

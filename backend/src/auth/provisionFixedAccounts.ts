@@ -54,6 +54,9 @@ async function ensureAuthUser(account: FixedAccount, existingUsers: AdminUser[])
 
   const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(existing.id, {
     password: account.password,
+    // If the user was created manually or in a previous setup run, it might be unconfirmed.
+    // Fixed-accounts mode requires password login without email activation.
+    email_confirm: true,
     user_metadata: nextMetadata,
   });
 
@@ -195,5 +198,11 @@ export async function provisionFixedAccounts(): Promise<void> {
     );
   } catch (error) {
     logger.error({ error }, '[Auth] Failed to provision fixed accounts');
+
+    // In production, fixed-accounts mode is a hard requirement: without these users,
+    // password login will fail and the app becomes unusable.
+    if (env.NODE_ENV === 'production') {
+      throw error;
+    }
   }
 }

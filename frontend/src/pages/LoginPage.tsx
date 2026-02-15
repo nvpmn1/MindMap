@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowRight, Eye, EyeOff, Lock, Mail, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, Lock, Mail, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 import { Button } from '@/components/ui/button';
@@ -152,74 +152,8 @@ export function LoginPage() {
     <div className="min-h-screen w-screen flex items-center justify-center relative overflow-hidden">
       <OptimizedNeuralBackground />
 
-      <div className="relative z-20 w-full max-w-5xl px-4 py-10">
-        <div className="grid lg:grid-cols-2 gap-6 items-stretch">
-          {/* Left: Brand panel */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, ease: [0.25, 0.1, 0.25, 1] }}
-            className="hidden lg:block relative overflow-hidden rounded-3xl border border-white/[0.10] bg-[#070B13]/55 backdrop-blur-2xl p-8"
-          >
-            <div className="absolute inset-0 pointer-events-none">
-              <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-cyan-500/15 blur-3xl" />
-              <div className="absolute -bottom-40 -right-40 w-[520px] h-[520px] rounded-full bg-emerald-500/10 blur-3xl" />
-              <div
-                className="absolute inset-0 opacity-[0.04]"
-                style={{
-                  backgroundImage:
-                    'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.55) 1px, transparent 0)',
-                  backgroundSize: '22px 22px',
-                }}
-              />
-            </div>
-
-            <div className="relative">
-              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-200">
-                <Sparkles className="w-3.5 h-3.5" />
-                Modo de acesso fixo
-              </div>
-
-              <h1 className="mt-5 text-3xl font-semibold tracking-tight text-white">
-                MindMap Hub
-              </h1>
-              <p className="mt-2 text-sm text-slate-300 leading-relaxed max-w-md">
-                Login simples, sem magic link e sem confirmacao por email. Apenas 3 contas fixas por enquanto.
-              </p>
-
-              <div className="mt-8 space-y-4">
-                <div className="flex items-start gap-3">
-                  <div className="mt-0.5 w-9 h-9 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center">
-                    <ShieldCheck className="w-4 h-4 text-cyan-300" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-white">Sem dependencias de email</p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Adeus erro de envio de link. Senha valida e pronto.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="mt-0.5 w-9 h-9 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center">
-                    <Lock className="w-4 h-4 text-emerald-300" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-white">Acesso fechado</p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      O backend bloqueia qualquer email fora da lista.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-10 text-xs text-slate-500">
-                Dica: clique em uma conta para preencher o email automaticamente.
-              </div>
-            </div>
-          </motion.div>
-
-          {/* Right: Login card */}
+      <div className="relative z-20 w-full max-w-xl px-4 py-10">
+        {/* Login card */}
           <motion.div
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -229,6 +163,14 @@ export function LoginPage() {
             <div className="absolute -inset-3 rounded-[28px] bg-gradient-to-r from-cyan-500/10 via-emerald-500/5 to-amber-500/10 blur-2xl" />
 
             <div className="relative rounded-3xl border border-white/[0.10] bg-[#070B13]/70 backdrop-blur-2xl shadow-2xl p-6 sm:p-8">
+              <div className="flex items-center justify-between gap-3">
+                <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1 text-[11px] text-cyan-200">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  MindMap Hub
+                </div>
+                <div className="text-[11px] text-slate-500">Acesso fechado</div>
+              </div>
+
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs text-slate-400 uppercase tracking-widest">Acesso</p>
@@ -359,13 +301,12 @@ export function LoginPage() {
                 )}
 
                 <div className="text-[11px] text-slate-500 leading-relaxed">
-                  Este ambiente esta em <span className="text-slate-300 font-semibold">modo contas fixas</span>.
-                  Nao existe cadastro, confirmacao por email, nem magic link.
+                  Ambiente em <span className="text-slate-300 font-semibold">modo contas fixas</span>. Clique em uma
+                  conta para preencher o email.
                 </div>
               </form>
             </div>
           </motion.div>
-        </div>
       </div>
     </div>
   );

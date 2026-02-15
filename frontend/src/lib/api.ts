@@ -1,6 +1,11 @@
 import { getAccessToken } from './supabase';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const DEFAULT_DEV_API_URL = 'http://localhost:3001';
+const DEFAULT_PROD_API_URL = 'https://mindmap-hub-api.onrender.com';
+
+// Avoid shipping a production build that calls localhost if VITE_API_URL is missing.
+const API_URL =
+  import.meta.env.VITE_API_URL || (import.meta.env.PROD ? DEFAULT_PROD_API_URL : DEFAULT_DEV_API_URL);
 const MAX_RETRIES = 2;
 const RETRY_DELAY = 500; // ms
 

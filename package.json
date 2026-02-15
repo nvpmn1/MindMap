@@ -22,6 +22,7 @@
     "lint:budget:check": "node scripts/lint-budget-check.mjs",
     "env:check:smoke:public": "node scripts/preflight-env.mjs smoke-public",
     "env:check:smoke:auth": "node scripts/preflight-env.mjs smoke-auth",
+    "provision:fixed": "node scripts/provision-fixed-accounts.mjs",
     "smoke:deploy": "node scripts/smoke-deploy.mjs",
     "smoke:deploy:public": "npm run env:check:smoke:public && npm run smoke:deploy",
     "e2e:critical": "cd frontend && npm run e2e:critical",
