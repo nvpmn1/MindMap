@@ -27,7 +27,7 @@ BEGIN
         SELECT 1 FROM workspace_members
         WHERE workspace_id = ws_id
         AND user_id = auth.uid()
-        AND role IN ('owner', 'editor', 'admin')
+        AND role IN ('owner', 'editor', 'admin', 'member')
     );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
