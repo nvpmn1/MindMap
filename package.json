@@ -36,7 +36,8 @@
     "clean:all": "npm run clean && rm -rf node_modules",
     "start": "cd backend && npm run start",
     "quality:gate": "npm run lint && npm run lint:baseline:check && npm run lint:budget:check && npm run typecheck && npm run build && npm run test:backend",
-    "release:verify": "npm run quality:gate && npm run smoke:deploy"
+    "release:verify": "npm run quality:gate && npm run smoke:deploy",
+    "release:prod": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-prod.ps1"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
@@ -57,5 +58,9 @@
     "typescript"
   ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.95.3",
+    "dotenv": "^17.3.1"
+  }
 }
