@@ -1,12 +1,8 @@
-import { z } from 'zod';
+﻿import { z } from 'zod';
 
 const envSchema = z.object({
   PORT: z.string().default('3001').transform(Number),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  ALLOW_PROFILE_AUTH: z
-    .string()
-    .default('false')
-    .transform((v) => v === 'true'),
   DEFAULT_WORKSPACE_ID: z.string().uuid().default('11111111-1111-1111-1111-111111111111'),
 
   // Supabase
@@ -45,7 +41,7 @@ const envSchema = z.object({
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  console.error('❌ Invalid environment variables:');
+  console.error('[env] Invalid environment variables:');
   console.error(parsed.error.flatten().fieldErrors);
   process.exit(1);
 }
@@ -53,19 +49,11 @@ if (!parsed.success) {
 const claudeApiKey = parsed.data.CLAUDE_API_KEY || parsed.data.ANTHROPIC_API_KEY;
 
 if (!claudeApiKey) {
-  console.error('❌ Missing CLAUDE_API_KEY (or legacy ANTHROPIC_API_KEY).');
+  console.error('[env] Missing CLAUDE_API_KEY (or legacy ANTHROPIC_API_KEY).');
   process.exit(1);
-}
-
-// Allow profile-based auth only when explicitly enabled
-const allowProfileAuth = parsed.data.ALLOW_PROFILE_AUTH;
-
-if (parsed.data.NODE_ENV === 'production' && allowProfileAuth) {
-  console.warn('⚠️ ALLOW_PROFILE_AUTH is enabled in production. Ensure you trust all clients.');
 }
 
 export const env = {
   ...parsed.data,
   CLAUDE_API_KEY: claudeApiKey,
-  ALLOW_PROFILE_AUTH: allowProfileAuth,
 };

@@ -3,6 +3,7 @@ import { supabaseAdmin, supabaseClient } from '../services/supabase';
 import { env } from '../utils/env';
 import { AuthenticationError, AuthorizationError } from '../utils/errors';
 import { logger } from '../utils/logger';
+import { getFixedAccountByEmail, isAllowedFixedAccountEmail } from '../auth/fixedAccounts';
 
 // Extend Express Request to include user
 declare global {
@@ -31,27 +32,6 @@ export const authenticate = async (
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      if (env.ALLOW_PROFILE_AUTH) {
-        const profileId = req.headers['x-profile-id'] as string | undefined;
-        const profileEmail = (req.headers['x-profile-email'] as string | undefined) || '';
-        const profileName = (req.headers['x-profile-name'] as string | undefined) || 'Guest';
-        const profileColor = (req.headers['x-profile-color'] as string | undefined) || '#00D9FF';
-
-        if (profileId) {
-          await ensureProfileAndMembership(profileId, profileEmail, profileName, profileColor);
-
-          req.user = {
-            id: profileId,
-            email: profileEmail,
-            role: 'profile',
-          };
-
-          req.supabase = supabaseAdmin;
-          logger.debug({ userId: profileId }, 'Authenticated via profile header');
-          return next();
-        }
-      }
-
       throw new AuthenticationError('Missing or invalid authorization header');
     }
 
@@ -72,18 +52,34 @@ export const authenticate = async (
       throw new AuthenticationError('Invalid or expired token');
     }
 
+    const normalizedEmail = (user.email || '').trim().toLowerCase();
+    if (!isAllowedFixedAccountEmail(normalizedEmail)) {
+      logger.warn({ userId: user.id, email: normalizedEmail }, 'Blocked non-fixed account login');
+      throw new AuthorizationError('Conta nao autorizada');
+    }
+
+    const fixedAccount = getFixedAccountByEmail(normalizedEmail);
+    const fixedName =
+      fixedAccount?.displayName ||
+      (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.name)) ||
+      'User';
+    const fixedColor =
+      fixedAccount?.color || (user.user_metadata && (user.user_metadata.color as string)) || '#00D9FF';
+    const fixedWorkspaceRole = fixedAccount?.workspaceRole || 'member';
+
     // Ensure profile exists for authenticated users
     await ensureProfileAndMembership(
       user.id,
-      user.email || '',
-      (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.name)) || 'User',
-      '#00D9FF'
+      normalizedEmail,
+      fixedName,
+      fixedColor,
+      fixedWorkspaceRole
     );
 
     // Attach user to request
     req.user = {
       id: user.id,
-      email: user.email || '',
+      email: normalizedEmail,
       role: user.role || 'authenticated',
     };
 
@@ -101,7 +97,8 @@ async function ensureProfileAndMembership(
   profileId: string,
   email: string,
   name: string,
-  color: string
+  color: string,
+  workspaceRole: 'owner' | 'editor' | 'viewer' | 'admin' | 'member' = 'member'
 ): Promise<void> {
   const normalizedEmail = (email || '').trim().toLowerCase();
 
@@ -147,10 +144,10 @@ async function ensureProfileAndMembership(
 
   const { data: membership } = await supabaseAdmin
     .from('workspace_members')
-    .select('workspace_id')
+    .select('id, role')
     .eq('workspace_id', env.DEFAULT_WORKSPACE_ID)
     .eq('user_id', profileId)
-    .single();
+    .maybeSingle();
 
   if (!membership) {
     const { data: workspace } = await supabaseAdmin
@@ -171,8 +168,11 @@ async function ensureProfileAndMembership(
     await supabaseAdmin.from('workspace_members').insert({
       workspace_id: env.DEFAULT_WORKSPACE_ID,
       user_id: profileId,
-      role: 'member',
+      role: workspaceRole,
     });
+  } else if (String(membership.role) !== workspaceRole) {
+    // Keep membership role aligned with fixed account configuration.
+    await supabaseAdmin.from('workspace_members').update({ role: workspaceRole }).eq('id', membership.id);
   }
 }
 
@@ -204,9 +204,14 @@ export const optionalAuth = async (
     } = await supabaseAdmin.auth.getUser(token);
 
     if (!error && user) {
+      const normalizedEmail = (user.email || '').trim().toLowerCase();
+      if (!isAllowedFixedAccountEmail(normalizedEmail)) {
+        return next();
+      }
+
       req.user = {
         id: user.id,
-        email: user.email || '',
+        email: normalizedEmail,
         role: user.role || 'authenticated',
       };
       req.supabase = supabaseClient(token);

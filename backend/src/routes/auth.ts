@@ -1,178 +1,29 @@
-import { Router, Request, Response } from 'express';
+﻿import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { supabaseAdmin } from '../services/supabase';
+
 import { asyncHandler, authenticate } from '../middleware';
-import { ValidationError, NotFoundError } from '../utils/errors';
+import { ValidationError } from '../utils/errors';
 import { logger } from '../utils/logger';
-import { env } from '../utils/env';
+import { FIXED_ACCOUNTS } from '../auth/fixedAccounts';
 
 const router = Router();
 
-// Validation schemas
-const magicLinkSchema = z.object({
-  email: z.string().email('Invalid email address'),
-});
-
-const verifyOtpSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  token: z.string().min(6, 'Token must be at least 6 characters'),
-  type: z.enum(['magiclink', 'email']).default('magiclink'),
-});
-
-const refreshTokenSchema = z.object({
-  refresh_token: z.string().min(1, 'Refresh token required'),
-});
-
 /**
- * POST /api/auth/magic-link
- * Send magic link to email
+ * GET /api/auth/accounts
+ * Public: returns the only allowed accounts (no passwords).
  */
-router.post(
-  '/magic-link',
-  asyncHandler(async (req: Request, res: Response) => {
-    const parsed = magicLinkSchema.safeParse(req.body);
-    if (!parsed.success) {
-      throw new ValidationError(parsed.error.errors[0].message);
-    }
-
-    const { email } = parsed.data;
-
-    // Send magic link via Supabase Auth
-    // User management (allowed emails, domains) should be configured
-    // in the Supabase dashboard under Authentication > Settings
-
-    // Send magic link
-    const { error } = await supabaseAdmin.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${env.FRONTEND_URL}/auth/callback`,
-      },
-    });
-
-    if (error) {
-      logger.error({ error: error.message, email }, 'Failed to send magic link');
-      throw new ValidationError('Failed to send magic link. Please try again.');
-    }
-
-    logger.info({ email }, 'Magic link sent');
-
+router.get(
+  '/accounts',
+  asyncHandler(async (_req: Request, res: Response) => {
     res.json({
       success: true,
-      message: 'Magic link sent to your email',
-    });
-  })
-);
-
-/**
- * POST /api/auth/verify
- * Verify OTP token from magic link
- */
-router.post(
-  '/verify',
-  asyncHandler(async (req: Request, res: Response) => {
-    const parsed = verifyOtpSchema.safeParse(req.body);
-    if (!parsed.success) {
-      throw new ValidationError(parsed.error.errors[0].message);
-    }
-
-    const { email, token, type } = parsed.data;
-
-    const { data, error } = await supabaseAdmin.auth.verifyOtp({
-      email,
-      token,
-      type: type,
-    });
-
-    if (error || !data.session) {
-      logger.warn({ email, error: error?.message }, 'OTP verification failed');
-      throw new ValidationError('Invalid or expired token');
-    }
-
-    // Ensure profile exists
-    await ensureProfile(data.user.id, email);
-
-    logger.info({ userId: data.user.id, email }, 'User verified and logged in');
-
-    res.json({
-      success: true,
-      data: {
-        user: {
-          id: data.user.id,
-          email: data.user.email,
-        },
-        session: {
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
-          expires_at: data.session.expires_at,
-        },
-      },
-    });
-  })
-);
-
-/**
- * POST /api/auth/refresh
- * Refresh access token
- */
-router.post(
-  '/refresh',
-  asyncHandler(async (req: Request, res: Response) => {
-    const parsed = refreshTokenSchema.safeParse(req.body);
-    if (!parsed.success) {
-      throw new ValidationError(parsed.error.errors[0].message);
-    }
-
-    const { refresh_token } = parsed.data;
-
-    const { data, error } = await supabaseAdmin.auth.refreshSession({
-      refresh_token,
-    });
-
-    if (error || !data.session) {
-      logger.warn({ error: error?.message }, 'Token refresh failed');
-      throw new ValidationError('Invalid or expired refresh token');
-    }
-
-    res.json({
-      success: true,
-      data: {
-        session: {
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
-          expires_at: data.session.expires_at,
-        },
-      },
-    });
-  })
-);
-
-/**
- * POST /api/auth/logout
- * Logout user (invalidate session)
- */
-router.post(
-  '/logout',
-  asyncHandler(async (req: Request, res: Response) => {
-    const authHeader = req.headers.authorization;
-
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.split(' ')[1];
-
-      // Get user from token
-      const {
-        data: { user },
-      } = await supabaseAdmin.auth.getUser(token);
-
-      if (user) {
-        // Sign out the user
-        await supabaseAdmin.auth.admin.signOut(token);
-        logger.info({ userId: user.id }, 'User logged out');
-      }
-    }
-
-    res.json({
-      success: true,
-      message: 'Logged out successfully',
+      data: FIXED_ACCOUNTS.map((a) => ({
+        key: a.key,
+        display_name: a.displayName,
+        email: a.email,
+        color: a.color,
+        role: a.workspaceRole,
+      })),
     });
   })
 );
@@ -214,7 +65,6 @@ router.get(
       )
       .eq('user_id', userId);
 
-    const userProfile = profile;
     const membershipsList = (memberships as any[]) || [];
 
     res.json({
@@ -223,7 +73,7 @@ router.get(
         user: {
           id: userId,
           email: req.user.email,
-          ...(userProfile || {}),
+          ...(profile || {}),
         },
         workspaces: membershipsList.map((m) => ({
           ...(m.workspace || {}),
@@ -240,8 +90,6 @@ router.get(
  */
 const updateProfileSchema = z.object({
   display_name: z.string().trim().max(100).optional(),
-  // Accept almost any string as avatar URL - data URLs, HTTP URLs, SVGs, etc
-  // Validation is lenient to support various avatar sources
   avatar_url: z
     .union([
       z.null(),
@@ -249,9 +97,7 @@ const updateProfileSchema = z.object({
       z.string().min(1).max(100000), // Any string up to 100KB (reasonable limit for data URLs)
     ])
     .refine((val) => {
-      // Reject obviously broken data
-      if (val === null || val === '') {return true;}
-      // At this point val is a non-empty string, accept it
+      if (val === null || val === '') return true;
       return true;
     }, 'Avatar URL should be valid')
     .optional(),
@@ -272,7 +118,6 @@ router.patch(
 
     const userId = req.user.id;
 
-    // Validate input
     const parsed = updateProfileSchema.safeParse(req.body);
     if (!parsed.success) {
       throw new ValidationError(parsed.error.errors[0].message);
@@ -280,7 +125,6 @@ router.patch(
 
     const { display_name, avatar_url, color, preferences } = parsed.data;
 
-    // Build update data with strict validation
     const updateData: any = {
       updated_at: new Date().toISOString(),
     };
@@ -289,18 +133,15 @@ router.patch(
       const trimmedName = display_name?.trim();
       if (trimmedName && trimmedName.length > 0) {
         updateData.display_name = trimmedName;
-      } else if (display_name !== undefined) {
+      } else {
         updateData.display_name = null;
       }
     }
 
-    // Enhanced avatar handling - accept as-is for flexibility
     if (avatar_url !== undefined) {
       if (!avatar_url || avatar_url === '') {
         updateData.avatar_url = null;
       } else {
-        // Accept avatar URL as provided
-        // Trust client has validated it
         updateData.avatar_url = avatar_url;
         logger.debug({ userId, avatarLength: avatar_url.length }, 'Storing avatar URL');
       }
@@ -314,14 +155,12 @@ router.patch(
       updateData.preferences = preferences;
     }
 
-    // Log the update data (without full avatar if it's a data URL)
     const logData = { ...updateData };
     if (logData.avatar_url?.startsWith('data:')) {
       logData.avatar_url = `[data URL - ${logData.avatar_url.length} chars]`;
     }
     logger.debug({ userId, updateData: logData }, 'Updating profile');
 
-    // Update profile using authenticated supabase client
     const { data: updatedProfile, error: updateError } = await req
       .supabase.from('profiles')
       .update(updateData)
@@ -336,69 +175,21 @@ router.patch(
 
     logger.info({ userId, updated: Object.keys(updateData) }, 'Profile updated successfully');
 
-    // Prepare response - validate avatar before returning
-    const responseProfile = {
-      user: {
-        id: userId,
-        email: req.user.email,
-        display_name: updatedProfile.display_name,
-        avatar_url: updatedProfile.avatar_url, // Safe to return as is
-        color: updatedProfile.color,
-        created_at: updatedProfile.created_at,
-        updated_at: updatedProfile.updated_at,
-      },
-    };
-
     res.json({
       success: true,
-      data: responseProfile,
+      data: {
+        user: {
+          id: userId,
+          email: req.user.email,
+          display_name: updatedProfile.display_name,
+          avatar_url: updatedProfile.avatar_url,
+          color: updatedProfile.color,
+          created_at: updatedProfile.created_at,
+          updated_at: updatedProfile.updated_at,
+        },
+      },
     });
   })
 );
-
-/**
- * Helper: Ensure user profile exists
- */
-async function ensureProfile(userId: string, email: string): Promise<void> {
-  const { data: existing } = await supabaseAdmin
-    .from('profiles')
-    .select('id')
-    .eq('id', userId)
-    .single();
-
-  if (!existing) {
-    // Create profile
-    const displayName = email.split('@')[0];
-    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8'];
-    const color = colors[Math.floor(Math.random() * colors.length)];
-
-    const profileData: any = {
-      id: userId,
-      email,
-      display_name: displayName,
-      color,
-      preferences: {},
-    };
-
-    await supabaseAdmin.from('profiles').insert(profileData);
-
-    logger.info({ userId, email }, 'Created new user profile');
-
-    // Add to default workspace (MindLab)
-    const defaultWorkspaceId = '11111111-1111-1111-1111-111111111111';
-
-    const memberData: any = {
-      workspace_id: defaultWorkspaceId,
-      user_id: userId,
-      role: 'member',
-    };
-
-    const { error: memberError } = await supabaseAdmin.from('workspace_members').insert(memberData);
-
-    if (!memberError) {
-      logger.info({ userId, workspaceId: defaultWorkspaceId }, 'Added user to default workspace');
-    }
-  }
-}
 
 export default router;

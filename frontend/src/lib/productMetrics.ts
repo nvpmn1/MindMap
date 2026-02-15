@@ -3,7 +3,9 @@ import { captureFrontendMessage } from './observability';
 type ProductEventName =
   | 'app_opened'
   | 'login_profile_selected'
+  | 'login_account_selected'
   | 'login_success'
+  | 'login_failed'
   | 'maps_viewed'
   | 'map_created'
   | 'map_create_failed'

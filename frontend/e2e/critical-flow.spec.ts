@@ -1,18 +1,28 @@
 import { expect, test } from '@playwright/test';
 
-const profileName = (process.env.E2E_PROFILE_NAME || 'Guilherme').toLowerCase();
+const profileName = (process.env.E2E_PROFILE_NAME || 'guilherme').toLowerCase();
 
-function profileTestId(name: string): string {
-  return `profile-${name.toLowerCase()}`;
+function accountTestId(name: string): string {
+  return `account-${name.toLowerCase()}`;
+}
+
+function passwordFor(name: string): string {
+  const fromEnv = process.env.E2E_PASSWORD;
+  if (fromEnv) return fromEnv;
+
+  if (name === 'helen') return 'helen123';
+  if (name === 'pablo') return 'pablo123';
+  return 'gui1998';
 }
 
 test.describe('Critical browser flow', () => {
   test('login -> maps -> create map -> open editor', async ({ page }) => {
     await page.goto('/login');
 
-    await expect(page.getByTestId(profileTestId(profileName))).toBeVisible();
-    await page.getByTestId(profileTestId(profileName)).click();
+    await expect(page.getByTestId(accountTestId(profileName))).toBeVisible();
+    await page.getByTestId(accountTestId(profileName)).click();
 
+    await page.getByTestId('login-password').fill(passwordFor(profileName));
     await expect(page.getByTestId('login-submit')).toBeEnabled();
     await page.getByTestId('login-submit').click();
 

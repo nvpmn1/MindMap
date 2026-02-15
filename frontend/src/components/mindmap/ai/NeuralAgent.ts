@@ -26,7 +26,6 @@ import {
   type AgentPlaybook,
 } from './agentPlaybooks';
 import { getAccessToken } from '@/lib/supabase';
-import { useAuthStore } from '@/stores/authStore';
 
 const FALLBACK_PROD_API_URL = 'https://mindmap-hub-api.onrender.com';
 
@@ -177,7 +176,7 @@ export class NeuralAIAgent {
   }
 
   /**
-   * Build auth headers with Bearer token + profile fallback
+   * Build auth headers with Bearer token
    */
   private async buildAuthHeaders(): Promise<Record<string, string>> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -186,27 +185,6 @@ export class NeuralAIAgent {
       const token = await getAccessToken();
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
-        return headers;
-      }
-    } catch {
-      // Token retrieval failed, try profile fallback
-    }
-
-    // Fallback: use profile headers
-    try {
-      const { profile, user, isAuthenticated } = useAuthStore.getState();
-      if (isAuthenticated && (profile || user)) {
-        const profileId = profile?.id || user?.id;
-        const email = profile?.email || user?.email || '';
-        const name = profile?.display_name || user?.display_name || 'Guest';
-        const color = profile?.color || user?.color || '#00D9FF';
-
-        if (profileId) {
-          headers['x-profile-id'] = profileId;
-          headers['x-profile-email'] = email;
-          headers['x-profile-name'] = name;
-          headers['x-profile-color'] = color;
-        }
       }
     } catch {
       // No auth available

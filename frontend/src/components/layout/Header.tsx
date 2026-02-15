@@ -60,6 +60,8 @@ export function Header() {
     const path = location.pathname;
     if (path === '/maps')
       return { title: 'Meus Mapas', icon: MapIcon, crumbs: ['Dashboard', 'Meus Mapas'] };
+    if (path === '/profile')
+      return { title: 'Perfil', icon: User, crumbs: ['Dashboard', 'Perfil'] };
     if (path.includes('/map/'))
       return { title: 'Editor', icon: MapIcon, crumbs: ['Dashboard', 'Mapas', 'Editor'] };
     return { title: 'Dashboard', icon: Home, crumbs: ['Dashboard'] };

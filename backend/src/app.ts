@@ -84,11 +84,6 @@ const corsOptions = {
     'Accept',
     'Accept-Language',
     'Accept-Encoding',
-    // Custom profile headers for client-side auth fallback
-    'x-profile-id',
-    'x-profile-email',
-    'x-profile-name',
-    'x-profile-color',
   ],
   exposedHeaders: ['Content-Length', 'Content-Range', 'X-Total-Count'],
   maxAge: 86400,

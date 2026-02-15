@@ -27,8 +27,8 @@ const NotFoundPage = lazy(() =>
 );
 const MapsPage = lazy(() => import('@/pages/MapsPage').then((m) => ({ default: m.MapsPage })));
 const TasksPage = lazy(() => import('@/pages/TasksPage').then((m) => ({ default: m.TasksPage })));
-const AuthCallbackPage = lazy(() =>
-  import('@/pages/AuthCallbackPage').then((m) => ({ default: m.AuthCallbackPage }))
+const ProfilePage = lazy(() =>
+  import('@/pages/ProfilePage').then((m) => ({ default: m.ProfilePage }))
 );
 
 function RouteLoader() {
@@ -134,7 +134,6 @@ function App() {
                   </PublicRoute>
                 }
               />
-              <Route path="/auth/callback" element={<AuthCallbackPage />} />
             </Route>
 
             {/* Map Editor - Full screen sem sidebar */}
@@ -159,6 +158,7 @@ function App() {
               <Route path="/maps" element={<MapsPage />} />
               <Route path="/tasks" element={<TasksPage />} />
               <Route path="/kanban" element={<KanbanPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
             </Route>
 
             {/* Redirects */}

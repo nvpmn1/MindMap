@@ -1,12 +1,8 @@
 import { getAccessToken } from './supabase';
-import { useAuthStore } from '@/stores/authStore';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-const ENABLE_PROFILE_LOGIN = import.meta.env.VITE_ENABLE_PROFILE_LOGIN === 'true';
 const MAX_RETRIES = 2;
 const RETRY_DELAY = 500; // ms
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const isUuid = (value?: string | null) => !!value && UUID_REGEX.test(value);
 
 interface FetchOptions extends RequestInit {
   authenticated?: boolean;
@@ -49,33 +45,9 @@ class ApiClient {
 
     try {
       const token = await getAccessToken();
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-        return headers;
-      }
+      if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      // Fallback: Use profile-based headers only when explicitly enabled (demo/dev).
-      // In production we keep ALLOW_PROFILE_AUTH off and require real Supabase auth.
-      if (!ENABLE_PROFILE_LOGIN) {
-        return headers;
-      }
-
-      // Demo fallback: profile-based headers only if user is logged in
-      const { profile, user, isAuthenticated } = useAuthStore.getState();
-      if (isAuthenticated && (profile || user)) {
-        const profileId = profile?.id || user?.id;
-        const email = profile?.email || user?.email || '';
-        const name = profile?.display_name || user?.display_name || 'Guest';
-        const color = profile?.color || user?.color || '#00D9FF';
-
-        // Only set headers if we have a valid profile ID
-        if (profileId && profileId !== '' && isUuid(profileId)) {
-          headers['x-profile-id'] = profileId;
-          headers['x-profile-email'] = email;
-          headers['x-profile-name'] = name;
-          headers['x-profile-color'] = color;
-        }
-      }
+      // If token is missing, request will be unauthenticated.
     } catch (error) {
       console.warn('⚠️ Failed to get auth headers:', error);
       // Continue without auth
@@ -312,16 +284,7 @@ export const api = new ApiClient(API_URL);
 
 // Typed API methods
 export const authApi = {
-  sendMagicLink: (email: string) =>
-    api.post('/api/auth/magic-link', { email }, { authenticated: false }),
-
-  verifyOtp: (email: string, token: string) =>
-    api.post('/api/auth/verify', { email, token }, { authenticated: false }),
-
-  refreshToken: (refreshToken: string) =>
-    api.post('/api/auth/refresh', { refresh_token: refreshToken }, { authenticated: false }),
-
-  logout: () => api.post('/api/auth/logout'),
+  listFixedAccounts: () => api.get('/api/auth/accounts', { authenticated: false }),
 
   getMe: () => api.get('/api/auth/me'),
 

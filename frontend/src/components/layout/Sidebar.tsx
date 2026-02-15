@@ -14,6 +14,7 @@ interface SidebarProps {
 const navItems = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { label: 'Meus Mapas', href: '/maps', icon: Map },
+  { label: 'Perfil', href: '/profile', icon: User },
 ];
 
 export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
@@ -112,7 +113,9 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
 
       {/* Bottom Section */}
       <div className="border-t border-white/[0.04] p-3 space-y-2">
-        <div
+        <button
+          type="button"
+          onClick={() => navigate('/profile')}
           className={cn(
             'w-full flex items-center gap-3 p-2.5 rounded-xl',
             collapsed && 'justify-center'
@@ -147,7 +150,7 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
+        </button>
 
         <button
           onClick={handleLogout}

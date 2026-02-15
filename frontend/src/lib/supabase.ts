@@ -19,7 +19,8 @@ export const supabase: SupabaseClient<Database> = createClient<Database>(
     auth: {
       autoRefreshToken: true,
       persistSession: true,
-      detectSessionInUrl: true,
+      // Magic-link callbacks are not used in fixed-accounts mode.
+      detectSessionInUrl: false,
     },
     realtime: {
       params: {
