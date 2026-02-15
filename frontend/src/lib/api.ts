@@ -2,6 +2,7 @@ import { getAccessToken } from './supabase';
 import { useAuthStore } from '@/stores/authStore';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const ENABLE_PROFILE_LOGIN = import.meta.env.VITE_ENABLE_PROFILE_LOGIN === 'true';
 const MAX_RETRIES = 2;
 const RETRY_DELAY = 500; // ms
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -53,7 +54,13 @@ class ApiClient {
         return headers;
       }
 
-      // Fallback: Use profile-based headers only if user is logged in
+      // Fallback: Use profile-based headers only when explicitly enabled (demo/dev).
+      // In production we keep ALLOW_PROFILE_AUTH off and require real Supabase auth.
+      if (!ENABLE_PROFILE_LOGIN) {
+        return headers;
+      }
+
+      // Demo fallback: profile-based headers only if user is logged in
       const { profile, user, isAuthenticated } = useAuthStore.getState();
       if (isAuthenticated && (profile || user)) {
         const profileId = profile?.id || user?.id;

@@ -27,6 +27,9 @@ const NotFoundPage = lazy(() =>
 );
 const MapsPage = lazy(() => import('@/pages/MapsPage').then((m) => ({ default: m.MapsPage })));
 const TasksPage = lazy(() => import('@/pages/TasksPage').then((m) => ({ default: m.TasksPage })));
+const AuthCallbackPage = lazy(() =>
+  import('@/pages/AuthCallbackPage').then((m) => ({ default: m.AuthCallbackPage }))
+);
 
 function RouteLoader() {
   return (
@@ -131,6 +134,7 @@ function App() {
                   </PublicRoute>
                 }
               />
+              <Route path="/auth/callback" element={<AuthCallbackPage />} />
             </Route>
 
             {/* Map Editor - Full screen sem sidebar */}
