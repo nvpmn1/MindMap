@@ -5,15 +5,17 @@ import { AuthenticationError, AuthorizationError } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { getFixedAccountByEmail, isAllowedFixedAccountEmail } from '../auth/fixedAccounts';
 
-// Extend Express Request to include user (module augmentation; avoids TS namespace lint warnings)
-declare module 'express-serve-static-core' {
-  interface Request {
-    user?: {
-      id: string;
-      email: string;
-      role: string;
-    };
-    supabase?: ReturnType<typeof supabaseClient>;
+// Extend Express Request to include auth context (avoids fragile module-name augmentation).
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        id: string;
+        email: string;
+        role: string;
+      };
+      supabase?: ReturnType<typeof supabaseClient>;
+    }
   }
 }
 
