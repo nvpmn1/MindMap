@@ -46,9 +46,27 @@ const FALLBACK_ACCOUNTS: FixedAccount[] = [
   },
 ];
 
+const LOGIN_STEP_TIMEOUT_MS = 12000;
+
 function roleLabel(role: string): string {
   if (role === 'admin') return 'Admin';
   return 'Member';
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export function LoginPage() {
@@ -119,16 +137,25 @@ export function LoginPage() {
     setStatus(null);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: normalizedEmail,
-        password,
-      });
+      const { data, error } = await withTimeout(
+        supabase.auth.signInWithPassword({
+          email: normalizedEmail,
+          password,
+        }),
+        LOGIN_STEP_TIMEOUT_MS,
+        'Tempo limite ao autenticar. Verifique sua conexao e tente novamente.'
+      );
 
       if (error || !data?.session) {
         throw new Error(error?.message || 'Email ou senha invalidos');
       }
 
-      const me = await authApi.getMe();
+      const accessToken = data.session.access_token;
+      const me = await withTimeout(
+        authApi.getMeWithToken(accessToken),
+        LOGIN_STEP_TIMEOUT_MS,
+        'Tempo limite ao carregar seu perfil. Tente novamente em alguns segundos.'
+      );
       if (!me.success || !(me.data as any)?.user) {
         await supabase.auth.signOut();
         throw new Error(me.error?.message || 'Falha ao carregar perfil');
@@ -140,9 +167,15 @@ export function LoginPage() {
       toast.success('Bem-vindo!', { duration: 2500 });
       navigate('/dashboard');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Falha no login';
+      const rawMessage = err instanceof Error ? err.message : 'Falha no login';
+      const isNetworkTimeout =
+        rawMessage.includes('Tempo limite') || rawMessage.includes('Failed to connect');
+      const msg = isNetworkTimeout
+        ? 'Nao foi possivel validar seu login agora. Tente novamente e, se persistir, desative extensoes de navegador/bloqueadores.'
+        : rawMessage;
+
       setStatus(msg);
-      trackProductEvent('login_failed', { reason: msg });
+      trackProductEvent('login_failed', { reason: rawMessage });
     } finally {
       setIsLoading(false);
     }

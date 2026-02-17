@@ -365,6 +365,16 @@ export const authApi = {
 
   getMe: () => api.get('/api/auth/me'),
 
+  getMeWithToken: (accessToken: string) =>
+    api.get('/api/auth/me', {
+      authenticated: false,
+      useCache: false,
+      retries: 0,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }),
+
   updateProfile: (data: {
     display_name?: string;
     avatar_url?: string | null;
