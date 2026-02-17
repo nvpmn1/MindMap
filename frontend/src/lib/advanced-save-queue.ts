@@ -1036,16 +1036,75 @@ class AdvancedSaveQueue {
                 };
               }
 
+              const retryPayload = { ...op.payload } as Record<string, any>;
               if (Number.isFinite(latestVersion) && latestVersion > 0) {
-                op.payload.expected_version = latestVersion;
-                this.deferOperation(op, 250);
-                return { success: false };
+                retryPayload.expected_version = latestVersion;
+              } else {
+                delete retryPayload.expected_version;
+              }
+
+              try {
+                const retryResult = await nodesApi.update(resolvedNodeId, retryPayload as any);
+                this.assertApiSuccess(retryResult, op.type);
+
+                const retryVersion = Number((retryResult as any)?.data?.version);
+                if (Number.isFinite(retryVersion) && retryVersion > 0) {
+                  this.setNodeVersion(op.mapId, resolvedNodeId, retryVersion);
+                  op.payload.expected_version = retryVersion;
+                } else if (Number.isFinite(latestVersion) && latestVersion > 0) {
+                  const nextVersion = latestVersion + 1;
+                  this.setNodeVersion(op.mapId, resolvedNodeId, nextVersion);
+                  op.payload.expected_version = nextVersion;
+                }
+
+                return {
+                  success: true,
+                  serverId: resolvedNodeId,
+                  serverVersion:
+                    Number.isFinite(retryVersion) && retryVersion > 0
+                      ? retryVersion
+                      : Number.isFinite(latestVersion) && latestVersion > 0
+                        ? latestVersion + 1
+                        : undefined,
+                };
+              } catch (retryErr: any) {
+                const retryStatus = retryErr?.statusCode || retryErr?.status;
+                if (retryStatus === 409 && Number.isFinite(latestVersion) && latestVersion > 0) {
+                  const forcePayload = { ...op.payload } as Record<string, any>;
+                  delete forcePayload.expected_version;
+
+                  const forceResult = await nodesApi.update(resolvedNodeId, forcePayload as any);
+                  this.assertApiSuccess(forceResult, op.type);
+
+                  const forceVersion = Number((forceResult as any)?.data?.version);
+                  if (Number.isFinite(forceVersion) && forceVersion > 0) {
+                    this.setNodeVersion(op.mapId, resolvedNodeId, forceVersion);
+                    op.payload.expected_version = forceVersion;
+                  } else {
+                    const nextVersion = latestVersion + 1;
+                    this.setNodeVersion(op.mapId, resolvedNodeId, nextVersion);
+                    op.payload.expected_version = nextVersion;
+                  }
+
+                  return {
+                    success: true,
+                    serverId: resolvedNodeId,
+                    serverVersion:
+                      Number.isFinite(forceVersion) && forceVersion > 0
+                        ? forceVersion
+                        : latestVersion + 1,
+                  };
+                }
               }
             }
           } catch (lookupErr) {
             console.warn('[SaveQueue] Failed to fetch latest node during conflict handling:', lookupErr);
           }
         }
+
+        // Conflict without enough context: retry quickly without exponential backoff.
+        this.deferOperation(op, 250);
+        return { success: false };
       }
 
       // Treat only idempotent delete/update cleanup operations as reconciled on 404.
@@ -1093,7 +1152,7 @@ class AdvancedSaveQueue {
     const BATCH_TIMEOUT = 15000; // 15 seconds timeout
 
     try {
-      const readyOps: QueuedOperation[] = [];
+      const latestByResolvedNodeId = new Map<string, QueuedOperation>();
 
       for (const op of ops) {
         const rawNodeId = String(op.payload.id || '');
@@ -1124,9 +1183,14 @@ class AdvancedSaveQueue {
         }
 
         op.payload = resolvedPayload;
-        readyOps.push(op);
+        // Deduplicate after ID resolution to avoid self-conflicts in the same batch.
+        if (latestByResolvedNodeId.has(resolvedNodeId)) {
+          latestByResolvedNodeId.delete(resolvedNodeId);
+        }
+        latestByResolvedNodeId.set(resolvedNodeId, op);
       }
 
+      const readyOps = Array.from(latestByResolvedNodeId.values());
       if (readyOps.length === 0) {
         return [];
       }
