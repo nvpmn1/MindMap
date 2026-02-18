@@ -26,6 +26,7 @@ if (!backendUrl || !frontendUrl) {
 const timeoutMs = Number(process.env.SMOKE_TIMEOUT_MS || 15000);
 const healthMaxAttempts = Number(process.env.SMOKE_HEALTH_MAX_ATTEMPTS || 8);
 const healthRetryDelayMs = Number(process.env.SMOKE_HEALTH_RETRY_DELAY_MS || 12000);
+const healthTimeoutMs = Number(process.env.SMOKE_HEALTH_TIMEOUT_MS || 60000);
 
 function withTimeout(ms) {
   const controller = new AbortController();
@@ -34,14 +35,18 @@ function withTimeout(ms) {
 }
 
 async function requestJson(url, options = {}) {
-  const { controller, timeout } = withTimeout(timeoutMs);
+  const timeoutOverride = Number(options.timeoutMs || timeoutMs);
+  const requestOptions = { ...options };
+  delete requestOptions.timeoutMs;
+
+  const { controller, timeout } = withTimeout(timeoutOverride);
   try {
     const response = await fetch(url, {
-      ...options,
+      ...requestOptions,
       signal: controller.signal,
       headers: {
         Accept: 'application/json',
-        ...(options.headers || {}),
+        ...(requestOptions.headers || {}),
       },
     });
 
@@ -220,7 +225,7 @@ async function main() {
   {
     const { response, body } = await requestJsonWithRetry(
       `${backendUrl.replace(/\/$/, '')}/health`,
-      {},
+      { timeoutMs: healthTimeoutMs },
       { stepName: 'Backend /health warm-up' }
     );
     assertStatus('Backend /health', response, [200]);
@@ -231,7 +236,11 @@ async function main() {
   }
 
   {
-    const { response, body } = await requestJson(`${backendUrl.replace(/\/$/, '')}/health/detailed`);
+    const { response, body } = await requestJsonWithRetry(
+      `${backendUrl.replace(/\/$/, '')}/health/detailed`,
+      { timeoutMs: healthTimeoutMs },
+      { stepName: 'Backend /health/detailed warm-up', retryOnStatuses: [502, 503, 504, 429] }
+    );
     assertStatus('Backend /health/detailed', response, [200, 503]);
     if (!body || !body.checks) {
       throw new Error('Backend /health/detailed response is missing checks payload');
