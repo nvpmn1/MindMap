@@ -8,11 +8,14 @@ const API_URL =
   import.meta.env.VITE_API_URL || (import.meta.env.PROD ? DEFAULT_PROD_API_URL : DEFAULT_DEV_API_URL);
 const MAX_RETRIES = 2;
 const RETRY_DELAY = 500; // ms
+const DEFAULT_TIMEOUT_MS = import.meta.env.PROD ? 20000 : 12000;
+const AUTH_TIMEOUT_MS = import.meta.env.PROD ? 35000 : 18000;
 
 interface FetchOptions extends RequestInit {
   authenticated?: boolean;
   retries?: number;
   useCache?: boolean;
+  timeoutMs?: number;
 }
 
 interface ApiResponse<T> {
@@ -163,6 +166,7 @@ class ApiClient {
       authenticated = true,
       retries = MAX_RETRIES,
       useCache = true,
+      timeoutMs = DEFAULT_TIMEOUT_MS,
       ...fetchOptions
     } = options;
     const method = (fetchOptions.method || 'GET').toUpperCase();
@@ -197,16 +201,19 @@ class ApiClient {
     try {
       const url = `${this.baseUrl}${endpoint}`;
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      let response: Response;
 
-      const response = await fetch(url, {
-        ...fetchOptions,
-        method,
-        headers,
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
+      try {
+        response = await fetch(url, {
+          ...fetchOptions,
+          method,
+          headers,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       // Handle non-JSON responses
       const contentType = response.headers.get('content-type');
@@ -361,15 +368,24 @@ export const api = new ApiClient(API_URL);
 
 // Typed API methods
 export const authApi = {
+  warmup: () =>
+    api.get('/health', {
+      authenticated: false,
+      useCache: false,
+      retries: 0,
+      timeoutMs: AUTH_TIMEOUT_MS,
+    }),
+
   listFixedAccounts: () => api.get('/api/auth/accounts', { authenticated: false }),
 
-  getMe: () => api.get('/api/auth/me'),
+  getMe: () => api.get('/api/auth/me', { timeoutMs: AUTH_TIMEOUT_MS }),
 
   getMeWithToken: (accessToken: string) =>
     api.get('/api/auth/me', {
       authenticated: false,
       useCache: false,
       retries: 0,
+      timeoutMs: AUTH_TIMEOUT_MS,
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },

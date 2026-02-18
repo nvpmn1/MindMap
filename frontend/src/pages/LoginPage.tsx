@@ -46,7 +46,10 @@ const FALLBACK_ACCOUNTS: FixedAccount[] = [
   },
 ];
 
-const LOGIN_STEP_TIMEOUT_MS = 12000;
+const SUPABASE_LOGIN_TIMEOUT_MS = 12000;
+const PROFILE_LOAD_TIMEOUT_MS = 35000;
+const PROFILE_FETCH_RETRIES = 2;
+const PROFILE_FETCH_RETRY_DELAY_MS = 1800;
 
 function roleLabel(role: string): string {
   if (role === 'admin') return 'Admin';
@@ -69,6 +72,32 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMes
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableLoginError(error: unknown): boolean {
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error ?? '').toLowerCase();
+  if (
+    message.includes('tempo limite') ||
+    message.includes('request timeout') ||
+    message.includes('failed to connect') ||
+    message.includes('network_error') ||
+    message.includes('network error') ||
+    message.includes('fetch failed') ||
+    message.includes('load failed')
+  ) {
+    return true;
+  }
+
+  const statusCode =
+    typeof (error as { statusCode?: unknown })?.statusCode === 'number'
+      ? Number((error as { statusCode?: unknown }).statusCode)
+      : null;
+  return statusCode === 0 || (typeof statusCode === 'number' && statusCode >= 500);
+}
+
 export function LoginPage() {
   const navigate = useNavigate();
   const setFromMe = useAuthStore((s) => s.setFromMe);
@@ -89,6 +118,10 @@ export function LoginPage() {
 
   useEffect(() => {
     let cancelled = false;
+
+    authApi.warmup().catch(() => {
+      // Non-blocking warmup for cold starts on Render.
+    });
 
     (async () => {
       try {
@@ -119,6 +152,39 @@ export function LoginPage() {
     setTimeout(() => passwordRef.current?.focus(), 0);
   }
 
+  async function loadMeWithRetry(accessToken: string) {
+    const totalAttempts = PROFILE_FETCH_RETRIES + 1;
+
+    for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+      try {
+        const me = await withTimeout(
+          authApi.getMeWithToken(accessToken),
+          PROFILE_LOAD_TIMEOUT_MS,
+          'Tempo limite ao carregar seu perfil. O servidor pode estar iniciando, tente novamente em alguns segundos.'
+        );
+
+        if (!me.success || !(me.data as any)?.user) {
+          throw new Error(me.error?.message || 'Falha ao carregar perfil');
+        }
+
+        return me;
+      } catch (error) {
+        const canRetry = attempt < totalAttempts && isRetryableLoginError(error);
+        if (!canRetry) {
+          throw error;
+        }
+
+        setStatus(
+          `Servidor iniciando... nova tentativa em instantes (${attempt}/${PROFILE_FETCH_RETRIES}).`
+        );
+        await authApi.warmup().catch(() => {});
+        await sleep(PROFILE_FETCH_RETRY_DELAY_MS);
+      }
+    }
+
+    throw new Error('Falha ao carregar perfil');
+  }
+
   async function handleLogin(e?: React.FormEvent) {
     e?.preventDefault();
 
@@ -137,12 +203,15 @@ export function LoginPage() {
     setStatus(null);
 
     try {
+      // Clear any stale local auth state before a fresh password login attempt.
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+
       const { data, error } = await withTimeout(
         supabase.auth.signInWithPassword({
           email: normalizedEmail,
           password,
         }),
-        LOGIN_STEP_TIMEOUT_MS,
+        SUPABASE_LOGIN_TIMEOUT_MS,
         'Tempo limite ao autenticar. Verifique sua conexao e tente novamente.'
       );
 
@@ -151,15 +220,7 @@ export function LoginPage() {
       }
 
       const accessToken = data.session.access_token;
-      const me = await withTimeout(
-        authApi.getMeWithToken(accessToken),
-        LOGIN_STEP_TIMEOUT_MS,
-        'Tempo limite ao carregar seu perfil. Tente novamente em alguns segundos.'
-      );
-      if (!me.success || !(me.data as any)?.user) {
-        await supabase.auth.signOut();
-        throw new Error(me.error?.message || 'Falha ao carregar perfil');
-      }
+      const me = await loadMeWithRetry(accessToken);
 
       setFromMe(me.data as any);
       trackProductEvent('login_success', { method: 'password' });
@@ -167,11 +228,15 @@ export function LoginPage() {
       toast.success('Bem-vindo!', { duration: 2500 });
       navigate('/dashboard');
     } catch (err) {
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+
       const rawMessage = err instanceof Error ? err.message : 'Falha no login';
       const isNetworkTimeout =
-        rawMessage.includes('Tempo limite') || rawMessage.includes('Failed to connect');
+        rawMessage.includes('Tempo limite') ||
+        rawMessage.includes('Failed to connect') ||
+        rawMessage.includes('Request timeout');
       const msg = isNetworkTimeout
-        ? 'Nao foi possivel validar seu login agora. Tente novamente e, se persistir, desative extensoes de navegador/bloqueadores.'
+        ? 'Nao foi possivel validar seu login agora. O servidor pode estar iniciando; aguarde alguns segundos e tente novamente.'
         : rawMessage;
 
       setStatus(msg);
