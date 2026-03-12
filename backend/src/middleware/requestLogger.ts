@@ -29,8 +29,8 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction): 
     `-> ${req.method} ${requestPath}`
   );
 
-  const originalJson = res.json.bind(res);
-  res.json = (body: any) => {
+  const originalJson = res.json.bind(res) as (body: unknown) => Response;
+  res.json = function (body: unknown) {
     res.locals.responseBody = body;
     return originalJson(body);
   };
