@@ -1,0 +1,3 @@
+## 2024-05-24 - Accessibility on complex interactive cards
+**Learning:** Hidden controls in hover states (like the "three dots" options menu) are completely inaccessible to keyboard-only users because they cannot be discovered or navigated to without hovering. We needed to add `focus-visible:opacity-100` alongside `group-hover:opacity-100` so that keyboard users can tab onto them and they become visible.
+**Action:** When creating complex interactive cards with hover-only actions, ensure all action buttons have both hover visibility classes *and* focus-visible visibility classes. Apply proper aria-roles on the main card container to ensure it is announced as a button when acting as one.

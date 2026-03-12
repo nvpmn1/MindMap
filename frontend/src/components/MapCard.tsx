@@ -158,8 +158,16 @@ export function MapCard({
 
   return (
     <motion.div
+      role="button"
+      tabIndex={0}
       onClick={handleCardClick}
-      className="group relative h-full cursor-pointer"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleCardClick();
+        }
+      }}
+      className="group relative h-full cursor-pointer rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50"
       whileHover={{ y: -4 }}
       transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
     >
@@ -202,11 +210,15 @@ export function MapCard({
             {/* Menu Button */}
             <div className="relative">
               <button
+                aria-label="Map options"
+                title="Map options"
+                aria-expanded={showMenu}
+                aria-haspopup="menu"
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowMenu(!showMenu);
                 }}
-                className="opacity-0 group-hover:opacity-100 transition-opacity w-8 h-8 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] flex items-center justify-center flex-shrink-0"
+                className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity w-8 h-8 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 flex items-center justify-center flex-shrink-0"
               >
                 <MoreHorizontal className="w-4 h-4 text-slate-400" />
               </button>
