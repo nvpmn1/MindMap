@@ -202,11 +202,12 @@ export function MapCard({
             {/* Menu Button */}
             <div className="relative">
               <button
+                aria-label="Opções do mapa"
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowMenu(!showMenu);
                 }}
-                className="opacity-0 group-hover:opacity-100 transition-opacity w-8 h-8 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] flex items-center justify-center flex-shrink-0"
+                className="opacity-0 group-hover:opacity-100 transition-opacity w-8 h-8 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] flex items-center justify-center flex-shrink-0 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-cyan-500/50"
               >
                 <MoreHorizontal className="w-4 h-4 text-slate-400" />
               </button>
@@ -222,14 +223,14 @@ export function MapCard({
                 >
                   <button
                     onClick={handleDuplicate}
-                    className="w-full flex items-center gap-2 px-3 py-2.5 text-[12px] text-slate-300 hover:text-white hover:bg-white/[0.08] rounded-lg transition-all"
+                    className="w-full flex items-center gap-2 px-3 py-2.5 text-[12px] text-slate-300 hover:text-white hover:bg-white/[0.08] rounded-lg transition-all focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-cyan-500/50"
                   >
                     <Copy className="w-3.5 h-3.5" />
                     Duplicar
                   </button>
                   <button
                     onClick={handleDelete}
-                    className="w-full flex items-center gap-2 px-3 py-2.5 text-[12px] text-red-400 hover:text-red-300 hover:bg-red-500/[0.1] rounded-lg transition-all"
+                    className="w-full flex items-center gap-2 px-3 py-2.5 text-[12px] text-red-400 hover:text-red-300 hover:bg-red-500/[0.1] rounded-lg transition-all focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-red-500/50"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     Excluir
