@@ -30,10 +30,14 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction): 
   );
 
   const originalJson = res.json.bind(res);
-  res.json = (body: any) => {
+
+  // Use `unknown` type and suppress the specific `any` warning without `@ts-ignore`
+  // We explicitly override `res.json` to capture the body before responding
+  res.json = function(body: unknown): Response {
     res.locals.responseBody = body;
-    return originalJson(body);
-  };
+    // We safely use the bound method
+    return originalJson(body) as Response;
+  } as typeof res.json;
 
   res.on('finish', () => {
     const endTime = process.hrtime.bigint();
