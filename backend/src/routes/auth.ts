@@ -8,7 +8,7 @@ import { logger } from '../utils/logger';
 import { env } from '../utils/env';
 import { FIXED_ACCOUNTS, isAllowedFixedAccountEmail } from '../auth/fixedAccounts';
 
-const router = Router();
+const router: Router = Router();
 
 // Supabase Auth client for refresh-token exchange.
 // Prefer anon key when available; fallback keeps dev setups working.

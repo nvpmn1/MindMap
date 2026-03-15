@@ -3,7 +3,7 @@ import { supabaseAdmin } from '../services/supabase';
 import { asyncHandler, authenticate } from '../middleware';
 import { logger } from '../utils/logger';
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * POST /api/reset/factory-reset

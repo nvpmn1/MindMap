@@ -8,7 +8,7 @@ import { supabaseAdmin } from '../services/supabase';
 import { Insertable, Updatable } from '../types/database';
 import { resolveNodeDeleteLookup, resolveNodeUpdateOutcome } from './nodeMutationSemantics';
 
-const router = Router();
+const router: Router = Router();
 
 // Validation schemas
 const createNodeSchema = z.object({

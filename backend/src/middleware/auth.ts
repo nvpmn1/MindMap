@@ -253,7 +253,7 @@ export const requireWorkspaceMember = (workspaceIdParam: string = 'workspaceId')
       }
 
       // Attach workspace role to user
-      (req.user as any).workspaceRole = membership.role;
+      (req.user as unknown as Record<string, unknown>).workspaceRole = membership.role;
 
       next();
     } catch (error) {
@@ -294,7 +294,7 @@ export const requireWorkspaceEditor = (workspaceIdParam: string = 'workspaceId')
         throw new AuthorizationError('Viewers cannot edit');
       }
 
-      (req.user as any).workspaceRole = membership.role;
+      (req.user as unknown as Record<string, unknown>).workspaceRole = membership.role;
 
       next();
     } catch (error) {
@@ -334,7 +334,7 @@ export const requireWorkspaceAdmin = (workspaceIdParam: string = 'workspaceId') 
         throw new AuthorizationError('Admin access required');
       }
 
-      (req.user as any).workspaceRole = membership.role;
+      (req.user as unknown as Record<string, unknown>).workspaceRole = membership.role;
 
       next();
     } catch (error) {
