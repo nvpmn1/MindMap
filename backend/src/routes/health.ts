@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { supabaseAdmin } from '../services/supabase';
 import { env } from '../utils/env';
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * GET /health

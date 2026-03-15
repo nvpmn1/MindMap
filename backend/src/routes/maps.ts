@@ -15,7 +15,7 @@ import { env } from '../utils/env';
 import { supabaseAdmin } from '../services/supabase';
 import { Updatable } from '../types/database';
 
-const router = Router();
+const router: Router = Router();
 
 // Validation schemas
 const createMapSchema = z.object({

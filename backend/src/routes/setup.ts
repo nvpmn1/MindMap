@@ -6,7 +6,7 @@ import { supabaseAdmin } from '../services/supabase';
 import { logger } from '../utils/logger';
 import { env } from '../utils/env';
 
-const router = Router();
+const router: Router = Router();
 
 const blockInProduction = (req: Request, res: Response, next: () => void): void => {
   if (env.NODE_ENV === 'production') {

@@ -6,7 +6,7 @@ import { logger } from '../utils/logger';
 import { supabaseAdmin } from '../services/supabase';
 import { Updatable } from '../types/database';
 
-const router = Router();
+const router: Router = Router();
 
 // Validation schemas
 const createTaskSchema = z.object({

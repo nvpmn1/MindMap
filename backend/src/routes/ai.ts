@@ -18,7 +18,7 @@ import {
 // Legacy import for backward compatibility with /agent endpoint
 import { aiOrchestrator } from '../ai/orchestrator';
 
-const router = Router();
+const router: Router = Router();
 
 const ACTION_AGENT_TYPES = new Set<string>([
   'generate',
