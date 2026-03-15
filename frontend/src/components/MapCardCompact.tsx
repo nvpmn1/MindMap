@@ -106,6 +106,7 @@ export function MapCardCompact({
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04, duration: 0.3 }}
       onClick={onClick}
+      aria-label={`Abrir mapa mental: ${title}`}
       className={`text-left p-4 rounded-xl border border-white/[0.04] bg-gradient-to-br ${iconColors[colorIndex]} transition-all duration-200 group w-full hover:border-white/[0.08]`}
     >
       <div className="flex items-start gap-3">
